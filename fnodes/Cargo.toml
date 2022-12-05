@@ -1,0 +1,16 @@
+[package]
+name = "fnodes"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+chumsky = "0.8.0"
+fcommon = { path = "../fcommon" }
+fnodes_macros = { path = "../fnodes_macros" }
+salsa = "0.16.1"
+tracing = "0.1.37"
+upcast = "0.1.0"
+
+[features]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
