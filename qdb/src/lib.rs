@@ -5,11 +5,11 @@ use std::{
 };
 
 use fcommon::*;
-use fnodes::SexprParserStorage;
+use fnodes::FeatherParserStorage;
 use salsa::Snapshot;
 
 /// The main database that manages all the compiler's queries.
-#[salsa::database(FileReaderStorage, InternStorage, SexprParserStorage)]
+#[salsa::database(FileReaderStorage, InternStorage, FeatherParserStorage)]
 pub struct QuillDatabase {
     storage: salsa::Storage<Self>,
     watcher:

@@ -1,16 +1,12 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
-use fcommon::{Dr, FileReader, Intern, Source};
+use fcommon::{with_local_database, Dr, FileReader, Intern, Source};
 use upcast::{Upcast, UpcastFrom};
 
-use crate::{
-    basic_nodes::QualifiedName, module::Module, parse_sexpr_from_string, ListSexprWrapper,
-    SexprNode, SexprParsable,
-};
+use crate::{basic_nodes::QualifiedName, module::Module};
 
-#[salsa::query_group(SexprParserStorage)]
-pub trait SexprParser: FileReader + Upcast<dyn Intern> {
-    fn parse_sexpr(&self, source: Source, file_contents: Arc<String>) -> Dr<Arc<SexprNode>>;
+#[salsa::query_group(FeatherParserStorage)]
+pub trait FeatherParser: FileReader + Upcast<dyn Intern> {
     fn module_from_feather_source(
         &self,
         source: Source,
@@ -19,43 +15,32 @@ pub trait SexprParser: FileReader + Upcast<dyn Intern> {
 }
 
 #[tracing::instrument(level = "debug")]
-fn parse_sexpr(
-    db: &dyn SexprParser,
-    source: Source,
-    file_contents: Arc<String>,
-) -> Dr<Arc<SexprNode>> {
-    parse_sexpr_from_string(source, &file_contents).map(Arc::new)
-}
-
-#[tracing::instrument(level = "debug")]
 fn module_from_feather_source(
-    db: &dyn SexprParser,
+    db: &dyn FeatherParser,
     source: Source,
     file_contents: Arc<String>,
 ) -> Dr<Arc<Module>> {
-    db.parse_sexpr(source, file_contents)
-        .as_deref()
-        .bind(|s_expr| {
-            ListSexprWrapper::<Module>::parse(db, source, s_expr.clone())
-                .map_err(|x| x.into_report(source))
-                .map(Arc::new)
-                .into()
-        })
+    with_local_database(db.up(), || match serde_lexpr::from_str(&file_contents) {
+        Ok(module) => Dr::ok(Arc::new(module)),
+        Err(err) => panic!("{err}"),
+    })
 }
 
-pub trait SexprParserExt: SexprParser + Upcast<dyn SexprParser> {
+pub trait FeatherParserExt: FeatherParser + Upcast<dyn FeatherParser> {
     fn qualified_name_to_path(&self, qn: &QualifiedName) -> fcommon::Path {
         self.intern_path_data(fcommon::PathData(
-            qn.segments.iter().map(|name| name.contents).collect(),
+            qn.iter().map(|name| *name.deref()).collect(),
         ))
     }
 }
-impl<'a, T: SexprParser + 'a> UpcastFrom<T> for dyn SexprParser + 'a {
-    fn up_from(value: &T) -> &(dyn SexprParser + 'a) {
+
+impl<'a, T: FeatherParser + 'a> UpcastFrom<T> for dyn FeatherParser + 'a {
+    fn up_from(value: &T) -> &(dyn FeatherParser + 'a) {
         value
     }
-    fn up_from_mut(value: &mut T) -> &mut (dyn SexprParser + 'a) {
+    fn up_from_mut(value: &mut T) -> &mut (dyn FeatherParser + 'a) {
         value
     }
 }
-impl<T> SexprParserExt for T where T: SexprParser + 'static {}
+
+impl<T> FeatherParserExt for T where T: FeatherParser + 'static {}

@@ -100,6 +100,7 @@ version = "0.0.0"
 dependencies = [
  "ariadne",
  "salsa",
+ "serde",
  "tracing",
  "upcast",
 ]
@@ -159,19 +160,11 @@ version = "0.0.0"
 dependencies = [
  "chumsky",
  "fcommon",
- "fnodes_macros",
  "salsa",
+ "serde",
+ "serde-lexpr",
  "tracing",
  "upcast",
-]
-
-[[package]]
-name = "fnodes_macros"
-version = "0.0.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -249,6 +242,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "itoa"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b71991ff56294aa922b450139ee08b3bfc70982c6b2c7562771375cf73542dd4"
+
+[[package]]
 name = "kqueue"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,6 +272,29 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+
+[[package]]
+name = "lexpr"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ceee0b80e0043f17bf81130471e1b0975179af75fe657af45577d80e2698fe3b"
+dependencies = [
+ "itoa",
+ "lexpr-macros",
+ "proc-macro-hack",
+ "ryu",
+]
+
+[[package]]
+name = "lexpr-macros"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd627fb38e19c00d8d068618259205f7a91c91aeade5c15bc35dbca037bb1c35"
+dependencies = [
+ "proc-macro-hack",
+ "proc-macro2",
+ "quote",
+]
 
 [[package]]
 name = "libc"
@@ -448,6 +470,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
+name = "ryu"
+version = "1.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4501abdff3ae82a1c1b477a17252eb69cee9e66eb915c1abaa4f44d873df9f09"
+
+[[package]]
 name = "salsa"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -490,6 +518,36 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "serde"
+version = "1.0.149"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "256b9932320c590e707b94576e3cc1f7c9024d0ee6612dfbcf1cb106cbe8e055"
+dependencies = [
+ "serde_derive",
+]
+
+[[package]]
+name = "serde-lexpr"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b305d32ef3ad5ebf721122b0b9aeecbf67e843e6fbafb6b5cefa4fb9dc3909f"
+dependencies = [
+ "lexpr",
+ "serde",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.149"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4eae9b04cbffdfd550eb462ed33bc6a1b68c935127d008b27444d08380f94e4"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "sharded-slab"
