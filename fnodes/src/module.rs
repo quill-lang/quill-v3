@@ -57,7 +57,7 @@ impl ListSexpr for Module {
                 })
             }
             SexprNodeContents::List(infos) => {
-                for info in infos {
+                for _info in infos {
                     // ctx.process_module_info(db, &module, info)?;
                 }
             }

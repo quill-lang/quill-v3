@@ -81,7 +81,7 @@ impl ListSexpr for Inductive {
         source_span: SourceSpan,
         args: Vec<SexprNode>,
     ) -> Result<Self, ParseError> {
-        let [name, infos, universe_params, ty, global_params, intro_rules] =
+        let [name, _infos, universe_params, ty, global_params, intro_rules] =
             force_arity(source_span.span, args)?;
 
         let inductive = Inductive {

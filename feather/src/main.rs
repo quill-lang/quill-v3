@@ -1,12 +1,10 @@
 use std::{path::PathBuf, sync::Arc};
 
 use fcommon::{FileReader, Intern, PathData, Source, SourceType};
-use fnodes::expr::{Expr, ExprContents};
 use qdb::QuillDatabase;
 use salsa::Durability;
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
-use upcast::Upcast;
 
 fn main() {
     let log_level = tracing::Level::TRACE;

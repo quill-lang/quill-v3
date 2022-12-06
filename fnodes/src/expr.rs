@@ -1,23 +1,8 @@
 //! All types of expression and value are defined here.
 //!
-//! TODO: This is out of date.
-//!
 //! # Adding variants
 //! When adding a new expression variant, make sure to derive [`ExprVariant`].
-//! This will automatically create implementations of [`ExpressionVariant`],
-//! [`ValueVariant`], and [`ListSexpr`], with suitable generic arguments.
 //! Such types must always be structs.
-//!
-//! ### Generic argument names
-//! We restrict the possible generic argument names and their functions in [`ExprVariant`].
-//! Each generic argument may take one of two possible values, one for node-based expressions
-//! ([`Expr`]), and one for value-based expressions ([`Value`]).
-//!
-//! - `E`: [`Expr`] or [`Value`]
-//! - `N`: [`Name`] or [`Str`]
-//! - `Q`: [`QualifiedName`] or [`fcommon::Path`]
-//! - `C`: [`Component<Name, Expr>`] or [`ComponentContents<Str, Value>`]
-//! - `U`: [`UniverseExpr`] or [`UniverseValue`].
 //!
 //! ### Serialisation keyword
 //! The `#[list_sexpr_keyword = "..."]` attribute must be provided to provide the keyword
@@ -34,26 +19,7 @@
 //! - `#[direct]`: if this field implements [`SexprParsable<Output = Self>`] and [`SexprSerialisable`].
 //!
 //! The choice of attribute will influence the serialisation method.
-//!
-//! ### Shadow names
-//! When registering a new variant, care should be taken to consider the function of any uses
-//! of `N`, which is a [`Name`] or a [`Str`].
-//! If it is used in a shadow context (i.e. writing [`Shadow<N>`] to denote [`Shadow<Name>`]
-//! or [`Shadow<Str>`]), then one of the following attributes should be used.
-//!
-//! - `#[binding_shadow_name]`: if this name is considered a binder (from any viewpoint)
-//! - `#[binding_shadow_names]`: if this can be iterated over,
-//!     and its elements are binders as in `#[binding_shadow_name]`
-//! - `#[non_binding_shadow_name]`: if this name is not a binder, but simply the name
-//!     of a previously bound value or node
-//! - `#[non_binding_shadow_names]`: if this can be iterated over,
-//!     and its elements are non-binders as in `#[non_binding_shadow_name]`
-//!
-//! ## Sub-expressions
-//! Any use of `E` must be tagged with the attribute `#[sub_expr]` to show that it is a
-//! sub-expression (or sub-value, if `E` is [`Value`]).
-//! Like with shadow names, `#[sub_exprs]` can be used to denote an iterable field with
-//! sub-expression values.
+
 
 use crate::*;
 use crate::{basic_nodes::*, universe::Universe};
@@ -398,7 +364,7 @@ impl ListSexpr for ExprContents {
         };
 
         // Reduce the span to only contain the arguments, not the keyword.
-        let span = Span {
+        let _span = Span {
             start: (first.span.unwrap_or_default().end + 1),
             end: source_span.span.end - 1,
         };
@@ -545,9 +511,9 @@ impl Expr {
     pub fn eq_ignoring_provenance(&self, other: &Expr) -> bool {
         match (&self.contents, &other.contents) {
             (ExprContents::Bound(left), ExprContents::Bound(right)) => left.index == right.index,
-            (ExprContents::Inst(left), ExprContents::Inst(right)) => todo!(),
-            (ExprContents::Let(left), ExprContents::Let(right)) => todo!(),
-            (ExprContents::Borrow(left), ExprContents::Borrow(right)) => todo!(),
+            (ExprContents::Inst(_left), ExprContents::Inst(_right)) => todo!(),
+            (ExprContents::Let(_left), ExprContents::Let(_right)) => todo!(),
+            (ExprContents::Borrow(_left), ExprContents::Borrow(_right)) => todo!(),
             (ExprContents::Lambda(left), ExprContents::Lambda(right)) => {
                 left.parameter_name
                     .eq_ignoring_provenance(&right.parameter_name)
@@ -557,7 +523,7 @@ impl Expr {
                         .eq_ignoring_provenance(&right.parameter_ty)
                     && left.result.eq_ignoring_provenance(&right.result)
             }
-            (ExprContents::Pi(left), ExprContents::Pi(right)) => todo!(),
+            (ExprContents::Pi(_left), ExprContents::Pi(_right)) => todo!(),
             (ExprContents::Delta(left), ExprContents::Delta(right)) => {
                 left.ty.eq_ignoring_provenance(&right.ty)
             }
@@ -568,7 +534,7 @@ impl Expr {
             (ExprContents::Sort(left), ExprContents::Sort(right)) => {
                 left.0.eq_ignoring_provenance(&right.0)
             }
-            (ExprContents::Region(_), ExprContents::Region(right)) => true,
+            (ExprContents::Region(_), ExprContents::Region(_right)) => true,
             (ExprContents::Metavariable(left), ExprContents::Metavariable(right)) => {
                 left.index == right.index
             }

@@ -56,31 +56,28 @@ impl ParseError {
     pub(crate) fn into_report(self, source: Source) -> Report {
         let msg = match self.reason {
             ParseErrorReason::ParseIntError { text, err } => {
-                format!("couldn't parse '{}' as int: {}", text, err)
+                format!("couldn't parse '{text}' as int: {err}")
             }
             ParseErrorReason::ExpectedAtom => "expected an atom, but found a list".to_string(),
             ParseErrorReason::ExpectedList => "expected a list, but found an atom".to_string(),
             ParseErrorReason::ExpectedKeywordFoundList { expected } => {
-                format!("expected keyword '{}', but found a list", expected)
+                format!("expected keyword '{expected}', but found a list")
             }
             ParseErrorReason::ExpectedKeywordFoundEmpty { expected } => format!(
-                "expected keyword '{}' at the start of this list, but the list was empty",
-                expected
+                "expected keyword '{expected}' at the start of this list, but the list was empty"
             ),
             ParseErrorReason::Empty => "expected elements in this list".to_string(),
-            ParseErrorReason::WrongKeyword { expected, found } => format!(
-                "expected keyword '{}', but found keyword '{}'",
-                expected, found
-            ),
+            ParseErrorReason::WrongKeyword { expected, found } => {
+                format!("expected keyword '{expected}', but found keyword '{found}'")
+            }
             ParseErrorReason::WrongArity {
                 expected_arity,
                 found_arity,
             } => format!(
-                "expected this list to have {} elements, but found {}",
-                expected_arity, found_arity
+                "expected this list to have {expected_arity} elements, but found {found_arity}"
             ),
             ParseErrorReason::RepeatedInfo { info_keyword } => {
-                format!("info keyword '{}' occured twice", info_keyword)
+                format!("info keyword '{info_keyword}' occured twice")
             }
         };
 
@@ -252,7 +249,14 @@ where
                         });
                     }
                 };
-                P::parse_list(db, SourceSpan { source, span: span.unwrap_or_default() }, list)
+                P::parse_list(
+                    db,
+                    SourceSpan {
+                        source,
+                        span: span.unwrap_or_default(),
+                    },
+                    list,
+                )
             }
         }
     }

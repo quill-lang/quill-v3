@@ -1,6 +1,8 @@
 //! Feather nodes can be serialised into S-expressions.
 //! This module provides functionality for both serialisation and deserialisation.
 
+use std::fmt::Display;
+
 use chumsky::prelude::*;
 use fcommon::{Dr, Label, LabelType, Report, ReportKind, Source, Span};
 
@@ -199,7 +201,7 @@ impl SexprNode {
                 // Depending on pretty-printing settings, we should consider indentation.
                 write!(f, "(")?;
                 if let Some((first, elts)) = elements.split_first() {
-                    if let SexprNodeContents::Atom(first_atom) = &first.contents {
+                    if let SexprNodeContents::Atom(_first_atom) = &first.contents {
                         first.fmt(f, indent_levels + 1)?;
                         for elt in elts {
                             write!(f, " ")?;
@@ -223,12 +225,11 @@ impl SexprNode {
             }
         }
     }
+}
 
-    /// Uses [`Self::fmt`] to convert this node to a [`String`].
-    pub fn to_string(&self) -> String {
-        let mut s = String::new();
-        self.fmt(&mut s, 0).expect("formatting error");
-        s
+impl Display for SexprNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fmt(f, 0)
     }
 }
 

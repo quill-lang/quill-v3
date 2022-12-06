@@ -102,7 +102,7 @@ impl ListSexpr for UniverseContents {
         };
 
         // Reduce the span to only contain the arguments, not the keyword.
-        let span = Span {
+        let _span = Span {
             start: first.span.unwrap_or_default().end + 1,
             end: source_span.span.end - 1,
         };
