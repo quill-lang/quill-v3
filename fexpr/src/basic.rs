@@ -29,6 +29,11 @@ impl Default for Provenance {
 ///
 /// It is common to create a newtype wrapper as follows.
 /// ```
+/// # use fexpr::basic::WithProvenance;
+/// # use std::ops::{Deref, DerefMut};
+/// # use serde::{Serialize, Deserialize};
+///
+/// #[derive(Serialize, Deserialize, PartialEq, Eq)]
 /// pub struct TContents;
 ///
 /// #[derive(Serialize, Deserialize, PartialEq, Eq)]

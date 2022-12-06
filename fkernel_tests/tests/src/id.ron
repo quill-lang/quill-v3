@@ -1,0 +1,34 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+
+(contents: (
+    items: [
+        Definition(contents: (
+            name: "id",
+            universe_params: ["u"],
+            ty: (contents: Pi(
+                parameter_name: "T",
+                binder_annotation: ImplicitEager,
+                parameter_ty: (contents: Sort((contents: UniverseVariable("u")))),
+                result: (contents: Pi(
+                    parameter_name: "x",
+                    binder_annotation: Explicit,
+                    parameter_ty: (contents: Bound(index: 0)),
+                    result: (contents: Bound(index: 1))
+                ))
+            )),
+            expr: (contents: Lambda(
+                parameter_name: "T",
+                binder_annotation: ImplicitEager,
+                parameter_ty: (contents: Sort((contents: UniverseVariable("u")))),
+                result: (contents: Lambda(
+                    parameter_name: "x",
+                    binder_annotation: Explicit,
+                    parameter_ty: (contents: Bound(index: 0)),
+                    result: (contents: Bound(index: 0))
+                ))
+            ))
+        ))
+    ]
+))

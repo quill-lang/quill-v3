@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use fcommon::{FileReader, Intern, PathData, Source, SourceType};
+use fexpr::FeatherParser;
 use qdb::QuillDatabase;
 use salsa::Durability;
 
@@ -20,7 +21,9 @@ fn run_test(file: &str) {
         ty: SourceType::Feather,
     };
 
-    let result = db.source(source);
+    let result = db
+        .source(source)
+        .bind(|contents| db.module_from_feather_source(source, contents));
     for report in result.reports() {
         report.render(&db, std::io::stdout());
     }
