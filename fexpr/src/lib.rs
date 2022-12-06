@@ -1,4 +1,4 @@
-pub mod basic_nodes;
+pub mod basic;
 pub mod definition;
 pub mod expr;
 pub mod inductive;

@@ -3,7 +3,7 @@ use std::{ops::Deref, sync::Arc};
 use fcommon::{with_local_database, Dr, FileReader, Intern, Report, ReportKind, Source};
 use upcast::{Upcast, UpcastFrom};
 
-use crate::{basic_nodes::QualifiedName, module::Module};
+use crate::{basic::QualifiedName, module::Module};
 
 #[salsa::query_group(FeatherParserStorage)]
 pub trait FeatherParser: FileReader + Upcast<dyn Intern> {

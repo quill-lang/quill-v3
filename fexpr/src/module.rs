@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use fcommon::Str;
 use serde::{Deserialize, Serialize};
 
-use crate::basic_nodes::WithProvenance;
+use crate::basic::WithProvenance;
 use crate::definition::Definition;
 use crate::inductive::Inductive;
 

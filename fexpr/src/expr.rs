@@ -20,7 +20,7 @@
 use salsa::{InternId, InternKey};
 use serde::{Deserialize, Serialize};
 
-use crate::{basic_nodes::*, universe::Universe};
+use crate::{basic::*, universe::Universe};
 
 /// An interned term type.
 /// Can be safely copied and compared cheaply.

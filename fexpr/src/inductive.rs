@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    basic_nodes::{Name, WithProvenance},
+    basic::{Name, WithProvenance},
     expr::Expression,
 };
 

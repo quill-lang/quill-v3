@@ -1,3 +1,5 @@
+//! Basic serialisable objects
+
 use std::{
     fmt::Display,
     ops::{Add, Deref, DerefMut},
@@ -6,10 +8,10 @@ use std::{
 use fcommon::{Intern, Path, PathData, Source, SourceSpan, Span, Str};
 use serde::{de::Visitor, ser::SerializeTuple, Deserialize, Serialize};
 
-/// The place the node came from.
+/// The place that an object in quill code came from.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Provenance {
-    /// The node originated from being written directly in a quill source file.
+    /// The object originated from being written directly in a quill source file.
     Quill(SourceSpan),
     Feather(SourceSpan),
     Synthetic,

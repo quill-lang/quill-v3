@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 fcommon = { version = "0.0.0", path = "../fcommon" }
+fexpr = { version = "0.0.0", path = "../fexpr" }
 fkernel = { version = "0.0.0", path = "../fkernel" }
-fnodes = { version = "0.0.0", path = "../fnodes" }
 notify-debouncer-mini = { version = "0.2", default-features = false }
 salsa = "0.16"

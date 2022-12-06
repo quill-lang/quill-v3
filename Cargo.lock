@@ -116,12 +116,25 @@ name = "feather"
 version = "0.0.0"
 dependencies = [
  "fcommon",
+ "fexpr",
  "fkernel",
- "fnodes",
  "qdb",
  "salsa",
  "tracing",
  "tracing-subscriber",
+ "upcast",
+]
+
+[[package]]
+name = "fexpr"
+version = "0.0.0"
+dependencies = [
+ "chumsky",
+ "fcommon",
+ "ron",
+ "salsa",
+ "serde",
+ "tracing",
  "upcast",
 ]
 
@@ -142,7 +155,7 @@ name = "fkernel"
 version = "0.0.0"
 dependencies = [
  "fcommon",
- "fnodes",
+ "fexpr",
  "qdb",
  "salsa",
  "tracing",
@@ -154,23 +167,10 @@ name = "fkernel_tests"
 version = "0.0.0"
 dependencies = [
  "fcommon",
+ "fexpr",
  "fkernel",
- "fnodes",
  "qdb",
  "salsa",
-]
-
-[[package]]
-name = "fnodes"
-version = "0.0.0"
-dependencies = [
- "chumsky",
- "fcommon",
- "ron",
- "salsa",
- "serde",
- "tracing",
- "upcast",
 ]
 
 [[package]]
@@ -416,8 +416,8 @@ name = "qdb"
 version = "0.0.0"
 dependencies = [
  "fcommon",
+ "fexpr",
  "fkernel",
- "fnodes",
  "notify-debouncer-mini",
  "salsa",
 ]

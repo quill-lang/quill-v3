@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 fcommon = { path = "../fcommon", features = ["ariadne"] }
-fnodes = { path = "../fnodes" }
+fexpr = { path = "../fexpr" }
 fkernel = { path = "../fkernel" }
 salsa = "0.16"
 

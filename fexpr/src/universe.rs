@@ -1,6 +1,6 @@
 // TODO: Document this module, taking care to detail each universe operation.
 
-use crate::basic_nodes::*;
+use crate::basic::*;
 use fcommon::{SourceSpan, Str};
 use serde::{Deserialize, Serialize};
 
