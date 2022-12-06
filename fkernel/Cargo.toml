@@ -8,9 +8,9 @@ edition = "2021"
 [dependencies]
 fcommon = { path = "../fcommon" }
 fnodes = { path = "../fnodes" }
-salsa = "0.16.1"
-tracing = "0.1.37"
-upcast = "0.1.0"
+salsa = "0.16"
+tracing = "0.1"
+upcast = "0.1"
 
 [dev-dependencies]
 qdb = { path = "../qdb" }

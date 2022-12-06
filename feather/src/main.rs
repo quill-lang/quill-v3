@@ -1,6 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use fcommon::{FileReader, Intern, PathData, Source, SourceType};
+use fnodes::FeatherParser;
 use qdb::QuillDatabase;
 use salsa::Durability;
 use tracing::info;
@@ -30,7 +31,9 @@ fn main() {
         ty: SourceType::Feather,
     };
 
-    let result = db.source(source);
+    let result = db
+        .source(source)
+        .bind(|contents| db.module_from_feather_source(source, contents));
     // Use a locked version of `stderr`, so that reports are not interspersed
     // with other things such as tracing messages from other threads.
     let mut stderr = std::io::stderr().lock();
@@ -39,8 +42,9 @@ fn main() {
     }
 
     if let Some(result) = result.value() {
-        println!("{result}");
+        println!("{result:#?}");
     }
+
     /*
     // This is the main loop for language servers, and other things that need regular file updates.
     loop {

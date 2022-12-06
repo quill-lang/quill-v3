@@ -50,7 +50,7 @@ pub enum UniverseContents {
 pub type Universe = WithProvenance<UniverseContents>;
 
 impl Universe {
-    pub fn new_in_sexpr(source_span: SourceSpan, contents: UniverseContents) -> Self {
+    pub fn new_with_span(source_span: SourceSpan, contents: UniverseContents) -> Self {
         Self {
             provenance: Provenance::Feather(source_span),
             contents,

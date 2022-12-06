@@ -4,7 +4,7 @@ use std::{
 };
 
 use fcommon::{Intern, Path, PathData, Source, SourceSpan, Span, Str};
-use serde::{Deserialize, Serialize};
+use serde::{de::Visitor, ser::SerializeTuple, Deserialize, Serialize};
 
 /// The place the node came from.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -13,6 +13,12 @@ pub enum Provenance {
     Quill(SourceSpan),
     Feather(SourceSpan),
     Synthetic,
+}
+
+impl Default for Provenance {
+    fn default() -> Self {
+        Provenance::Synthetic
+    }
 }
 
 /// Attaches provenance data to a type.
@@ -43,6 +49,7 @@ pub enum Provenance {
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct WithProvenance<T> {
     /// The origin of the value.
+    #[serde(default)]
     pub provenance: Provenance,
     /// The actual contents of the value.
     pub contents: T,
@@ -95,7 +102,7 @@ impl Provenance {
 }
 
 /// A single indivisible lexical unit in an identifier, variable, or so on.
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Name(pub WithProvenance<Str>);
 
 impl Deref for Name {
@@ -115,6 +122,71 @@ impl DerefMut for Name {
 impl std::fmt::Debug for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+// We need a custom Serialize/Deserialize impl for Name.
+// Because `Str` is not a struct, `#[flatten]` doesn't work.
+
+impl Serialize for Name {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.0.provenance {
+            Provenance::Synthetic => self.deref().serialize(serializer),
+            _ => {
+                let mut s = serializer.serialize_tuple(2)?;
+                s.serialize_element(&self.0.provenance)?;
+                s.serialize_element(self.deref())?;
+                s.end()
+            }
+        }
+    }
+}
+
+struct NameVisitor;
+
+impl<'de> Visitor<'de> for NameVisitor {
+    type Value = Name;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string or a 2-tuple")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Name(WithProvenance {
+            provenance: Provenance::Synthetic,
+            contents: Str::deserialise(v.to_owned()),
+        }))
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let provenance = seq.next_element()?.ok_or_else(|| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Other("data"), &"provenance")
+        })?;
+        let contents = seq.next_element()?.ok_or_else(|| {
+            serde::de::Error::invalid_value(serde::de::Unexpected::Other("data"), &"contents")
+        })?;
+        Ok(Name(WithProvenance {
+            provenance,
+            contents,
+        }))
+    }
+}
+
+impl<'de> Deserialize<'de> for Name {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(NameVisitor)
     }
 }
 
@@ -218,6 +290,23 @@ impl Add<DeBruijnOffset> for DeBruijnIndex {
 }
 
 /// A documentation string.
-/// Even though this isn't a single identifier, it's still represented as a [Name].
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Documentation(pub WithProvenance<Str>);
+
+impl Serialize for Documentation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        Name(self.0).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Documentation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Name::deserialize(deserializer).map(|name| Documentation(name.0))
+    }
+}

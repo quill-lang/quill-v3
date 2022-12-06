@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use fcommon::{with_local_database, Dr, FileReader, Intern, Source};
+use fcommon::{with_local_database, Dr, FileReader, Intern, Report, ReportKind, Source};
 use upcast::{Upcast, UpcastFrom};
 
 use crate::{basic_nodes::QualifiedName, module::Module};
@@ -20,9 +20,11 @@ fn module_from_feather_source(
     source: Source,
     file_contents: Arc<String>,
 ) -> Dr<Arc<Module>> {
-    with_local_database(db.up(), || match serde_lexpr::from_str(&file_contents) {
+    with_local_database(db.up(), || match ron::from_str(&file_contents) {
         Ok(module) => Dr::ok(Arc::new(module)),
-        Err(err) => panic!("{err}"),
+        Err(err) => {
+            Dr::fail(Report::new_in_file(ReportKind::Error, source).with_message(err.to_string()))
+        }
     })
 }
 

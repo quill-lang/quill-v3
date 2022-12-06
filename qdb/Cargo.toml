@@ -9,5 +9,5 @@ edition = "2021"
 fcommon = { version = "0.0.0", path = "../fcommon" }
 fkernel = { version = "0.0.0", path = "../fkernel" }
 fnodes = { version = "0.0.0", path = "../fnodes" }
-notify-debouncer-mini = { version = "0.2.1", default-features = false }
-salsa = "0.16.1"
+notify-debouncer-mini = { version = "0.2", default-features = false }
+salsa = "0.16"

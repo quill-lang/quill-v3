@@ -104,6 +104,17 @@ pub fn with_local_database<T>(db: &dyn Intern, f: impl FnOnce() -> T) -> T {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Str(InternId);
 
+impl Str {
+    /// Only call inside a serde deserialisation block, i.e., inside `with_local_database`.
+    pub fn deserialise(v: String) -> Str {
+        LOCAL_DATABASE.with(|db| {
+            db.borrow()
+                .expect("must only deserialise inside with_local_database")
+                .intern_string_data(v)
+        })
+    }
+}
+
 impl Serialize for Str {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -131,22 +142,14 @@ impl<'de> Visitor<'de> for StrVisitor {
     where
         E: serde::de::Error,
     {
-        Ok(LOCAL_DATABASE.with(|db| {
-            db.borrow()
-                .expect("must only deserialise inside with_local_database")
-                .intern_string_data(v.to_owned())
-        }))
+        Ok(Str::deserialise(v.to_owned()))
     }
 
     fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
     where
         E: serde::de::Error,
     {
-        Ok(LOCAL_DATABASE.with(|db| {
-            db.borrow()
-                .expect("must only deserialise inside with_local_database")
-                .intern_string_data(v)
-        }))
+        Ok(Str::deserialise(v))
     }
 }
 
@@ -324,7 +327,7 @@ pub enum SourceType {
 impl SourceType {
     pub fn extension(self) -> &'static str {
         match self {
-            SourceType::Feather => "sexp",
+            SourceType::Feather => "ron",
             SourceType::Quill => "quill",
         }
     }

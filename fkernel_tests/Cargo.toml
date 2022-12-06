@@ -9,7 +9,7 @@ edition = "2021"
 fcommon = { path = "../fcommon", features = ["ariadne"] }
 fnodes = { path = "../fnodes" }
 fkernel = { path = "../fkernel" }
-salsa = "0.16.1"
+salsa = "0.16"
 
 [dev-dependencies]
 qdb = { path = "../qdb" }

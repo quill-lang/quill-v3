@@ -23,13 +23,13 @@ fn scan_dir(f: &mut impl Write, root: &Path, suffix: &Path) {
         if ty.is_dir() {
             // Recurse to see if this directory contains a test module.
             scan_dir(f, root, &suffix.join(entry.file_name()));
-        } else if ty.is_file() && entry.file_name().to_string_lossy().ends_with(".sexp") {
+        } else if ty.is_file() && entry.file_name().to_string_lossy().ends_with(".ron") {
             // This should be turned into a unit test.
             let path = suffix
                 .join(entry.file_name())
                 .to_string_lossy()
                 .replace('\\', "/");
-            let name = path.replace('/', "_").replace(".sexp", "");
+            let name = path.replace('/', "_").replace(".ron", "");
             write!(
                 f,
                 r#"

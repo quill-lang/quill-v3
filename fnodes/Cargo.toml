@@ -4,13 +4,13 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
-chumsky = "0.8.0"
+chumsky = "0.8"
 fcommon = { path = "../fcommon" }
-salsa = "0.16.1"
+salsa = "0.16"
 serde = { version = "1.0", features = ["derive"] }
-serde-lexpr = "0.1.2"
-tracing = "0.1.37"
-upcast = "0.1.0"
+ron = "0.8"
+tracing = "0.1"
+upcast = "0.1"
 
 [features]
 
