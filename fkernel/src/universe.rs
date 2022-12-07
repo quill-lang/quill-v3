@@ -278,8 +278,7 @@ pub fn instantiate_metauniverse(
     })
 }
 
-/// Returns true if the left universe is at most (<=) the right universe.
-pub fn universe_at_most(
+fn universe_at_most(
     db: &dyn UniverseOps,
     mut left: Universe<()>,
     mut right: Universe<()>,

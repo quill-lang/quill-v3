@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::basic::{Name, WithProvenance};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DefinitionContents<P, E>
 where
     P: Default + PartialEq,
