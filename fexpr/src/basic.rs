@@ -1,7 +1,7 @@
 //! Basic serialisable objects
 
 use std::{
-    fmt::Display,
+    fmt::{Debug, Display},
     ops::{Add, Deref, DerefMut},
 };
 
@@ -24,6 +24,8 @@ impl Default for Provenance {
 }
 
 /// Attaches provenance data to a type.
+/// Parametric over the type `P` of provenance data used.
+/// Typically, `P` is either [`Provenance`] or `()`.
 ///
 /// # Common patterns
 ///
@@ -37,9 +39,9 @@ impl Default for Provenance {
 /// pub struct TContents;
 ///
 /// #[derive(Serialize, Deserialize, PartialEq, Eq)]
-/// pub struct T(pub WithProvenance<TContents>);
+/// pub struct T<P: Default + PartialEq>(pub WithProvenance<P, TContents>);
 ///
-/// impl Deref for T {
+/// impl<P: Default + PartialEq> Deref for T<P> {
 ///     type Target = TContents;
 ///
 ///     fn deref(&self) -> &Self::Target {
@@ -47,24 +49,44 @@ impl Default for Provenance {
 ///     }
 /// }
 ///
-/// impl DerefMut for T {
+/// impl<P: Default + PartialEq> DerefMut for T<P> {
 ///     fn deref_mut(&mut self) -> &mut Self::Target {
 ///         &mut self.0.contents
 ///     }
 /// }
 /// ```
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct WithProvenance<T> {
+pub struct WithProvenance<P, T>
+where
+    P: Default + PartialEq,
+{
     /// The origin of the value.
-    #[serde(default)]
-    pub provenance: Provenance,
+    #[serde(default, skip_serializing_if = "is_default_value")]
+    pub provenance: P,
     /// The actual contents of the value.
     pub contents: T,
 }
 
-impl<T> std::fmt::Debug for WithProvenance<T>
+fn is_default_value<P>(provenance: &P) -> bool
 where
-    T: std::fmt::Debug,
+    P: Default + PartialEq,
+{
+    *provenance == P::default()
+}
+
+impl<T> WithProvenance<(), T> {
+    pub fn new(contents: T) -> Self {
+        Self {
+            provenance: (),
+            contents,
+        }
+    }
+}
+
+impl<P, T> Debug for WithProvenance<P, T>
+where
+    P: Debug + Default + PartialEq,
+    T: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if f.alternate() {
@@ -75,7 +97,10 @@ where
     }
 }
 
-impl<T> Deref for WithProvenance<T> {
+impl<P, T> Deref for WithProvenance<P, T>
+where
+    P: Default + PartialEq,
+{
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -83,7 +108,10 @@ impl<T> Deref for WithProvenance<T> {
     }
 }
 
-impl<T> DerefMut for WithProvenance<T> {
+impl<P, T> DerefMut for WithProvenance<P, T>
+where
+    P: Default + PartialEq,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.contents
     }
@@ -110,9 +138,14 @@ impl Provenance {
 
 /// A single indivisible lexical unit in an identifier, variable, or so on.
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Name(pub WithProvenance<Str>);
+pub struct Name<P>(pub WithProvenance<P, Str>)
+where
+    P: Default + PartialEq;
 
-impl Deref for Name {
+impl<P> Deref for Name<P>
+where
+    P: Default + PartialEq,
+{
     type Target = Str;
 
     fn deref(&self) -> &Self::Target {
@@ -120,42 +153,68 @@ impl Deref for Name {
     }
 }
 
-impl DerefMut for Name {
+impl<P> DerefMut for Name<P>
+where
+    P: Default + PartialEq,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0.contents
     }
 }
 
-impl std::fmt::Debug for Name {
+impl<P> Debug for Name<P>
+where
+    P: Default + PartialEq,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl<P> Name<P>
+where
+    P: Default + PartialEq,
+{
+    pub fn without_provenance(self) -> Name<()> {
+        Name(WithProvenance {
+            provenance: (),
+            contents: *self,
+        })
     }
 }
 
 // We need a custom Serialize/Deserialize impl for Name.
 // Because `Str` is not a struct, `#[flatten]` doesn't work.
 
-impl Serialize for Name {
+impl<P> Serialize for Name<P>
+where
+    P: Default + PartialEq + Serialize,
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        match self.0.provenance {
-            Provenance::Synthetic => self.deref().serialize(serializer),
-            _ => {
-                let mut s = serializer.serialize_tuple(2)?;
-                s.serialize_element(&self.0.provenance)?;
-                s.serialize_element(self.deref())?;
-                s.end()
-            }
+        if self.0.provenance == P::default() {
+            self.deref().serialize(serializer)
+        } else {
+            let mut s = serializer.serialize_tuple(2)?;
+            s.serialize_element(&self.0.provenance)?;
+            s.serialize_element(self.deref())?;
+            s.end()
         }
     }
 }
 
-struct NameVisitor;
+#[derive(Default)]
+struct NameVisitor<P> {
+    _phantom: std::marker::PhantomData<P>,
+}
 
-impl<'de> Visitor<'de> for NameVisitor {
-    type Value = Name;
+impl<'de, P> Visitor<'de> for NameVisitor<P>
+where
+    P: Default + Deserialize<'de> + PartialEq,
+{
+    type Value = Name<P>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("a string or a 2-tuple")
@@ -166,7 +225,7 @@ impl<'de> Visitor<'de> for NameVisitor {
         E: serde::de::Error,
     {
         Ok(Name(WithProvenance {
-            provenance: Provenance::Synthetic,
+            provenance: P::default(),
             contents: Str::deserialise(v.to_owned()),
         }))
     }
@@ -188,41 +247,58 @@ impl<'de> Visitor<'de> for NameVisitor {
     }
 }
 
-impl<'de> Deserialize<'de> for Name {
+impl<'de, P> Deserialize<'de> for Name<P>
+where
+    P: Default + PartialEq + Deserialize<'de>,
+{
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_any(NameVisitor)
+        deserializer.deserialize_any(NameVisitor::default())
     }
 }
 
 /// A qualified name that may have been written in code, rather than one simply stored internally
 /// that was never written in code (see [`fcommon::Path`] for that use case).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct QualifiedName(pub WithProvenance<Vec<Name>>);
+pub struct QualifiedName<P>(pub WithProvenance<P, Vec<Name<P>>>)
+where
+    P: Default + PartialEq;
 
-impl Deref for QualifiedName {
-    type Target = Vec<Name>;
+impl<P> Deref for QualifiedName<P>
+where
+    P: Default + PartialEq,
+{
+    type Target = Vec<Name<P>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0.contents
     }
 }
 
-impl DerefMut for QualifiedName {
+impl<P> DerefMut for QualifiedName<P>
+where
+    P: Default + PartialEq,
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0.contents
     }
 }
 
-impl std::fmt::Debug for QualifiedName {
+impl<P> Debug for QualifiedName<P>
+where
+    P: Default + PartialEq,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl QualifiedName {
+impl<P> QualifiedName<P>
+where
+    P: Default + PartialEq,
+{
     pub fn to_path(&self, intern: &dyn Intern) -> Path {
         intern.intern_path_data(PathData(self.iter().map(|name| *name.deref()).collect()))
     }
@@ -231,12 +307,29 @@ impl QualifiedName {
         self.to_path(intern).display(intern)
     }
 
-    pub fn eq_ignoring_provenance(&self, other: &QualifiedName) -> bool {
+    pub fn eq_ignoring_provenance(&self, other: &QualifiedName<P>) -> bool {
         self.len() == other.len()
             && self
                 .iter()
                 .zip(other.deref())
                 .all(|(left, right)| left.deref() == right.deref())
+    }
+}
+
+impl<P> QualifiedName<P>
+where
+    P: Default + PartialEq,
+{
+    pub fn without_provenance(self) -> QualifiedName<()> {
+        QualifiedName(WithProvenance {
+            provenance: (),
+            contents: self
+                .0
+                .contents
+                .into_iter()
+                .map(Name::without_provenance)
+                .collect(),
+        })
     }
 }
 
@@ -293,27 +386,5 @@ impl Add<DeBruijnOffset> for DeBruijnIndex {
 
     fn add(self, rhs: DeBruijnOffset) -> Self::Output {
         Self(self.0 + rhs.0)
-    }
-}
-
-/// A documentation string.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Documentation(pub WithProvenance<Str>);
-
-impl Serialize for Documentation {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        Name(self.0).serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for Documentation {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Name::deserialize(deserializer).map(|name| Documentation(name.0))
     }
 }

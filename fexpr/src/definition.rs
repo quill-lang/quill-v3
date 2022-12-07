@@ -1,20 +1,20 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::{
-    basic::{Name, WithProvenance},
-    expr::Expression,
-};
+use crate::basic::{Name, WithProvenance};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct DefinitionContents {
+pub struct DefinitionContents<P, E>
+where
+    P: Default + PartialEq,
+{
     /// The name of this definition inside the current module.
-    pub name: Name,
+    pub name: Name<P>,
     /// A list of strings representing names of universe parameters.
-    pub universe_params: Vec<Name>,
+    pub universe_params: Vec<Name<P>>,
     /// The type of the definition.
-    pub ty: Expression,
+    pub ty: E,
     /// The value of the definition.
-    pub expr: Option<Expression>,
+    pub expr: Option<E>,
 }
 
-pub type Definition = WithProvenance<DefinitionContents>;
+pub type Definition<P, E> = WithProvenance<P, DefinitionContents<P, E>>;

@@ -53,13 +53,19 @@ impl Term {
     }
 }
 
+impl TermData {
+    pub fn intern(self, db: &dyn TermIntern) -> Term {
+        db.intern_term_data(self)
+    }
+}
+
 pub trait ExpressionVariant<E> {
     fn sub_expressions(&self) -> Vec<&E>;
     fn sub_expressions_mut(&mut self) -> Vec<&mut E>;
 }
 
 /// A bound local variable inside an abstraction.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Bound {
     pub index: DeBruijnIndex,
 }
@@ -67,28 +73,34 @@ pub struct Bound {
 /// Either a definition or an inductive data type.
 /// Parametrised by a list of universe parameters.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Inst {
-    pub name: QualifiedName,
-    pub universes: Vec<Universe>,
+pub struct Inst<P>
+where
+    P: Default + PartialEq,
+{
+    pub name: QualifiedName<P>,
+    pub universes: Vec<Universe<P>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Let<E> {
+pub struct Let<P, E>
+where
+    P: Default + PartialEq,
+{
     /// The name of the local variable to bind.
-    pub name_to_assign: Name,
+    pub name_to_assign: Name<P>,
     /// The value to assign to the new bound variable.
     /// The type of the value to assign to the bound variable.
-    pub to_assign_ty: Box<E>,
+    pub to_assign_ty: E,
     /// The main body of the expression to be executed after assigning the value.
-    pub body: Box<E>,
+    pub body: E,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Borrow<E> {
     /// The region for which to borrow the value.
-    pub region: Box<E>,
+    pub region: E,
     /// The value to be borrowed.
-    pub value: Box<E>,
+    pub value: E,
 }
 
 /// How should the argument to this function be given?
@@ -105,52 +117,60 @@ pub enum BinderAnnotation {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Lambda<E> {
+pub struct Lambda<P, E>
+where
+    P: Default + PartialEq,
+{
     /// The name of the parameter.
-    pub parameter_name: Name,
+    pub parameter_name: Name<P>,
     /// How the parameter should be filled when calling the function.
     pub binder_annotation: BinderAnnotation,
     /// The type of the parameter.
-    pub parameter_ty: Box<E>,
+    pub parameter_ty: E,
     /// The body of the lambda, also called the lambda term.
-    pub result: Box<E>,
+    pub result: E,
 }
 
-impl<E> Lambda<E>
+impl<P, E> Lambda<P, E>
 where
+    P: Default + Clone + PartialEq,
     E: Clone,
 {
     /// Generates a local constant that represents the argument to this lambda abstraction.
-    pub fn generate_local(&self, meta_gen: &mut MetavariableGenerator<E>) -> LocalConstant<E> {
+    pub fn generate_local(&self, meta_gen: &mut MetavariableGenerator<E>) -> LocalConstant<P, E> {
         LocalConstant {
             name: self.parameter_name.clone(),
-            metavariable: meta_gen.gen(*self.parameter_ty.clone()),
+            metavariable: meta_gen.gen(self.parameter_ty.clone()),
             binder_annotation: self.binder_annotation,
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Pi<E> {
+pub struct Pi<P, E>
+where
+    P: Default + PartialEq,
+{
     /// The name of the parameter.
-    pub parameter_name: Name,
+    pub parameter_name: Name<P>,
     /// How the parameter should be filled when calling the function.
     pub binder_annotation: BinderAnnotation,
     /// The type of the parameter.
-    pub parameter_ty: Box<E>,
+    pub parameter_ty: E,
     /// The type of the result.
-    pub result: Box<E>,
+    pub result: E,
 }
 
-impl<E> Pi<E>
+impl<P, E> Pi<P, E>
 where
+    P: Default + Clone + PartialEq,
     E: Clone,
 {
     /// Generates a local constant that represents the argument to this dependent function type.
-    pub fn generate_local(&self, meta_gen: &mut MetavariableGenerator<E>) -> LocalConstant<E> {
+    pub fn generate_local(&self, meta_gen: &mut MetavariableGenerator<E>) -> LocalConstant<P, E> {
         LocalConstant {
             name: self.parameter_name.clone(),
-            metavariable: meta_gen.gen(*self.parameter_ty.clone()),
+            metavariable: meta_gen.gen(self.parameter_ty.clone()),
             binder_annotation: self.binder_annotation,
         }
     }
@@ -167,23 +187,25 @@ where
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Delta<E> {
     /// The region for which a value is borrowed.
-    pub region: Box<E>,
+    pub region: E,
     /// The type of values which is to be borrowed.
-    pub ty: Box<E>,
+    pub ty: E,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Apply<E> {
     /// The function to be invoked.
-    pub function: Box<E>,
+    pub function: E,
     /// The argument to apply to the function.
-    pub argument: Box<E>,
+    pub argument: E,
 }
 
 /// Represents the universe of types corresponding to the given universe.
 /// For example, if the universe is `0`, this is `Prop`, the type of propositions.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Sort(pub Universe);
+pub struct Sort<P>(pub Universe<P>)
+where
+    P: Default + PartialEq;
 
 /// The sort of regions. All regions have this sort as their type.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -195,15 +217,18 @@ pub struct Region;
 pub struct Metavariable<E> {
     pub index: u32,
     /// We store the types of metavariables explicitly, since they can't be inferred.
-    pub ty: Box<E>,
+    pub ty: E,
 }
 
 /// De Bruijn indices (bound variables) are replaced with local constants while we're inside the function body.
 /// Should not be used in functions manually.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct LocalConstant<E> {
+pub struct LocalConstant<P, E>
+where
+    P: Default + PartialEq,
+{
     /// The position of the name is where it was defined, not where it was used.
-    pub name: Name,
+    pub name: Name<P>,
     pub metavariable: Metavariable<E>,
     /// How was this local variable introduced?
     pub binder_annotation: BinderAnnotation,
@@ -230,32 +255,99 @@ impl<E> MetavariableGenerator<E> {
     pub fn gen(&mut self, ty: E) -> Metavariable<E> {
         let result = self.next_var;
         self.next_var += 1;
-        Metavariable {
-            index: result,
-            ty: Box::new(ty),
-        }
+        Metavariable { index: result, ty }
     }
 }
 
 /// The main expression type.
-/// The type parameter `E` is the type of sub-expressions.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ExpressionT<E> {
+pub enum ExpressionT<P, E>
+where
+    P: Default + PartialEq,
+{
     Bound(Bound),
-    Inst(Inst),
-    Let(Let<E>),
+    Inst(Inst<P>),
+    Let(Let<P, E>),
     Borrow(Borrow<E>),
-    Lambda(Lambda<E>),
-    Pi(Pi<E>),
+    Lambda(Lambda<P, E>),
+    Pi(Pi<P, E>),
     Delta(Delta<E>),
     Apply(Apply<E>),
-    Sort(Sort),
+    Sort(Sort<P>),
     Region(Region),
     Metavariable(Metavariable<E>),
-    LocalConstant(LocalConstant<E>),
+    LocalConstant(LocalConstant<P, E>),
 }
 
-pub type TermData = ExpressionT<Term>;
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Expression(pub WithProvenance<Provenance, ExpressionT<Provenance, Box<Expression>>>);
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct Expression(pub WithProvenance<ExpressionT<Expression>>);
+pub type TermData = ExpressionT<(), Term>;
+
+impl Expression {
+    pub fn to_term(self, db: &dyn TermIntern) -> Term {
+        match self.0.contents {
+            ExpressionT::Bound(e) => ExpressionT::Bound(e).intern(db),
+            ExpressionT::Inst(e) => ExpressionT::Inst(Inst {
+                name: e.name.clone().without_provenance(),
+                universes: e
+                    .universes
+                    .into_iter()
+                    .map(Universe::without_provenance)
+                    .collect(),
+            })
+            .intern(db),
+            ExpressionT::Let(e) => ExpressionT::Let(Let {
+                name_to_assign: e.name_to_assign.without_provenance(),
+                to_assign_ty: e.to_assign_ty.to_term(db),
+                body: e.body.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::Borrow(e) => ExpressionT::Borrow(Borrow {
+                region: e.region.to_term(db),
+                value: e.value.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::Lambda(e) => ExpressionT::Lambda(Lambda {
+                parameter_name: e.parameter_name.without_provenance(),
+                binder_annotation: e.binder_annotation,
+                parameter_ty: e.parameter_ty.to_term(db),
+                result: e.result.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::Pi(e) => ExpressionT::Pi(Pi {
+                parameter_name: e.parameter_name.without_provenance(),
+                binder_annotation: e.binder_annotation,
+                parameter_ty: e.parameter_ty.to_term(db),
+                result: e.result.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::Delta(e) => ExpressionT::Delta(Delta {
+                region: e.region.to_term(db),
+                ty: e.ty.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::Apply(e) => ExpressionT::Apply(Apply {
+                function: e.function.to_term(db),
+                argument: e.argument.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::Sort(e) => ExpressionT::Sort(Sort(e.0.without_provenance())).intern(db),
+            ExpressionT::Region(e) => ExpressionT::Region(e).intern(db),
+            ExpressionT::Metavariable(e) => ExpressionT::Metavariable(Metavariable {
+                index: e.index,
+                ty: e.ty.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::LocalConstant(e) => ExpressionT::LocalConstant(LocalConstant {
+                name: e.name.without_provenance(),
+                metavariable: Metavariable {
+                    index: e.metavariable.index,
+                    ty: e.metavariable.ty.to_term(db),
+                },
+                binder_annotation: e.binder_annotation,
+            })
+            .intern(db),
+        }
+    }
+}

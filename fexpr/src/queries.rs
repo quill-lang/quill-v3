@@ -3,7 +3,10 @@ use std::{ops::Deref, sync::Arc};
 use fcommon::{with_local_database, Dr, FileReader, Intern, Report, ReportKind, Source};
 use upcast::{Upcast, UpcastFrom};
 
-use crate::{basic::QualifiedName, module::Module};
+use crate::{
+    basic::{Provenance, QualifiedName},
+    module::Module, expr::Expression,
+};
 
 #[salsa::query_group(FeatherParserStorage)]
 pub trait FeatherParser: FileReader + Upcast<dyn Intern> {
@@ -11,7 +14,7 @@ pub trait FeatherParser: FileReader + Upcast<dyn Intern> {
         &self,
         source: Source,
         file_contents: Arc<String>,
-    ) -> Dr<Arc<Module>>;
+    ) -> Dr<Arc<Module<Provenance, Expression>>>;
 }
 
 #[tracing::instrument(level = "debug")]
@@ -19,7 +22,7 @@ fn module_from_feather_source(
     db: &dyn FeatherParser,
     source: Source,
     file_contents: Arc<String>,
-) -> Dr<Arc<Module>> {
+) -> Dr<Arc<Module<Provenance, Expression>>> {
     with_local_database(db.up(), || match ron::from_str(&file_contents) {
         Ok(module) => Dr::ok(Arc::new(module)),
         Err(err) => {
@@ -29,7 +32,10 @@ fn module_from_feather_source(
 }
 
 pub trait FeatherParserExt: FeatherParser + Upcast<dyn FeatherParser> {
-    fn qualified_name_to_path(&self, qn: &QualifiedName) -> fcommon::Path {
+    fn qualified_name_to_path<P>(&self, qn: &QualifiedName<P>) -> fcommon::Path
+    where
+        P: Default + PartialEq,
+    {
         self.intern_path_data(fcommon::PathData(
             qn.iter().map(|name| *name.deref()).collect(),
         ))

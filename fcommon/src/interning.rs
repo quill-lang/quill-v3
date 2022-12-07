@@ -272,6 +272,12 @@ impl Path {
     }
 }
 
+impl PathData {
+    pub fn intern(self, db: &dyn Intern) -> Path {
+        db.intern_path_data(self)
+    }
+}
+
 pub trait InternExt: Intern {
     fn path_data_to_path_buf(&self, data: &PathData) -> PathBuf {
         data.0
