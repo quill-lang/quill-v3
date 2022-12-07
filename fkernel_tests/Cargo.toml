@@ -9,7 +9,7 @@ edition = "2021"
 fcommon = { path = "../fcommon", features = ["ariadne"] }
 fexpr = { path = "../fexpr" }
 fkernel = { path = "../fkernel" }
-salsa = "0.16"
+salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
 
 [dev-dependencies]
 qdb = { path = "../qdb" }

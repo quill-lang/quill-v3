@@ -5,8 +5,10 @@ use std::{
     ops::{Add, Deref, DerefMut},
 };
 
-use fcommon::{Intern, Path, PathData, Source, SourceSpan, Span, Str};
+use fcommon::{Path, Source, SourceSpan, Span, Str};
 use serde::{de::Visitor, ser::SerializeTuple, Deserialize, Serialize};
+
+use crate::Db;
 
 /// The place that an object in quill code came from.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -299,12 +301,12 @@ impl<P> QualifiedName<P>
 where
     P: Default + PartialEq,
 {
-    pub fn to_path(&self, intern: &dyn Intern) -> Path {
-        intern.intern_path_data(PathData(self.iter().map(|name| *name.deref()).collect()))
+    pub fn to_path(&self, db: &dyn Db) -> Path {
+        Path::new(db, self.iter().map(|name| *name.deref()).collect())
     }
 
-    pub fn display(&self, intern: &dyn Intern) -> String {
-        self.to_path(intern).display(intern)
+    pub fn display(&self, db: &dyn Db) -> String {
+        self.to_path(db).display(db)
     }
 
     pub fn eq_ignoring_provenance(&self, other: &QualifiedName<P>) -> bool {

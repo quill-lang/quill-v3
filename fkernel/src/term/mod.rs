@@ -1,1 +1,3 @@
-pub mod free_vars;
+mod free_vars;
+
+pub use free_vars::*;

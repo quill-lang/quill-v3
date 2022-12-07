@@ -10,7 +10,6 @@ fcommon = { path = "../fcommon", features = ["ariadne"] }
 fkernel = { path = "../fkernel" }
 fexpr = { path = "../fexpr" }
 qdb = { path = "../qdb" }
-salsa = "0.16"
+salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-upcast = "0.1"

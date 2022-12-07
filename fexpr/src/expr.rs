@@ -17,51 +17,14 @@
 //! Since `TermData = ExpressionT<Term>` is parametrised by `Term` and not `TermData`, when we look up an interned term value, we only 'unbox' one level at a time.
 //! This improves efficiency, and allows us to cache various results about many small terms, such as their type.
 
-use salsa::{InternId, InternKey};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     basic::*,
     multiplicity::{InvocationType, ParameterOwnership},
     universe::Universe,
+    Db,
 };
-
-/// An interned term type.
-/// Can be safely copied and compared cheaply.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Term(InternId);
-
-impl InternKey for Term {
-    fn from_intern_id(v: InternId) -> Self {
-        Self(v)
-    }
-
-    fn as_intern_id(&self) -> InternId {
-        self.0
-    }
-}
-
-/// Provides utilities for interning various data types.
-///
-/// The [`Debug`] constraint is used to give databases a simple [`Debug`] implementation
-/// for use in tracing messages.
-#[salsa::query_group(TermInternStorage)]
-pub trait TermIntern: std::fmt::Debug {
-    #[salsa::interned]
-    fn intern_term_data(&self, data: TermData) -> Term;
-}
-
-impl Term {
-    pub fn lookup(&self, db: &dyn TermIntern) -> TermData {
-        db.lookup_intern_term_data(*self)
-    }
-}
-
-impl TermData {
-    pub fn intern(self, db: &dyn TermIntern) -> Term {
-        db.intern_term_data(self)
-    }
-}
 
 pub trait ExpressionVariant<E> {
     fn sub_expressions(&self) -> Vec<&E>;
@@ -286,97 +249,146 @@ where
     LocalConstant(LocalConstant<P, E>),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Expression(pub WithProvenance<Provenance, ExpressionT<Provenance, Box<Expression>>>);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Expression {
+    pub value: WithProvenance<Provenance, ExpressionT<Provenance, Box<Expression>>>,
+}
 
-pub type TermData = ExpressionT<(), Term>;
+impl Serialize for Expression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Expression {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        WithProvenance::deserialize(deserializer).map(|value| Self { value })
+    }
+}
+
+#[salsa::interned]
+pub struct Term {
+    pub value: ExpressionT<(), Term>,
+}
 
 impl Expression {
-    pub fn to_term(self, db: &dyn TermIntern) -> Term {
-        match self.0.contents {
-            ExpressionT::Bound(e) => ExpressionT::Bound(e).intern(db),
-            ExpressionT::Inst(e) => ExpressionT::Inst(Inst {
-                name: e.name.clone().without_provenance(),
-                universes: e
-                    .universes
-                    .into_iter()
-                    .map(Universe::without_provenance)
-                    .collect(),
-            })
-            .intern(db),
-            ExpressionT::Let(e) => ExpressionT::Let(Let {
-                name_to_assign: e.name_to_assign.without_provenance(),
-                to_assign_ty: e.to_assign_ty.to_term(db),
-                body: e.body.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::Borrow(e) => ExpressionT::Borrow(Borrow {
-                region: e.region,
-                value: e.value.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::Lambda(e) => ExpressionT::Lambda(Binder {
-                parameter_name: e.parameter_name.without_provenance(),
-                binder_annotation: e.binder_annotation,
-                ownership: e.ownership,
-                invocation_type: e.invocation_type,
-                region: e.region.to_term(db),
-                parameter_ty: e.parameter_ty.to_term(db),
-                result: e.result.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::RegionLambda(e) => ExpressionT::RegionLambda(RegionBinder {
-                region_name: e.region_name.without_provenance(),
-                body: e.body.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::Pi(e) => ExpressionT::Pi(Binder {
-                parameter_name: e.parameter_name.without_provenance(),
-                binder_annotation: e.binder_annotation,
-                ownership: e.ownership,
-                invocation_type: e.invocation_type,
-                region: e.region.to_term(db),
-                parameter_ty: e.parameter_ty.to_term(db),
-                result: e.result.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::RegionPi(e) => ExpressionT::RegionPi(RegionBinder {
-                region_name: e.region_name.without_provenance(),
-                body: e.body.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::LetRegion(e) => ExpressionT::LetRegion(LetRegion {
-                region_name: e.region_name.without_provenance(),
-                body: e.body.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::Delta(e) => ExpressionT::Delta(Delta {
-                region: e.region.to_term(db),
-                ty: e.ty.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::Apply(e) => ExpressionT::Apply(Apply {
-                function: e.function.to_term(db),
-                argument: e.argument.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::Sort(e) => ExpressionT::Sort(Sort(e.0.without_provenance())).intern(db),
-            ExpressionT::Region => ExpressionT::Region.intern(db),
-            ExpressionT::StaticRegion => ExpressionT::StaticRegion.intern(db),
-            ExpressionT::Metavariable(e) => ExpressionT::Metavariable(Metavariable {
-                index: e.index,
-                ty: e.ty.to_term(db),
-            })
-            .intern(db),
-            ExpressionT::LocalConstant(e) => ExpressionT::LocalConstant(LocalConstant {
-                name: e.name.without_provenance(),
-                metavariable: Metavariable {
-                    index: e.metavariable.index,
-                    ty: e.metavariable.ty.to_term(db),
-                },
-                binder_annotation: e.binder_annotation,
-            })
-            .intern(db),
+    pub fn to_term(self, db: &dyn Db) -> Term {
+        match self.value.contents {
+            ExpressionT::Bound(e) => Term::new(db, ExpressionT::Bound(e)),
+            ExpressionT::Inst(e) => Term::new(
+                db,
+                ExpressionT::Inst(Inst {
+                    name: e.name.clone().without_provenance(),
+                    universes: e
+                        .universes
+                        .into_iter()
+                        .map(Universe::without_provenance)
+                        .collect(),
+                }),
+            ),
+            ExpressionT::Let(e) => Term::new(
+                db,
+                ExpressionT::Let(Let {
+                    name_to_assign: e.name_to_assign.without_provenance(),
+                    to_assign_ty: e.to_assign_ty.to_term(db),
+                    body: e.body.to_term(db),
+                }),
+            ),
+            ExpressionT::Borrow(e) => Term::new(
+                db,
+                ExpressionT::Borrow(Borrow {
+                    region: e.region,
+                    value: e.value.to_term(db),
+                }),
+            ),
+            ExpressionT::Lambda(e) => Term::new(
+                db,
+                ExpressionT::Lambda(Binder {
+                    parameter_name: e.parameter_name.without_provenance(),
+                    binder_annotation: e.binder_annotation,
+                    ownership: e.ownership,
+                    invocation_type: e.invocation_type,
+                    region: e.region.to_term(db),
+                    parameter_ty: e.parameter_ty.to_term(db),
+                    result: e.result.to_term(db),
+                }),
+            ),
+            ExpressionT::RegionLambda(e) => Term::new(
+                db,
+                ExpressionT::RegionLambda(RegionBinder {
+                    region_name: e.region_name.without_provenance(),
+                    body: e.body.to_term(db),
+                }),
+            ),
+            ExpressionT::Pi(e) => Term::new(
+                db,
+                ExpressionT::Pi(Binder {
+                    parameter_name: e.parameter_name.without_provenance(),
+                    binder_annotation: e.binder_annotation,
+                    ownership: e.ownership,
+                    invocation_type: e.invocation_type,
+                    region: e.region.to_term(db),
+                    parameter_ty: e.parameter_ty.to_term(db),
+                    result: e.result.to_term(db),
+                }),
+            ),
+            ExpressionT::RegionPi(e) => Term::new(
+                db,
+                ExpressionT::RegionPi(RegionBinder {
+                    region_name: e.region_name.without_provenance(),
+                    body: e.body.to_term(db),
+                }),
+            ),
+            ExpressionT::LetRegion(e) => Term::new(
+                db,
+                ExpressionT::LetRegion(LetRegion {
+                    region_name: e.region_name.without_provenance(),
+                    body: e.body.to_term(db),
+                }),
+            ),
+            ExpressionT::Delta(e) => Term::new(
+                db,
+                ExpressionT::Delta(Delta {
+                    region: e.region.to_term(db),
+                    ty: e.ty.to_term(db),
+                }),
+            ),
+            ExpressionT::Apply(e) => Term::new(
+                db,
+                ExpressionT::Apply(Apply {
+                    function: e.function.to_term(db),
+                    argument: e.argument.to_term(db),
+                }),
+            ),
+            ExpressionT::Sort(e) => {
+                Term::new(db, ExpressionT::Sort(Sort(e.0.without_provenance())))
+            }
+            ExpressionT::Region => Term::new(db, ExpressionT::Region),
+            ExpressionT::StaticRegion => Term::new(db, ExpressionT::StaticRegion),
+            ExpressionT::Metavariable(e) => Term::new(
+                db,
+                ExpressionT::Metavariable(Metavariable {
+                    index: e.index,
+                    ty: e.ty.to_term(db),
+                }),
+            ),
+            ExpressionT::LocalConstant(e) => Term::new(
+                db,
+                ExpressionT::LocalConstant(LocalConstant {
+                    name: e.name.without_provenance(),
+                    metavariable: Metavariable {
+                        index: e.metavariable.index,
+                        ty: e.metavariable.ty.to_term(db),
+                    },
+                    binder_annotation: e.binder_annotation,
+                }),
+            ),
         }
     }
 }

@@ -1,7 +1,7 @@
-use salsa::{InternId, InternKey};
 use serde::{de::Visitor, Deserialize, Serialize};
 use std::{fmt::Debug, path::PathBuf};
-use upcast::UpcastFrom;
+
+use crate::Db;
 
 /// A span of code in a given source file.
 /// Represented by a range of UTF-8 characters.
@@ -46,30 +46,16 @@ impl From<Span> for std::ops::Range<usize> {
     }
 }
 
-/// Provides utilities for interning various data types.
-///
-/// The [`Debug`] constraint is used to give databases a simple [`Debug`] implementation
-/// for use in tracing messages.
-#[salsa::query_group(InternStorage)]
-pub trait Intern: Debug {
-    #[salsa::interned]
-    fn intern_string_data(&self, data: String) -> Str;
-
-    #[salsa::interned]
-    fn intern_path_data(&self, data: PathData) -> Path;
+/// An interned string type.
+/// Can be safely copied and compared cheaply.
+#[salsa::interned]
+pub struct Str {
+    #[return_ref]
+    pub text: String,
 }
 
-impl<'a, T: Intern + 'a> UpcastFrom<T> for dyn Intern + 'a {
-    fn up_from(value: &T) -> &(dyn Intern + 'a) {
-        value
-    }
-    fn up_from_mut(value: &mut T) -> &mut (dyn Intern + 'a) {
-        value
-    }
-}
-
-// Users of `LOCAL_DATABASE` must ensure that they do not retain copies of the borrow `&'static dyn Intern`.
-thread_local!(static LOCAL_DATABASE: std::cell::RefCell<Option<&'static dyn Intern>> = Default::default());
+// Users of `LOCAL_DATABASE` must ensure that they do not retain copies of the borrow `&'static dyn Db`.
+thread_local!(static LOCAL_DATABASE: std::cell::RefCell<Option<&'static dyn Db>> = Default::default());
 
 /// When serialising and deserialising feather values, we need to look at the database to look up interned data.
 /// However, the serde API doesn't provide access to the database.
@@ -83,13 +69,13 @@ thread_local!(static LOCAL_DATABASE: std::cell::RefCell<Option<&'static dyn Inte
 ///
 /// # Panics
 /// If this is used recursively, it will panic.
-pub fn with_local_database<T>(db: &dyn Intern, f: impl FnOnce() -> T) -> T {
+pub fn with_local_database<T>(db: &dyn Db, f: impl FnOnce() -> T) -> T {
     LOCAL_DATABASE.with(|local_db| {
         if local_db.borrow().is_some() {
             panic!("with_local_database called recursively");
         }
         local_db.replace(Some(unsafe {
-            std::mem::transmute::<&dyn Intern, &'static dyn Intern>(db)
+            std::mem::transmute::<&dyn Db, &'static dyn Db>(db)
         }));
     });
     let val = f();
@@ -99,18 +85,15 @@ pub fn with_local_database<T>(db: &dyn Intern, f: impl FnOnce() -> T) -> T {
     val
 }
 
-/// An interned string type.
-/// Can be safely copied and compared cheaply.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Str(InternId);
-
 impl Str {
     /// Only call inside a serde deserialisation block, i.e., inside `with_local_database`.
     pub fn deserialise(v: String) -> Str {
         LOCAL_DATABASE.with(|db| {
-            db.borrow()
-                .expect("must only deserialise inside with_local_database")
-                .intern_string_data(v)
+            Str::new(
+                db.borrow()
+                    .expect("must only deserialise inside with_local_database"),
+                v,
+            )
         })
     }
 }
@@ -120,8 +103,8 @@ impl Serialize for Str {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&LOCAL_DATABASE.with(|db| {
-            self.lookup(
+        serializer.serialize_str(LOCAL_DATABASE.with(|db| {
+            self.text(
                 db.borrow()
                     .expect("must only serialise inside with_local_database"),
             )
@@ -162,31 +145,15 @@ impl<'de> Deserialize<'de> for Str {
     }
 }
 
-impl InternKey for Str {
-    fn from_intern_id(v: InternId) -> Self {
-        Self(v)
-    }
-
-    fn as_intern_id(&self) -> InternId {
-        self.0
-    }
-}
-
-impl Str {
-    pub fn lookup(self, db: &dyn Intern) -> String {
-        db.lookup_intern_string_data(self)
-    }
-}
-
 /// Generates a sequence of distinct strings with a given prefix.
 pub struct StrGenerator<'a> {
-    db: &'a dyn Intern,
+    db: &'a dyn Db,
     prefix: String,
     counter: u64,
 }
 
 impl<'a> StrGenerator<'a> {
-    pub fn new(db: &'a dyn Intern, prefix: impl ToString) -> Self {
+    pub fn new(db: &'a dyn Db, prefix: impl ToString) -> Self {
         Self {
             db,
             prefix: prefix.to_string(),
@@ -195,25 +162,27 @@ impl<'a> StrGenerator<'a> {
     }
 
     pub fn generate(&mut self) -> Str {
-        let result = self.db.intern_string_data(if self.counter == 0 {
-            self.prefix.clone()
-        } else {
-            format!("{}_{}", self.prefix, self.counter)
-        });
+        let result = Str::new(
+            self.db,
+            if self.counter == 0 {
+                self.prefix.clone()
+            } else {
+                format!("{}_{}", self.prefix, self.counter)
+            },
+        );
         self.counter += 1;
         result
     }
 }
 
 /// A fully qualified path.
-/// Use [`Path`] instead, if possible.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PathData(pub Vec<Str>);
-
-/// A fully qualified path.
 /// Can be used, for example, as a qualified name for a definition or for a source file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Path(InternId);
+/// Can be safely copied and compared cheaply.
+#[salsa::interned]
+pub struct Path {
+    #[return_ref]
+    pub segments: Vec<Str>,
+}
 
 impl Serialize for Path {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -222,7 +191,7 @@ impl Serialize for Path {
     {
         LOCAL_DATABASE
             .with(|db| {
-                self.lookup(
+                self.segments(
                     db.borrow()
                         .expect("must only serialise inside with_local_database"),
                 )
@@ -236,62 +205,26 @@ impl<'de> Deserialize<'de> for Path {
     where
         D: serde::Deserializer<'de>,
     {
-        PathData::deserialize(deserializer).map(|data| {
+        Vec::<Str>::deserialize(deserializer).map(|data| {
             LOCAL_DATABASE.with(|db| {
-                db.borrow()
-                    .expect("must only deserialise inside with_local_database")
-                    .intern_path_data(data)
+                Path::new(
+                    db.borrow()
+                        .expect("must only deserialise inside with_local_database"),
+                    data,
+                )
             })
         })
     }
 }
 
-impl InternKey for Path {
-    fn from_intern_id(v: InternId) -> Self {
-        Self(v)
-    }
-
-    fn as_intern_id(&self) -> InternId {
-        self.0
-    }
-}
-
 impl Path {
-    pub fn lookup(self, db: &dyn Intern) -> PathData {
-        db.lookup_intern_path_data(self)
-    }
-
-    pub fn display(self, intern: &dyn Intern) -> String {
-        intern
-            .lookup_intern_path_data(self)
-            .0
-            .into_iter()
-            .map(|s| intern.lookup_intern_string_data(s))
+    pub fn display(self, db: &dyn Db) -> String {
+        self.segments(db)
+            .iter()
+            .map(|s| s.text(db))
+            .cloned()
             .collect::<Vec<_>>()
             .join("::")
-    }
-}
-
-impl PathData {
-    pub fn intern(self, db: &dyn Intern) -> Path {
-        db.intern_path_data(self)
-    }
-}
-
-pub trait InternExt: Intern {
-    fn path_data_to_path_buf(&self, data: &PathData) -> PathBuf {
-        data.0
-            .iter()
-            .map(|x| self.lookup_intern_string_data(*x))
-            .collect()
-    }
-
-    fn path_to_path_buf(&self, path: Path) -> PathBuf {
-        self.path_data_to_path_buf(&self.lookup_intern_path_data(path))
-    }
-
-    fn path_to_string(&self, path: Path) -> String {
-        self.path_to_path_buf(path).to_string_lossy().to_string()
     }
 
     /// Split the last element off a path and return the resulting components.
@@ -299,19 +232,24 @@ pub trait InternExt: Intern {
     /// Typically this is used for extracting the name of the source file and the item inside that module from a qualified name.
     ///
     /// # Panics
+    ///
     /// If this path does not have any elements, this will panic.
-    fn split_path_last(&self, path: Path) -> (Path, Str) {
-        let path_data = self.lookup_intern_path_data(path);
-        let (last_element, source_file) = path_data.0.split_last().unwrap();
-        let source_file_name = self.intern_path_data(PathData(source_file.into()));
-        (source_file_name, *last_element)
+    pub fn split_last(&self, db: &dyn Db) -> (Path, Str) {
+        let (last_element, source_file) = self.segments(db).split_last().unwrap();
+        (Path::new(db, Vec::from(source_file)), *last_element)
+    }
+
+    pub fn to_path_buf(&self, db: &dyn Db) -> PathBuf {
+        self.segments(db).iter().map(|s| s.text(db)).collect()
+    }
+
+    pub fn to_string(&self, db: &dyn Db) -> String {
+        self.to_path_buf(db).to_string_lossy().to_string()
     }
 }
 
-impl<T> InternExt for T where T: Intern {}
-
 /// Uniquely identifies a source file.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[salsa::interned]
 pub struct Source {
     /// The relative path from the project root to this source file.
     /// File extensions are *not* appended to this path.
@@ -319,6 +257,47 @@ pub struct Source {
     /// The type of the file.
     /// This is used to deduce the file extension.
     pub ty: SourceType,
+}
+
+/// Gadget used to (de)serialise [`Source`].
+#[derive(Serialize, Deserialize)]
+#[doc(hidden)]
+struct SourceData {
+    path: Path,
+    ty: SourceType,
+}
+
+impl Serialize for Source {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        LOCAL_DATABASE.with(|db| {
+            let db = db
+                .borrow()
+                .expect("must only serialise inside with_local_database");
+            SourceData {
+                path: self.path(db),
+                ty: self.ty(db),
+            }
+            .serialize(serializer)
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for Source {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        LOCAL_DATABASE.with(|db| {
+            let db = db
+                .borrow()
+                .expect("must only serialise inside with_local_database");
+            SourceData::deserialize(deserializer)
+                .map(|SourceData { path, ty }| Source::new(db, path, ty))
+        })
+    }
 }
 
 /// Used to deduce the file extension of a [`Source`].

@@ -10,4 +10,4 @@ fcommon = { version = "0.0.0", path = "../fcommon" }
 fexpr = { version = "0.0.0", path = "../fexpr" }
 fkernel = { version = "0.0.0", path = "../fkernel" }
 notify-debouncer-mini = { version = "0.2", default-features = false }
-salsa = "0.16"
+salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }

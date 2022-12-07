@@ -128,6 +128,11 @@ where
 
 pub type Universe<P> = WithProvenance<P, UniverseContents<P>>;
 
+#[salsa::interned]
+pub struct Univ {
+    pub value: Universe<()>,
+}
+
 impl Universe<Provenance> {
     pub fn new_with_span(source_span: SourceSpan, contents: UniverseContents<Provenance>) -> Self {
         Self {

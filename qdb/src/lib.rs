@@ -1,17 +1,21 @@
 use std::{
+    collections::{hash_map::Entry, HashMap},
     fmt::Debug,
-    sync::{mpsc, Arc, Mutex, RwLock},
+    path::PathBuf,
+    sync::{mpsc, Arc, Mutex},
     time::Duration,
 };
 
 use fcommon::*;
-use fexpr::queries::FeatherParserStorage;
+use notify_debouncer_mini::notify::RecursiveMode;
 use salsa::Snapshot;
 
 /// The main database that manages all the compiler's queries.
-#[salsa::database(FileReaderStorage, InternStorage, FeatherParserStorage)]
+#[salsa::db(fcommon::Jar, fexpr::Jar, fkernel::Jar)]
 pub struct QuillDatabase {
     storage: salsa::Storage<Self>,
+    project_root: PathBuf,
+    files: Arc<Mutex<HashMap<PathBuf, InputFile>>>,
     watcher:
         Arc<Mutex<notify_debouncer_mini::Debouncer<notify_debouncer_mini::notify::INotifyWatcher>>>,
 }
@@ -22,35 +26,42 @@ impl Debug for QuillDatabase {
     }
 }
 
+impl fcommon::Db for QuillDatabase {
+    fn input_file(&self, path: PathBuf) -> std::io::Result<InputFile> {
+        let path = self.project_root.join(&path).canonicalize().map_err(|e| {
+            std::io::Error::new(e.kind(), format!("failed to read {}", path.display()))
+        })?;
+        Ok(match self.files.lock().unwrap().entry(path.clone()) {
+            // If the file already exists in our cache then just return it.
+            Entry::Occupied(entry) => *entry.get(),
+            // If we haven't read this file yet set up the watch, read the
+            // contents, store it in the cache, and return it.
+            Entry::Vacant(entry) => {
+                // Set up the watch before reading the contents to try to avoid
+                // race conditions.
+                let watcher = &mut *self.watcher.lock().unwrap();
+                watcher
+                    .watcher()
+                    .watch(&path, RecursiveMode::NonRecursive)
+                    .unwrap();
+                let contents = std::fs::read_to_string(&path).map_err(|e| {
+                    std::io::Error::new(e.kind(), format!("failed to read {}", path.display()))
+                })?;
+                *entry.insert(InputFile::new(self, path, contents))
+            }
+        })
+    }
+}
+
 impl salsa::Database for QuillDatabase {}
 impl salsa::ParallelDatabase for QuillDatabase {
     fn snapshot(&self) -> Snapshot<Self> {
         Snapshot::new(QuillDatabase {
             storage: self.storage.snapshot(),
+            project_root: self.project_root.clone(),
+            files: Arc::clone(&self.files),
             watcher: Arc::clone(&self.watcher),
         })
-    }
-}
-
-impl FileWatcher for QuillDatabase {
-    fn watch(&self, src: Source) {
-        // Add a path to be watched. All files and directories at that path and
-        // below will be monitored for changes.
-        let mut debouncer = self.watcher.lock().unwrap();
-        // If we couldn't find the file for whatever reason,
-        // the compilation step reading this file will fail anyway.
-        // So we can safely ignore watching this path.
-        // TODO: Watch parent paths to check if this file is ever created.
-        let _ = debouncer.watcher().watch(
-            &self
-                .path_to_path_buf(src.path)
-                .with_extension(src.ty.extension()),
-            notify_debouncer_mini::notify::RecursiveMode::Recursive,
-        );
-    }
-
-    fn did_change_file(&mut self, src: Source) {
-        SourceQuery.in_db_mut(self).invalidate(&src);
     }
 }
 
@@ -60,7 +71,9 @@ impl QuillDatabase {
     /// and any updated paths should be passed into [`FileWatcher::did_change_file`].
     /// If running as a standalone compiler, the channel may be ignored,
     /// although receiving file update events may still be desirable in certain cases.
-    pub fn new() -> (Self, mpsc::Receiver<notify_debouncer_mini::DebouncedEvent>) {
+    pub fn new(
+        project_root: PathBuf,
+    ) -> (Self, mpsc::Receiver<notify_debouncer_mini::DebouncedEvent>) {
         let (tx, rx) = mpsc::channel();
         let debouncer = notify_debouncer_mini::new_debouncer(
             Duration::from_secs(1),
@@ -72,15 +85,13 @@ impl QuillDatabase {
         )
         .unwrap();
 
-        let mut this = Self {
+        let this = Self {
             storage: Default::default(),
+            project_root,
+            files: Default::default(),
             watcher: Arc::new(Mutex::new(debouncer)),
         };
 
-        this.set_overwritten_files_with_durability(
-            Arc::new(RwLock::new(Default::default())),
-            salsa::Durability::HIGH,
-        );
         (this, rx)
     }
 }

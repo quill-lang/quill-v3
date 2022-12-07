@@ -69,10 +69,10 @@ impl Report {
     /// Convert this report into an [`ariadne::Report`] and then
     /// display it to the user.
     #[cfg(feature = "ariadne")]
-    pub fn render(&self, db: &impl crate::FileReader, stream: impl std::io::Write) {
+    pub fn render(&self, db: &impl crate::Db, stream: impl std::io::Write) {
         ariadne::Report::from(self)
             .write(
-                FileReaderCache {
+                DbCache {
                     db,
                     files: Default::default(),
                 },
@@ -84,29 +84,28 @@ impl Report {
 
 /// Holds a database and uses it as a cache for `ariadne`.
 #[cfg(feature = "ariadne")]
-struct FileReaderCache<'db, T>
+struct DbCache<'db, T>
 where
-    T: crate::FileReader,
+    T: crate::Db,
 {
     db: &'db T,
     files: std::collections::HashMap<Source, ariadne::Source>,
 }
 
 #[cfg(feature = "ariadne")]
-impl<'db, T> ariadne::Cache<Source> for FileReaderCache<'db, T>
+impl<'db, T> ariadne::Cache<Source> for DbCache<'db, T>
 where
-    T: crate::FileReader,
+    T: crate::Db,
 {
     fn fetch(&mut self, id: &Source) -> Result<&ariadne::Source, Box<dyn std::fmt::Debug + '_>> {
         Ok(match self.files.entry(*id) {
             std::collections::hash_map::Entry::Occupied(occupied) => occupied.into_mut(),
             std::collections::hash_map::Entry::Vacant(vacant) => {
                 vacant.insert(ariadne::Source::from(
-                    self.db
-                        .source(*id)
+                    crate::source(self.db, *id)
                         .value
                         .as_ref()
-                        .map(|x| x.as_str())
+                        .map(|x| x.contents(self.db).as_str())
                         .unwrap_or("<could not read file>"),
                 ))
             }
@@ -115,9 +114,9 @@ where
 
     fn display<'a>(&self, id: &'a Source) -> Option<Box<dyn std::fmt::Display + 'a>> {
         Some(Box::new(
-            self.db
-                .path_to_path_buf(id.path)
-                .with_extension(id.ty.extension())
+            id.path(self.db)
+                .to_path_buf(self.db)
+                .with_extension(id.ty(self.db).extension())
                 .to_string_lossy()
                 .to_string(),
         ))

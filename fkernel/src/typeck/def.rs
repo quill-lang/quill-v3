@@ -6,7 +6,7 @@ use fexpr::{
     definition::Definition,
     expr::{Expression, Sort},
 };
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// A definition that has been verified by the type checker.
 /// No data inside a certified definition can be changed; this preserves the certification status.

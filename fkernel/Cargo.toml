@@ -8,10 +8,9 @@ edition = "2021"
 [dependencies]
 fcommon = { path = "../fcommon" }
 fexpr = { path = "../fexpr" }
-salsa = "0.16"
+salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
-upcast = "0.1"
 
 [dev-dependencies]
 qdb = { path = "../qdb" }

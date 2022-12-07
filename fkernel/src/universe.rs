@@ -5,17 +5,9 @@
 
 use std::ops::DerefMut;
 
-use fexpr::{expr::TermIntern, universe::*};
-use upcast::Upcast;
+use fexpr::universe::*;
 
-#[salsa::query_group(UniverseOpsStorage)]
-pub trait UniverseOps: TermIntern + Upcast<dyn TermIntern> {
-    /// Converts a universe to an equivalent, simpler, form.
-    fn normalise_universe(&self, u: Universe<()>) -> Universe<()>;
-
-    /// Returns true if the left universe is at most (<=) the right universe.
-    fn universe_at_most(&self, left: Universe<()>, right: Universe<()>) -> bool;
-}
+use crate::Db;
 
 /// Factors out the outermost sequence of [`UniverseSucc`] instances.
 /// If the input is `u + k` where `k` is an integer, we remove the `+ k` from the input and return `k`.
@@ -68,8 +60,11 @@ where
     matches!(&u.contents, UniverseContents::UniverseZero)
 }
 
-fn normalise_universe(db: &dyn UniverseOps, mut u: Universe<()>) -> Universe<()> {
+/// Converts a universe to an equivalent, simpler, form.
+#[salsa::tracked]
+pub fn normalise_universe(db: &dyn Db, u: Univ) -> Univ {
     // First, factor out the outermost `+ k` chain.
+    let mut u = u.value(db);
     let levels = to_universe_with_offset(&mut u);
     match u.contents {
         UniverseContents::UniverseZero => {}
@@ -81,18 +76,18 @@ fn normalise_universe(db: &dyn UniverseOps, mut u: Universe<()>) -> Universe<()>
             u = normalise_max_chain(db, max);
         }
         UniverseContents::UniverseImpredicativeMax(mut imax) => {
-            *imax.left = db.normalise_universe(*imax.left);
-            *imax.right = db.normalise_universe(*imax.right);
+            *imax.left = normalise_universe(db, Univ::new(db, *imax.left)).value(db);
+            *imax.right = normalise_universe(db, Univ::new(db, *imax.right)).value(db);
             // We now need to check if we can perform a simplification on this `imax` operation.
             u = normalise_imax(db, imax);
         }
         UniverseContents::Metauniverse(_) => {}
     }
     from_universe_with_offset(&mut u, levels);
-    u
+    Univ::new(db, u)
 }
 
-fn normalise_imax(db: &dyn UniverseOps, imax: UniverseImpredicativeMax<()>) -> Universe<()> {
+fn normalise_imax(db: &dyn Db, imax: UniverseImpredicativeMax<()>) -> Universe<()> {
     if is_nonzero(&imax.right) {
         // This is a regular max expression.
         normalise_max_chain(
@@ -115,12 +110,12 @@ fn normalise_imax(db: &dyn UniverseOps, imax: UniverseImpredicativeMax<()>) -> U
     }
 }
 
-fn normalise_max_chain(db: &dyn UniverseOps, max: UniverseMax<()>) -> Universe<()> {
+fn normalise_max_chain(db: &dyn Db, max: UniverseMax<()>) -> Universe<()> {
     // Flatten out nested invocations of `max`, normalise all parameters, and flatten again.
     let mut args = collect_max_args(max)
         .into_iter()
         .flat_map(|mut arg| {
-            arg = db.normalise_universe(arg);
+            arg = normalise_universe(db, Univ::new(db, arg)).value(db);
             if let UniverseContents::UniverseMax(inner) = arg.contents {
                 collect_max_args(inner)
             } else {
@@ -278,13 +273,11 @@ pub fn instantiate_metauniverse(
     })
 }
 
-fn universe_at_most(
-    db: &dyn UniverseOps,
-    mut left: Universe<()>,
-    mut right: Universe<()>,
-) -> bool {
-    left = db.normalise_universe(left);
-    right = db.normalise_universe(right);
+/// Returns true if the left universe is at most (<=) the right universe.
+#[salsa::tracked]
+pub fn universe_at_most(db: &dyn Db, left: Univ, right: Univ) -> bool {
+    let mut left = normalise_universe(db, left).value(db);
+    let mut right = normalise_universe(db, right).value(db);
 
     if left.eq_ignoring_provenance(&right) {
         true
@@ -292,15 +285,17 @@ fn universe_at_most(
         // The zero universe is never greater than any other universe.
         true
     } else if let UniverseContents::UniverseMax(max) = left.contents {
-        db.universe_at_most(*max.left, right.clone()) && db.universe_at_most(*max.right, right)
+        universe_at_most(db, Univ::new(db, *max.left), Univ::new(db, right.clone())) && universe_at_most(db, Univ::new(db, *max.right), Univ::new(db, right))
     } else if let UniverseContents::UniverseMax(max) = &right.contents &&
-        (db.universe_at_most(left.clone(), *max.left.clone()) || db.universe_at_most(left.clone(), *max.right.clone())) {
+        (universe_at_most(db, Univ::new(db, left.clone()), Univ::new(db, *max.left.clone())) ||
+            universe_at_most(db, Univ::new(db, left.clone()), Univ::new(db, *max.right.clone()))) {
         true
     } else if let UniverseContents::UniverseImpredicativeMax(imax) = left.contents {
-        db.universe_at_most(*imax.left, right.clone()) && db.universe_at_most(*imax.right, right)
+        universe_at_most(db, Univ::new(db, *imax.left), Univ::new(db, right.clone())) &&
+        universe_at_most(db, Univ::new(db, *imax.right), Univ::new(db, right))
     } else if let UniverseContents::UniverseImpredicativeMax(imax) = right.contents {
         // We only need to check the right hand side of an impredicative max in this case.
-        db.universe_at_most(left, *imax.right)
+        universe_at_most(db, Univ::new(db, left), Univ::new(db, *imax.right))
     } else {
         let left_offset = to_universe_with_offset(&mut left);
         let right_offset = to_universe_with_offset(&mut right);
@@ -309,7 +304,7 @@ fn universe_at_most(
         } else if is_zero(&left) {
             left_offset <= right_offset
         } else if left_offset == right_offset && right_offset > 0 {
-            db.universe_at_most(left, right)
+            universe_at_most(db, Univ::new(db, left), Univ::new(db, right))
         } else {
             false
         }

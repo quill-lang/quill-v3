@@ -5,11 +5,9 @@
         Definition((contents: (
             name: "test",
             universe_params: [],
-            ty: (
-                contents: Bound((
-                    index: 0,
-                )),
-            ),
+            ty: (contents: Bound((
+                index: 0,
+            ))),
             expr: None,
         ))),
     ],

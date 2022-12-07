@@ -1,9 +1,7 @@
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
-use fcommon::{FileReader, Intern, PathData, Source, SourceType};
-use fexpr::queries::FeatherParser;
+use fcommon::{Path, Source, SourceType, Str};
 use qdb::QuillDatabase;
-use salsa::Durability;
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
@@ -20,20 +18,17 @@ fn main() {
         .expect("could not set default tracing subscriber");
     info!("initialised logging with verbosity level {}", log_level);
 
-    let (mut db, _rx) = QuillDatabase::new();
-    db.set_project_root_with_durability(Arc::new(PathBuf::new()), Durability::HIGH);
-    let path = db.intern_path_data(PathData(vec![
-        db.intern_string_data("test".to_string()),
-        db.intern_string_data("test".to_string()),
-    ]));
-    let source = Source {
-        path,
-        ty: SourceType::Feather,
-    };
+    let (db, _rx) = QuillDatabase::new(PathBuf::new());
+    let path = Path::new(
+        &db,
+        vec![
+            Str::new(&db, "test".to_string()),
+            Str::new(&db, "test".to_string()),
+        ],
+    );
+    let source = Source::new(&db, path, SourceType::Feather);
 
-    let result = db
-        .source(source)
-        .bind(|contents| db.module_from_feather_source(source, contents));
+    let result = fexpr::queries::module_from_feather_source(&db, source);
     // Use a locked version of `stderr`, so that reports are not interspersed
     // with other things such as tracing messages from other threads.
     let mut stderr = std::io::stderr().lock();
@@ -45,40 +40,6 @@ fn main() {
         println!("{result:#?}");
     }
 
-    /*
-    // This is the main loop for language servers, and other things that need regular file updates.
-    loop {
-        match rx.recv() {
-            Ok(event) => {
-                println!("caught event {:?}", event);
-                if let notify::DebouncedEvent::Write(filepath_buf) = event {
-                    // Convert this PathBuf into a rust Path, relativised to the current project directory.
-                    if let Ok(path_relativised) = filepath_buf.strip_prefix(&*db.project_root())
-                    {
-                        // Convert this relativised rust Path into a feather Path.
-                        let path = db.intern_path_data(PathData(
-                            path_relativised
-                                .iter()
-                                .map(|component| {
-                                    db.intern_string_data(
-                                        component.to_string_lossy().to_string(),
-                                    )
-                                })
-                                .collect(),
-                        ));
-                        // Tell the database that the file got changed.
-                        println!("file '{}' changed", filepath_buf.to_string_lossy());
-                        db.did_change_file(path);
-                    } else {
-                        println!(
-                            "ignoring file path '{}' outside the project root",
-                            filepath_buf.to_string_lossy()
-                        );
-                    }
-                }
-            }
-            Err(e) => println!("watch error: {:?}", e),
-        }
-    }
-    */
+    // TODO: <https://github.com/salsa-rs/salsa/blob/master/examples-2022/lazy-input/src/main.rs>
+    // This helps us set up the main loop for language servers.
 }
