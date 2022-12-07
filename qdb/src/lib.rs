@@ -5,7 +5,7 @@ use std::{
 };
 
 use fcommon::*;
-use fexpr::FeatherParserStorage;
+use fexpr::queries::FeatherParserStorage;
 use salsa::Snapshot;
 
 /// The main database that manages all the compiler's queries.

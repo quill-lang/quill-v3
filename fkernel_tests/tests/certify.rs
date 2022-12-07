@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use fcommon::{FileReader, Intern, PathData, Source, SourceType};
-use fexpr::FeatherParser;
+use fexpr::queries::FeatherParser;
 use qdb::QuillDatabase;
 use salsa::Durability;
 

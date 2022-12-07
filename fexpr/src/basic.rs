@@ -137,7 +137,7 @@ impl Provenance {
 }
 
 /// A single indivisible lexical unit in an identifier, variable, or so on.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Name<P>(pub WithProvenance<P, Str>)
 where
     P: Default + PartialEq;

@@ -10,10 +10,16 @@
             ty: (contents: Pi(
                 parameter_name: "T",
                 binder_annotation: ImplicitEager,
+                ownership: PZero,
+                invocation_type: Once,
+                region: (contents: StaticRegion),
                 parameter_ty: (contents: Sort((contents: UniverseVariable("u")))),
                 result: (contents: Pi(
                     parameter_name: "x",
                     binder_annotation: Explicit,
+                    ownership: POwned,
+                    invocation_type: Once,
+                    region: (contents: StaticRegion),
                     parameter_ty: (contents: Bound(index: 0)),
                     result: (contents: Bound(index: 1))
                 ))
@@ -21,10 +27,16 @@
             expr: (contents: Lambda(
                 parameter_name: "T",
                 binder_annotation: ImplicitEager,
+                ownership: POwned,
+                    invocation_type: Once,
+                    region: (contents: StaticRegion),
                 parameter_ty: (contents: Sort((contents: UniverseVariable("u")))),
                 result: (contents: Lambda(
                     parameter_name: "x",
                     binder_annotation: Explicit,
+                    ownership: POwned,
+                    invocation_type: Once,
+                    region: (contents: StaticRegion),
                     parameter_ty: (contents: Bound(index: 0)),
                     result: (contents: Bound(index: 0))
                 ))

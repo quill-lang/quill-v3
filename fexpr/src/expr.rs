@@ -20,7 +20,11 @@
 use salsa::{InternId, InternKey};
 use serde::{Deserialize, Serialize};
 
-use crate::{basic::*, universe::Universe};
+use crate::{
+    basic::*,
+    multiplicity::{InvocationType, ParameterOwnership},
+    universe::Universe,
+};
 
 /// An interned term type.
 /// Can be safely copied and compared cheaply.
@@ -81,7 +85,7 @@ where
     pub universes: Vec<Universe<P>>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Let<P, E>
 where
     P: Default + PartialEq,
@@ -95,10 +99,10 @@ where
     pub body: E,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Borrow<E> {
     /// The region for which to borrow the value.
-    pub region: E,
+    pub region: DeBruijnIndex,
     /// The value to be borrowed.
     pub value: E,
 }
@@ -116,7 +120,7 @@ pub enum BinderAnnotation {
     ImplicitTypeclass,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Lambda<P, E>
 where
     P: Default + PartialEq,
@@ -125,6 +129,12 @@ where
     pub parameter_name: Name<P>,
     /// How the parameter should be filled when calling the function.
     pub binder_annotation: BinderAnnotation,
+    /// The multiplicity for which the parameter to the function is owned.
+    pub ownership: ParameterOwnership,
+    /// The style by which the function is invoked.
+    pub invocation_type: InvocationType,
+    /// The region for which the function may be owned.
+    pub region: E,
     /// The type of the parameter.
     pub parameter_ty: E,
     /// The body of the lambda, also called the lambda term.
@@ -146,7 +156,19 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+/// A region-polymorphic value.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct RegionLambda<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The name of the parameter.
+    pub region_name: Name<P>,
+    /// The body of the expression.
+    pub body: E,
+}
+
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Pi<P, E>
 where
     P: Default + PartialEq,
@@ -155,6 +177,12 @@ where
     pub parameter_name: Name<P>,
     /// How the parameter should be filled when calling the function.
     pub binder_annotation: BinderAnnotation,
+    /// The multiplicity for which the parameter to the function is owned.
+    pub ownership: ParameterOwnership,
+    /// The style by which the function is invoked.
+    pub invocation_type: InvocationType,
+    /// The region for which the function may be owned.
+    pub region: E,
     /// The type of the parameter.
     pub parameter_ty: E,
     /// The type of the result.
@@ -176,6 +204,30 @@ where
     }
 }
 
+/// A region-polymorphic type.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct RegionPi<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The name of the parameter.
+    pub region_name: Name<P>,
+    /// The body of the expression.
+    pub body: E,
+}
+
+/// Introduces a new region variable into the local context.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct LetRegion<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The name of the parameter.
+    pub region_name: Name<P>,
+    /// The body of the expression.
+    pub body: E,
+}
+
 /// A Delta-type (Δ-type) is the type of borrowed values of another type.
 /// For instance, if `x : T`, `&x : ΔT`.
 /// Note that `&T` is a value which is borrowed, and the value behind the borrow is a type;
@@ -184,7 +236,7 @@ where
 /// Note: the name `Δ` was chosen for the initial letter of the Greek words "δάνειο" and
 /// "δανείζομαι" (roughly, "loan" and "borrow"). A capital beta for "borrow" was an option,
 /// but this would look identical to a Latin letter B.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Delta<E> {
     /// The region for which a value is borrowed.
     pub region: E,
@@ -192,7 +244,7 @@ pub struct Delta<E> {
     pub ty: E,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Apply<E> {
     /// The function to be invoked.
     pub function: E,
@@ -207,13 +259,9 @@ pub struct Sort<P>(pub Universe<P>)
 where
     P: Default + PartialEq;
 
-/// The sort of regions. All regions have this sort as their type.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Region;
-
 /// An inference variable.
 /// May have theoretically any type.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Metavariable<E> {
     pub index: u32,
     /// We store the types of metavariables explicitly, since they can't be inferred.
@@ -222,7 +270,7 @@ pub struct Metavariable<E> {
 
 /// De Bruijn indices (bound variables) are replaced with local constants while we're inside the function body.
 /// Should not be used in functions manually.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct LocalConstant<P, E>
 where
     P: Default + PartialEq,
@@ -270,11 +318,15 @@ where
     Let(Let<P, E>),
     Borrow(Borrow<E>),
     Lambda(Lambda<P, E>),
+    RegionLambda(RegionLambda<P, E>),
     Pi(Pi<P, E>),
+    RegionPi(RegionPi<P, E>),
+    LetRegion(LetRegion<P, E>),
     Delta(Delta<E>),
     Apply(Apply<E>),
     Sort(Sort<P>),
-    Region(Region),
+    Region,
+    StaticRegion,
     Metavariable(Metavariable<E>),
     LocalConstant(LocalConstant<P, E>),
 }
@@ -304,22 +356,43 @@ impl Expression {
             })
             .intern(db),
             ExpressionT::Borrow(e) => ExpressionT::Borrow(Borrow {
-                region: e.region.to_term(db),
+                region: e.region,
                 value: e.value.to_term(db),
             })
             .intern(db),
             ExpressionT::Lambda(e) => ExpressionT::Lambda(Lambda {
                 parameter_name: e.parameter_name.without_provenance(),
                 binder_annotation: e.binder_annotation,
+                ownership: e.ownership,
+                invocation_type: e.invocation_type,
+                region: e.region.to_term(db),
                 parameter_ty: e.parameter_ty.to_term(db),
                 result: e.result.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::RegionLambda(e) => ExpressionT::RegionLambda(RegionLambda {
+                region_name: e.region_name.without_provenance(),
+                body: e.body.to_term(db),
             })
             .intern(db),
             ExpressionT::Pi(e) => ExpressionT::Pi(Pi {
                 parameter_name: e.parameter_name.without_provenance(),
                 binder_annotation: e.binder_annotation,
+                ownership: e.ownership,
+                invocation_type: e.invocation_type,
+                region: e.region.to_term(db),
                 parameter_ty: e.parameter_ty.to_term(db),
                 result: e.result.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::RegionPi(e) => ExpressionT::RegionPi(RegionPi {
+                region_name: e.region_name.without_provenance(),
+                body: e.body.to_term(db),
+            })
+            .intern(db),
+            ExpressionT::LetRegion(e) => ExpressionT::LetRegion(LetRegion {
+                region_name: e.region_name.without_provenance(),
+                body: e.body.to_term(db),
             })
             .intern(db),
             ExpressionT::Delta(e) => ExpressionT::Delta(Delta {
@@ -333,7 +406,8 @@ impl Expression {
             })
             .intern(db),
             ExpressionT::Sort(e) => ExpressionT::Sort(Sort(e.0.without_provenance())).intern(db),
-            ExpressionT::Region(e) => ExpressionT::Region(e).intern(db),
+            ExpressionT::Region => ExpressionT::Region.intern(db),
+            ExpressionT::StaticRegion => ExpressionT::StaticRegion.intern(db),
             ExpressionT::Metavariable(e) => ExpressionT::Metavariable(Metavariable {
                 index: e.index,
                 ty: e.ty.to_term(db),
