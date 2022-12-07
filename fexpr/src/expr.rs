@@ -120,8 +120,9 @@ pub enum BinderAnnotation {
     ImplicitTypeclass,
 }
 
+/// Either a lambda abstraction or the type of such lambda abstractions.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Lambda<P, E>
+pub struct Binder<P, E>
 where
     P: Default + PartialEq,
 {
@@ -137,59 +138,13 @@ where
     pub region: E,
     /// The type of the parameter.
     pub parameter_ty: E,
-    /// The body of the lambda, also called the lambda term.
+    /// The result.
+    /// If this is a lambda abstraction, this is the lambda term.
+    /// If this is a function type, this is the type of the function's body.
     pub result: E,
 }
 
-impl<P, E> Lambda<P, E>
-where
-    P: Default + Clone + PartialEq,
-    E: Clone,
-{
-    /// Generates a local constant that represents the argument to this lambda abstraction.
-    pub fn generate_local(&self, meta_gen: &mut MetavariableGenerator<E>) -> LocalConstant<P, E> {
-        LocalConstant {
-            name: self.parameter_name.clone(),
-            metavariable: meta_gen.gen(self.parameter_ty.clone()),
-            binder_annotation: self.binder_annotation,
-        }
-    }
-}
-
-/// A region-polymorphic value.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct RegionLambda<P, E>
-where
-    P: Default + PartialEq,
-{
-    /// The name of the parameter.
-    pub region_name: Name<P>,
-    /// The body of the expression.
-    pub body: E,
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Pi<P, E>
-where
-    P: Default + PartialEq,
-{
-    /// The name of the parameter.
-    pub parameter_name: Name<P>,
-    /// How the parameter should be filled when calling the function.
-    pub binder_annotation: BinderAnnotation,
-    /// The multiplicity for which the parameter to the function is owned.
-    pub ownership: ParameterOwnership,
-    /// The style by which the function is invoked.
-    pub invocation_type: InvocationType,
-    /// The region for which the function may be owned.
-    pub region: E,
-    /// The type of the parameter.
-    pub parameter_ty: E,
-    /// The type of the result.
-    pub result: E,
-}
-
-impl<P, E> Pi<P, E>
+impl<P, E> Binder<P, E>
 where
     P: Default + Clone + PartialEq,
     E: Clone,
@@ -204,9 +159,9 @@ where
     }
 }
 
-/// A region-polymorphic type.
+/// A region-polymorphic value, or the type of such values.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct RegionPi<P, E>
+pub struct RegionBinder<P, E>
 where
     P: Default + PartialEq,
 {
@@ -317,10 +272,10 @@ where
     Inst(Inst<P>),
     Let(Let<P, E>),
     Borrow(Borrow<E>),
-    Lambda(Lambda<P, E>),
-    RegionLambda(RegionLambda<P, E>),
-    Pi(Pi<P, E>),
-    RegionPi(RegionPi<P, E>),
+    Lambda(Binder<P, E>),
+    RegionLambda(RegionBinder<P, E>),
+    Pi(Binder<P, E>),
+    RegionPi(RegionBinder<P, E>),
     LetRegion(LetRegion<P, E>),
     Delta(Delta<E>),
     Apply(Apply<E>),
@@ -360,7 +315,7 @@ impl Expression {
                 value: e.value.to_term(db),
             })
             .intern(db),
-            ExpressionT::Lambda(e) => ExpressionT::Lambda(Lambda {
+            ExpressionT::Lambda(e) => ExpressionT::Lambda(Binder {
                 parameter_name: e.parameter_name.without_provenance(),
                 binder_annotation: e.binder_annotation,
                 ownership: e.ownership,
@@ -370,12 +325,12 @@ impl Expression {
                 result: e.result.to_term(db),
             })
             .intern(db),
-            ExpressionT::RegionLambda(e) => ExpressionT::RegionLambda(RegionLambda {
+            ExpressionT::RegionLambda(e) => ExpressionT::RegionLambda(RegionBinder {
                 region_name: e.region_name.without_provenance(),
                 body: e.body.to_term(db),
             })
             .intern(db),
-            ExpressionT::Pi(e) => ExpressionT::Pi(Pi {
+            ExpressionT::Pi(e) => ExpressionT::Pi(Binder {
                 parameter_name: e.parameter_name.without_provenance(),
                 binder_annotation: e.binder_annotation,
                 ownership: e.ownership,
@@ -385,7 +340,7 @@ impl Expression {
                 result: e.result.to_term(db),
             })
             .intern(db),
-            ExpressionT::RegionPi(e) => ExpressionT::RegionPi(RegionPi {
+            ExpressionT::RegionPi(e) => ExpressionT::RegionPi(RegionBinder {
                 region_name: e.region_name.without_provenance(),
                 body: e.body.to_term(db),
             })
