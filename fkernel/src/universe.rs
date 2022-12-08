@@ -240,12 +240,12 @@ fn replace_in_universe(
 /// Replace the given universe variable with the provided replacement.
 pub fn instantiate_universe(
     u: &mut Universe<()>,
-    var: UniverseVariable<()>,
+    var: &UniverseVariable<()>,
     replacement: &Universe<()>,
 ) {
     replace_in_universe(u, |inner| match &inner.contents {
         UniverseContents::UniverseVariable(inner_var) => {
-            if *inner_var == var {
+            if inner_var == var {
                 ReplaceResult::ReplaceWith(replacement.clone())
             } else {
                 ReplaceResult::Skip

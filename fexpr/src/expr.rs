@@ -56,6 +56,7 @@ where
     /// The name of the local variable to bind.
     pub name_to_assign: Name<P>,
     /// The value to assign to the new bound variable.
+    pub to_assign: E,
     /// The type of the value to assign to the bound variable.
     pub to_assign_ty: E,
     /// The main body of the expression to be executed after assigning the value.
@@ -296,6 +297,7 @@ impl Expression {
                 db,
                 ExpressionT::Let(Let {
                     name_to_assign: e.name_to_assign.without_provenance(),
+                    to_assign: e.to_assign.to_term(db),
                     to_assign_ty: e.to_assign_ty.to_term(db),
                     body: e.body.to_term(db),
                 }),
