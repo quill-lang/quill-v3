@@ -7,14 +7,14 @@
 //! ## Type parameters
 //!
 //! Throughout this file, we work under the assumption that we have a type variable `E` representing an expression or term type.
-//! Most commonly, this will be `Term` or `Expression`.
-//! We then construct the type `ExpressionT`, generic over this parameter `E`.
-//! This allows us to write functions that are generic over both `Term` and `Expression`.
+//! Most commonly, this will be [`Term`] or [`Expression`].
+//! We then construct the type [`ExpressionT`], generic over this parameter `E`.
+//! This allows us to write functions that are generic over both [`Term`] and [`Expression`].
 //!
 //! ## Interning
 //!
-//! Terms can be interned, as they have no provenance information. The type `Term` is the interned version, and `TermData` is the 'unboxed' version.
-//! Since `TermData = ExpressionT<Term>` is parametrised by `Term` and not `TermData`, when we look up an interned term value, we only 'unbox' one level at a time.
+//! Terms can be interned by salsa, as they have no provenance information.
+//! Since [`ExpressionT<(), Term>`] is parametrised by the interned `Term` type, when we look up an interned term value, we only 'unbox' one level at a time.
 //! This improves efficiency, and allows us to cache various results about many small terms, such as their type.
 
 use serde::{Deserialize, Serialize};
@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     basic::*,
     multiplicity::{InvocationType, ParameterOwnership},
-    universe::Universe,
+    universe::{Universe, UniverseContents, UniverseSucc},
     Db,
 };
 
@@ -33,20 +33,34 @@ pub struct Local {
     pub index: DeBruijnIndex,
 }
 
-/// Borrow from a bound local variable inside a `let` or an abstraction.
+/// Borrow from an expression.
+/// In valid programs, the borrowed value must be a [`Local`] variable.
+/// However, we don't make this restriction yet.
+/// This allows us to (for example) perform analysis on expressions like `&(a + b)`,
+/// instead of having to reason indirectly about local variables and binders.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Borrow {
-    /// The local variable to be borrowed.
-    pub index: DeBruijnIndex,
+pub struct Borrow<E> {
+    /// The region for which the value is borrowed.
+    /// This should usually be a metavariable, to be filled in by the borrow checker.
+    pub region: E,
+    /// The value to be borrowed.
+    pub value: E,
 }
 
-/// Retrieves the region that a given local variable may be borrowed for.
-/// Intuitively, this is the set of instructions for which the variable is in scope
-/// but has not yet been used in a [`Bound`] expression.
+/// A Delta-type (Δ-type) is the type of borrowed values of another type.
+/// For instance, if `x : T`, `&x : ΔT`.
+/// Note that `&T` is a value which is borrowed, and the value behind the borrow is a type;
+/// `ΔT` is a type in its own right.
+///
+/// Note: the name `Δ` was chosen for the initial letter of the Greek words "δάνειο" and
+/// "δανείζομαι" (roughly, "loan" and "borrow"). A capital beta for "borrow" was an option,
+/// but this would look identical to a Latin letter B.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct LocalRegion {
-    /// The local variable that we want to extract the region from.
-    pub index: DeBruijnIndex,
+pub struct Delta<E> {
+    /// The region for which a value is borrowed.
+    pub region: E,
+    /// The type of values which is to be borrowed.
+    pub ty: E,
 }
 
 /// Either a definition or an inductive data type.
@@ -75,7 +89,7 @@ where
 }
 
 impl BoundVariable<Provenance, Box<Expression>> {
-    fn without_provenance(self, db: &dyn Db) -> BoundVariable<(), Term> {
+    fn without_provenance(&self, db: &dyn Db) -> BoundVariable<(), Term> {
         BoundVariable {
             name: self.name.without_provenance(),
             ty: self.ty.to_term(db),
@@ -126,7 +140,7 @@ where
 }
 
 impl BinderStructure<Provenance, Box<Expression>> {
-    fn without_provenance(self, db: &dyn Db) -> BinderStructure<(), Term> {
+    fn without_provenance(&self, db: &dyn Db) -> BinderStructure<(), Term> {
         BinderStructure {
             bound: self.bound.without_provenance(db),
             binder_annotation: self.binder_annotation,
@@ -156,11 +170,22 @@ where
     E: Clone,
 {
     /// Generates a local constant that represents the argument to this dependent function type.
-    pub fn generate_local(&self, meta_gen: &mut MetavariableGenerator<E>) -> LocalConstant<P, E> {
+    pub fn generate_local_with_gen(
+        &self,
+        meta_gen: &mut MetavariableGenerator<E>,
+    ) -> LocalConstant<P, E> {
         LocalConstant {
             metavariable: meta_gen.gen(self.structure.bound.ty.clone()),
             structure: self.structure.clone(),
         }
+    }
+
+    /// Generates a local constant that represents the argument to this dependent function type.
+    /// The index of the metavariable is guaranteed not to collide with the metavariables in `t`.
+    pub fn generate_local(&self, db: &dyn Db, t: Term) -> LocalConstant<P, E> {
+        self.generate_local_with_gen(&mut MetavariableGenerator::new(Some(
+            largest_unusable_metavariable(db, t),
+        )))
     }
 }
 
@@ -174,22 +199,6 @@ where
     pub region_name: Name<P>,
     /// The body of the expression.
     pub body: E,
-}
-
-/// A Delta-type (Δ-type) is the type of borrowed values of another type.
-/// For instance, if `x : T`, `&x : ΔT`.
-/// Note that `&T` is a value which is borrowed, and the value behind the borrow is a type;
-/// `ΔT` is a type in its own right.
-///
-/// Note: the name `Δ` was chosen for the initial letter of the Greek words "δάνειο" and
-/// "δανείζομαι" (roughly, "loan" and "borrow"). A capital beta for "borrow" was an option,
-/// but this would look identical to a Latin letter B.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Delta<E> {
-    /// The region for which a value is borrowed.
-    pub region: E,
-    /// The type of values which is to be borrowed.
-    pub ty: E,
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -216,6 +225,7 @@ pub struct Lifespan<E> {
 
 /// An inference variable.
 /// May have theoretically any type.
+/// Metavariables can be used for region variables that are to be inferred by the borrow checker.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Metavariable<E> {
     pub index: u32,
@@ -246,10 +256,10 @@ impl<E> MetavariableGenerator<E> {
     /// Creates a new variable generator.
     /// Its variables will all be greater than the provided "largest unusable" variable name.
     /// If one was not provided, no guarantees are made about name clashing.
-    pub fn new(largest_unusable: Option<Metavariable<E>>) -> Self {
+    pub fn new(largest_unusable: Option<u32>) -> Self {
         Self {
             _phantom: Default::default(),
-            next_var: largest_unusable.map_or(0, |x| x.index + 1),
+            next_var: largest_unusable.map_or(0, |x| x + 1),
         }
     }
 
@@ -267,18 +277,19 @@ where
     P: Default + PartialEq,
 {
     Local(Local),
-    Borrow(Borrow),
-    LocalRegion(LocalRegion),
+    Borrow(Borrow<E>),
+    Delta(Delta<E>),
     Inst(Inst<P>),
     Let(Let<P, E>),
     Lambda(Binder<P, E>),
     Pi(Binder<P, E>),
     RegionLambda(RegionBinder<P, E>),
     RegionPi(RegionBinder<P, E>),
-    Delta(Delta<E>),
     Apply(Apply<E>),
     Sort(Sort<P>),
     Region,
+    /// The type of [`ExpressionT::Region`], and the type of itself.
+    RegionT,
     /// TODO: Remove this field, replacing it with a call to [`Inst`] to simplify the kernel.
     StaticRegion,
     Lifespan(Lifespan<E>),
@@ -315,19 +326,77 @@ pub struct Term {
     pub value: ExpressionT<(), Term>,
 }
 
+impl Term {
+    /// Returns the sort of proof-irrelevant propositions.
+    pub fn sort_prop(db: &dyn Db) -> Term {
+        Term::new(
+            db,
+            ExpressionT::Sort(Sort(Universe::new(UniverseContents::UniverseZero))),
+        )
+    }
+
+    /// Returns the sort of small types.
+    pub fn sort_type(db: &dyn Db) -> Term {
+        Term::new(
+            db,
+            ExpressionT::Sort(Sort(Universe::new(UniverseContents::UniverseSucc(
+                UniverseSucc(Box::new(Universe::new(UniverseContents::UniverseZero))),
+            )))),
+        )
+    }
+}
+
+/// Returns the largest metavariable index that was referenced in the given term, or `0` if none were referenced.
+/// We are free to use metavariables with strictly higher indices than what is returned here without name clashing.
+#[must_use]
+#[salsa::tracked]
+pub fn largest_unusable_metavariable(db: &dyn Db, t: Term) -> u32 {
+    match t.value(db) {
+        ExpressionT::Local(_) => todo!(),
+        ExpressionT::Borrow(_) => todo!(),
+        ExpressionT::Delta(_) => todo!(),
+        ExpressionT::Inst(_) => todo!(),
+        ExpressionT::Let(_) => todo!(),
+        ExpressionT::Lambda(_) => todo!(),
+        ExpressionT::Pi(_) => todo!(),
+        ExpressionT::RegionLambda(_) => todo!(),
+        ExpressionT::RegionPi(_) => todo!(),
+        ExpressionT::Apply(_) => todo!(),
+        ExpressionT::Sort(_) => todo!(),
+        ExpressionT::Region => todo!(),
+        ExpressionT::RegionT => todo!(),
+        ExpressionT::StaticRegion => todo!(),
+        ExpressionT::Lifespan(_) => todo!(),
+        ExpressionT::Metavariable(_) => todo!(),
+        ExpressionT::LocalConstant(_) => todo!(),
+    }
+}
+
 impl Expression {
-    pub fn to_term(self, db: &dyn Db) -> Term {
-        match self.value.contents {
-            ExpressionT::Local(e) => Term::new(db, ExpressionT::Local(e)),
-            ExpressionT::Borrow(e) => Term::new(db, ExpressionT::Borrow(e)),
-            ExpressionT::LocalRegion(e) => Term::new(db, ExpressionT::LocalRegion(e)),
+    pub fn to_term(&self, db: &dyn Db) -> Term {
+        match &self.value.contents {
+            ExpressionT::Local(e) => Term::new(db, ExpressionT::Local(*e)),
+            ExpressionT::Borrow(e) => Term::new(
+                db,
+                ExpressionT::Borrow(Borrow {
+                    region: e.region.to_term(db),
+                    value: e.value.to_term(db),
+                }),
+            ),
+            ExpressionT::Delta(e) => Term::new(
+                db,
+                ExpressionT::Delta(Delta {
+                    region: e.region.to_term(db),
+                    ty: e.ty.to_term(db),
+                }),
+            ),
             ExpressionT::Inst(e) => Term::new(
                 db,
                 ExpressionT::Inst(Inst {
                     name: e.name.clone().without_provenance(),
                     universes: e
                         .universes
-                        .into_iter()
+                        .iter()
                         .map(Universe::without_provenance)
                         .collect(),
                 }),
@@ -368,13 +437,6 @@ impl Expression {
                     body: e.body.to_term(db),
                 }),
             ),
-            ExpressionT::Delta(e) => Term::new(
-                db,
-                ExpressionT::Delta(Delta {
-                    region: e.region.to_term(db),
-                    ty: e.ty.to_term(db),
-                }),
-            ),
             ExpressionT::Apply(e) => Term::new(
                 db,
                 ExpressionT::Apply(Apply {
@@ -386,6 +448,7 @@ impl Expression {
                 Term::new(db, ExpressionT::Sort(Sort(e.0.without_provenance())))
             }
             ExpressionT::Region => Term::new(db, ExpressionT::Region),
+            ExpressionT::RegionT => Term::new(db, ExpressionT::RegionT),
             ExpressionT::StaticRegion => Term::new(db, ExpressionT::StaticRegion),
             ExpressionT::Lifespan(e) => Term::new(
                 db,

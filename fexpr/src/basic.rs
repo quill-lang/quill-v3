@@ -177,10 +177,10 @@ impl<P> Name<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(self) -> Name<()> {
+    pub fn without_provenance(&self) -> Name<()> {
         Name(WithProvenance {
             provenance: (),
-            contents: *self,
+            contents: **self,
         })
     }
 }
@@ -322,13 +322,13 @@ impl<P> QualifiedName<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(self) -> QualifiedName<()> {
+    pub fn without_provenance(&self) -> QualifiedName<()> {
         QualifiedName(WithProvenance {
             provenance: (),
             contents: self
                 .0
                 .contents
-                .into_iter()
+                .iter()
                 .map(Name::without_provenance)
                 .collect(),
         })

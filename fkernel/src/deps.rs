@@ -34,20 +34,20 @@ impl Dependencies {
 #[tracing::instrument(level = "debug")]
 pub fn dependencies(db: &dyn Db, term: Term) -> Dependencies {
     match term.value(db) {
-        ExpressionT::Local(_) | ExpressionT::Borrow(_) | ExpressionT::LocalRegion(_) => {
-            Default::default()
-        }
+        ExpressionT::Local(_) => Default::default(),
+        ExpressionT::Borrow(t) => dependencies(db, t.value),
+        ExpressionT::Delta(t) => dependencies(db, t.region).with(dependencies(db, t.ty)),
         ExpressionT::Inst(t) => Dependencies::new_with(t.name.to_path(db)),
         ExpressionT::Let(t) => dependencies(db, t.bound.ty).with(dependencies(db, t.body)),
         ExpressionT::Lambda(t) | ExpressionT::Pi(t) => dependencies(db, t.structure.region)
             .with(dependencies(db, t.structure.bound.ty))
             .with(dependencies(db, t.result)),
         ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => dependencies(db, t.body),
-        ExpressionT::Delta(t) => dependencies(db, t.region).with(dependencies(db, t.ty)),
         ExpressionT::Apply(t) => dependencies(db, t.function).with(dependencies(db, t.argument)),
         ExpressionT::Sort(_) => Default::default(),
-        ExpressionT::Region => Default::default(),
-        ExpressionT::StaticRegion => Default::default(),
+        ExpressionT::Region | ExpressionT::RegionT | ExpressionT::StaticRegion => {
+            Default::default()
+        }
         ExpressionT::Lifespan(t) => dependencies(db, t.ty),
         ExpressionT::Metavariable(t) => dependencies(db, t.ty),
         ExpressionT::LocalConstant(t) => dependencies(db, t.metavariable.ty),

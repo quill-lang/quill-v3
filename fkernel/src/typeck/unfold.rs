@@ -2,12 +2,7 @@
 
 use fexpr::expr::{Apply, ExpressionT, Inst, Term};
 
-use crate::{
-    typeck::{certify_definition, ReducibilityHints},
-    Db,
-};
-
-use super::def::DefinitionHeight;
+use super::{def::DefinitionHeight, get_certified_definition, Db, ReducibilityHints};
 
 /// Returns a number if the head of this expression is a definition that we can unfold.
 /// Intuitively, the number returned is higher for more complicated definitions.
@@ -27,16 +22,13 @@ pub fn head_definition_height(db: &dyn Db, t: Term) -> Option<DefinitionHeight> 
 /// Returns the height of the definition that this [`Inst`] refers to.
 /// If this instance could not be resolved, was not a definition, or was not reducible, return [`None`].
 pub fn definition_height(db: &dyn Db, inst: &Inst<()>) -> Option<DefinitionHeight> {
-    certify_definition(db, inst.name.to_path(db))
-        .value()
-        .as_ref()
-        .and_then(|def| {
-            if let ReducibilityHints::Regular { height } = def.reducibility_hints() {
-                Some(*height)
-            } else {
-                None
-            }
-        })
+    get_certified_definition(db, inst.name.to_path(db)).and_then(|def| {
+        if let ReducibilityHints::Regular { height } = def.reducibility_hints() {
+            Some(*height)
+        } else {
+            None
+        }
+    })
 }
 
 /// If the head of this expression is a definition, unfold it,
@@ -44,7 +36,7 @@ pub fn definition_height(db: &dyn Db, inst: &Inst<()>) -> Option<DefinitionHeigh
 /// This is sometimes called delta-reduction.
 ///
 /// If we couldn't unfold anything, return [`None`].
-/// This will always return a value if [`can_unfold_definition`] returned a [`Some`] value.
+/// This will always return a value if [`head_definition_height`] returned a [`Some`] value.
 ///
 /// # Dependencies
 ///
@@ -52,9 +44,7 @@ pub fn definition_height(db: &dyn Db, inst: &Inst<()>) -> Option<DefinitionHeigh
 #[salsa::tracked]
 pub fn unfold_definition(db: &dyn Db, t: Term) -> Option<Term> {
     match t.value(db) {
-        ExpressionT::Inst(inst) => certify_definition(db, inst.name.to_path(db))
-            .value()
-            .as_ref()
+        ExpressionT::Inst(inst) => get_certified_definition(db, inst.name.to_path(db))
             .and_then(|def| def.def().contents.expr.as_ref())
             .map(|e| e.clone().to_term(db)),
         ExpressionT::Apply(ap) => unfold_definition(db, ap.function).map(|t| {

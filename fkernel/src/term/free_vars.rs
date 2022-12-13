@@ -13,9 +13,12 @@ use crate::Db;
 #[salsa::tracked]
 pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
     match t.value(db) {
-        ExpressionT::Local(Local { index })
-        | ExpressionT::Borrow(Borrow { index })
-        | ExpressionT::LocalRegion(LocalRegion { index }) => index.succ(),
+        ExpressionT::Local(Local { index }) => index.succ(),
+        ExpressionT::Borrow(borrow) => first_free_variable_index(db, borrow.value),
+        ExpressionT::Delta(delta) => std::cmp::max(
+            first_free_variable_index(db, delta.region),
+            first_free_variable_index(db, delta.ty),
+        ),
         ExpressionT::Inst(_) => DeBruijnIndex::zero(),
         ExpressionT::Let(let_expr) => std::cmp::max(
             first_free_variable_index(db, let_expr.bound.ty),
@@ -31,17 +34,13 @@ pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
         ExpressionT::RegionLambda(reg) | ExpressionT::RegionPi(reg) => {
             first_free_variable_index(db, reg.body)
         }
-        ExpressionT::Delta(delta) => std::cmp::max(
-            first_free_variable_index(db, delta.region),
-            first_free_variable_index(db, delta.ty),
-        ),
         ExpressionT::Apply(apply) => std::cmp::max(
             first_free_variable_index(db, apply.function),
             first_free_variable_index(db, apply.argument),
         ),
         ExpressionT::Lifespan(lifespan) => first_free_variable_index(db, lifespan.ty),
         ExpressionT::Sort(_) => DeBruijnIndex::zero(),
-        ExpressionT::Region | ExpressionT::StaticRegion => DeBruijnIndex::zero(),
+        ExpressionT::Region | ExpressionT::RegionT | ExpressionT::StaticRegion => DeBruijnIndex::zero(),
         ExpressionT::Metavariable(_) => DeBruijnIndex::zero(),
         ExpressionT::LocalConstant(_) => DeBruijnIndex::zero(),
     }

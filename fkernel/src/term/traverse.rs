@@ -47,7 +47,21 @@ fn replace_in_term_offset(
         ReplaceResult::Skip => {
             // Traverse the sub-terms of `e`.
             match t.value(db) {
-                ExpressionT::Local(_) | ExpressionT::Borrow(_) | ExpressionT::LocalRegion(_) | ExpressionT::Inst(_) => t,
+                ExpressionT::Local(_) | ExpressionT::Inst(_) => t,
+                ExpressionT::Borrow(t) => Term::new(
+                    db,
+                    ExpressionT::Borrow(Borrow {
+                        region: replace_in_term_offset(db, t.region, replace_fn.clone(), offset),
+                        value: replace_in_term_offset(db, t.value, replace_fn, offset),
+                    }),
+                ),
+                ExpressionT::Delta(t) => Term::new(
+                    db,
+                    ExpressionT::Delta(Delta {
+                        region: replace_in_term_offset(db, t.region, replace_fn.clone(), offset),
+                        ty: replace_in_term_offset(db, t.ty, replace_fn, offset),
+                    }),
+                ),
                 ExpressionT::Let(t) => Term::new(
                     db,
                     ExpressionT::Let(Let {
@@ -101,13 +115,6 @@ fn replace_in_term_offset(
                         body: replace_in_term_offset(db, t.body, replace_fn, offset.succ()),
                     }),
                 ),
-                ExpressionT::Delta(t) => Term::new(
-                    db,
-                    ExpressionT::Delta(Delta {
-                        region: replace_in_term_offset(db, t.region, replace_fn.clone(), offset),
-                        ty: replace_in_term_offset(db, t.ty, replace_fn, offset),
-                    }),
-                ),
                 ExpressionT::Apply(t) => Term::new(
                     db,
                     ExpressionT::Apply(Apply {
@@ -123,6 +130,7 @@ fn replace_in_term_offset(
                 ),
                 ExpressionT::Sort(_)
                 | ExpressionT::Region
+                | ExpressionT::RegionT
                 | ExpressionT::StaticRegion
                 | ExpressionT::Metavariable(_)
                 | ExpressionT::LocalConstant(_) => t,
@@ -158,10 +166,11 @@ fn find_in_term_offset(
         Some(t)
     } else {
         match t.value(db) {
-            ExpressionT::Local(_)
-            | ExpressionT::Borrow(_)
-            | ExpressionT::LocalRegion(_)
-            | ExpressionT::Inst(_) => None,
+            ExpressionT::Local(_) | ExpressionT::Inst(_) => None,
+            ExpressionT::Borrow(t) => find_in_term_offset(db, t.region, predicate.clone(), offset)
+                .or_else(|| find_in_term_offset(db, t.value, predicate.clone(), offset)),
+            ExpressionT::Delta(t) => find_in_term_offset(db, t.region, predicate.clone(), offset)
+                .or_else(|| find_in_term_offset(db, t.ty, predicate.clone(), offset)),
             ExpressionT::Let(t) => find_in_term_offset(db, t.to_assign, predicate.clone(), offset)
                 .or_else(|| find_in_term_offset(db, t.bound.ty, predicate.clone(), offset))
                 .or_else(|| find_in_term_offset(db, t.body, predicate, offset.succ())),
@@ -175,13 +184,12 @@ fn find_in_term_offset(
             ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => {
                 find_in_term_offset(db, t.body, predicate, offset.succ())
             }
-            ExpressionT::Delta(t) => find_in_term_offset(db, t.region, predicate.clone(), offset)
-                .or_else(|| find_in_term_offset(db, t.ty, predicate.clone(), offset)),
             ExpressionT::Apply(t) => find_in_term_offset(db, t.function, predicate.clone(), offset)
                 .or_else(|| find_in_term_offset(db, t.argument, predicate.clone(), offset)),
             ExpressionT::Lifespan(t) => find_in_term_offset(db, t.ty, predicate, offset),
             ExpressionT::Sort(_)
             | ExpressionT::Region
+            | ExpressionT::RegionT
             | ExpressionT::StaticRegion
             | ExpressionT::Metavariable(_)
             | ExpressionT::LocalConstant(_) => None,
@@ -288,18 +296,25 @@ pub fn instantiate(db: &dyn Db, t: Term, substitution: Term) -> Term {
 /// Replace the given list of universe parameters with the given arguments.
 /// The lists must be the same length.
 #[must_use]
-pub fn instantiate_universe_parameters(
+pub fn instantiate_universe_parameters<P>(
     db: &dyn Db,
     t: Term,
-    universe_params: &[Name<()>],
+    universe_params: &[Name<P>],
     universe_arguments: &[Universe<()>],
-) -> Term {
+) -> Term
+where
+    P: Default + PartialEq,
+{
     replace_in_term(db, t, |t, _offset| match t.value(db) {
         ExpressionT::Inst(inst) => {
             let mut inst = inst.clone();
             for univ in &mut inst.universes {
                 for (param, replacement) in universe_params.iter().zip(universe_arguments) {
-                    instantiate_universe(univ, &UniverseVariable(*param), replacement);
+                    instantiate_universe(
+                        univ,
+                        &UniverseVariable(param.without_provenance()),
+                        replacement,
+                    );
                 }
             }
             ReplaceResult::ReplaceWith(Term::new(db, ExpressionT::Inst(inst)))
@@ -307,7 +322,11 @@ pub fn instantiate_universe_parameters(
         ExpressionT::Sort(sort) => {
             let mut sort = sort.clone();
             for (param, replacement) in universe_params.iter().zip(universe_arguments) {
-                instantiate_universe(&mut sort.0, &UniverseVariable(*param), replacement);
+                instantiate_universe(
+                    &mut sort.0,
+                    &UniverseVariable(param.without_provenance()),
+                    replacement,
+                );
             }
             ReplaceResult::ReplaceWith(Term::new(db, ExpressionT::Sort(sort)))
         }

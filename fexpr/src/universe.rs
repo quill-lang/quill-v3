@@ -21,7 +21,7 @@ impl<P> UniverseVariable<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(self) -> UniverseVariable<()> {
+    pub fn without_provenance(&self) -> UniverseVariable<()> {
         UniverseVariable(self.0.without_provenance())
     }
 }
@@ -35,7 +35,7 @@ impl<P> UniverseSucc<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(self) -> UniverseSucc<()> {
+    pub fn without_provenance(&self) -> UniverseSucc<()> {
         UniverseSucc(Box::new(self.0.without_provenance()))
     }
 }
@@ -54,7 +54,7 @@ impl<P> UniverseMax<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(self) -> UniverseMax<()> {
+    pub fn without_provenance(&self) -> UniverseMax<()> {
         UniverseMax {
             left: Box::new(self.left.without_provenance()),
             right: Box::new(self.right.without_provenance()),
@@ -76,7 +76,7 @@ impl<P> UniverseImpredicativeMax<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(self) -> UniverseImpredicativeMax<()> {
+    pub fn without_provenance(&self) -> UniverseImpredicativeMax<()> {
         UniverseImpredicativeMax {
             left: Box::new(self.left.without_provenance()),
             right: Box::new(self.right.without_provenance()),
@@ -106,7 +106,7 @@ impl<P> UniverseContents<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(self) -> UniverseContents<()> {
+    pub fn without_provenance(&self) -> UniverseContents<()> {
         match self {
             UniverseContents::UniverseZero => UniverseContents::UniverseZero,
             UniverseContents::UniverseVariable(var) => {
@@ -121,7 +121,7 @@ where
             UniverseContents::UniverseImpredicativeMax(imax) => {
                 UniverseContents::UniverseImpredicativeMax(imax.without_provenance())
             }
-            UniverseContents::Metauniverse(meta) => UniverseContents::Metauniverse(meta),
+            UniverseContents::Metauniverse(meta) => UniverseContents::Metauniverse(*meta),
         }
     }
 }
@@ -163,7 +163,7 @@ impl<P> Universe<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(self) -> Universe<()> {
+    pub fn without_provenance(&self) -> Universe<()> {
         Universe {
             provenance: (),
             contents: self.contents.without_provenance(),
