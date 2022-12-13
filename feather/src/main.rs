@@ -37,16 +37,26 @@ fn main() {
     }
 
     if let Some(result) = result.value() {
-        println!("{result:#?}");
-
         for def in &result.items {
             if let fexpr::module::Item::Definition(def) = def {
-                if let Some(expr) = &def.expr {
-                    let result = fkernel::typeck::infer_type(&db, expr.to_term(&db));
-                    match result {
-                        Ok(result) => println!("{}", result.display(&db)),
-                        Err(error) => println!("Error: {error:#?}"),
-                    }
+                let result = fkernel::typeck::certify_definition(
+                    &db,
+                    Path::new(
+                        &db,
+                        vec![
+                            Str::new(&db, "test".to_string()),
+                            Str::new(&db, "test".to_string()),
+                            *def.name,
+                        ],
+                    ),
+                );
+
+                for report in result.reports() {
+                    report.render(&db, &mut stderr);
+                }
+
+                if result.value().is_some() {
+                    tracing::info!("certified {}", def.name.text(&db));
                 }
             }
         }

@@ -61,6 +61,8 @@ where
 }
 
 /// Converts a universe to an equivalent, simpler, form.
+///
+/// TODO: There may be a normalisation issue here still.
 #[salsa::tracked]
 pub fn normalise_universe(db: &dyn Db, u: Univ) -> Univ {
     // First, factor out the outermost `+ k` chain.

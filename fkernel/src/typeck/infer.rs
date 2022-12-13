@@ -1,7 +1,6 @@
 //! Infers types of terms.
 
 use fexpr::{expr::*, universe::*};
-use salsa::DebugWithDb;
 
 use crate::term::{
     abstract_binder, has_free_variables, instantiate, instantiate_universe_parameters,

@@ -10,8 +10,8 @@ pub struct InputFile {
     pub contents: String,
 }
 
-#[salsa::tracked]
 #[tracing::instrument(level = "debug")]
+#[salsa::tracked]
 pub fn source(db: &dyn Db, source: Source) -> Dr<InputFile> {
     let path_buf = source
         .path(db)

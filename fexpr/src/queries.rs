@@ -2,8 +2,8 @@ use fcommon::{with_local_database, Dr, Report, ReportKind, Source};
 
 use crate::{basic::Provenance, expr::Expression, module::Module, Db};
 
-#[salsa::tracked(return_ref)]
 #[tracing::instrument(level = "debug")]
+#[salsa::tracked(return_ref)]
 pub fn module_from_feather_source(
     db: &dyn Db,
     source: Source,

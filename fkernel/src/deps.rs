@@ -30,8 +30,8 @@ impl Dependencies {
 
 /// Computes the direct dependencies that this term has on previous definitions.
 /// This does not compute *transitive* dependencies.
-#[salsa::tracked]
 #[tracing::instrument(level = "debug")]
+#[salsa::tracked]
 pub fn dependencies(db: &dyn Db, term: Term) -> Dependencies {
     match term.value(db) {
         ExpressionT::Local(_) => Default::default(),

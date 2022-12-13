@@ -17,6 +17,8 @@ use super::{
 
 /// Returns true if the two expressions are definitionally equal.
 /// This may return an error if the expressions were not type correct.
+///
+/// TODO: This doesn't work with [`RegionBinder`] or [`Lifespan`] expressions yet.
 pub fn definitionally_equal(db: &dyn Db, mut left: Term, mut right: Term) -> Ir<bool> {
     // Start by reducing to weak head normal form.
     left = to_weak_head_normal_form(db, left);

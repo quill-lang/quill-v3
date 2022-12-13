@@ -5,7 +5,7 @@ use std::{
     ops::{Add, Deref, DerefMut},
 };
 
-use fcommon::{Path, Source, SourceSpan, Span, Str};
+use fcommon::{Label, LabelType, Path, Report, ReportKind, Source, SourceSpan, Span, Str};
 use serde::{de::Visitor, ser::SerializeTuple, Deserialize, Serialize};
 
 use crate::Db;
@@ -22,6 +22,16 @@ pub enum Provenance {
 impl Default for Provenance {
     fn default() -> Self {
         Provenance::Synthetic
+    }
+}
+
+impl Provenance {
+    pub fn report(&self, report_kind: ReportKind) -> Report {
+        Report::new(report_kind, self.source().unwrap(), self.span().start)
+    }
+
+    pub fn label(&self, ty: LabelType) -> Label {
+        Label::new(self.source().unwrap(), self.span(), ty)
     }
 }
 
