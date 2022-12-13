@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use fexpr::{
-    basic::DeBruijnIndex,
+    basic::{DeBruijnIndex, WithProvenance},
     expr::*,
     universe::{Univ, Universe},
 };
@@ -143,10 +143,10 @@ fn binder_definitionally_equal(
     let local = Term::new(
         db,
         ExpressionT::LocalConstant(
-            left.generate_local_with_gen(&mut MetavariableGenerator::new(Some(std::cmp::max(
+            left.generate_local_with_gen(&mut MetavariableGenerator::new(std::cmp::max(
                 largest_unusable_metavariable(db, left.result),
                 largest_unusable_metavariable(db, right.result),
-            )))),
+            ))),
         ),
     );
     let left_body = instantiate(db, left.result, local);
@@ -161,8 +161,13 @@ fn delta_definitionally_equal(db: &dyn Db, left: &Delta<Term>, right: &Delta<Ter
 }
 
 fn universe_definitionally_equal(db: &dyn Db, left: &Universe<()>, right: &Universe<()>) -> bool {
-    normalise_universe(db, Univ::new(db, left.clone().without_provenance()))
-        == normalise_universe(db, Univ::new(db, right.clone().without_provenance()))
+    normalise_universe(
+        db,
+        Univ::new(db, WithProvenance::new(left.without_provenance())),
+    ) == normalise_universe(
+        db,
+        Univ::new(db, WithProvenance::new(right.without_provenance())),
+    )
 }
 
 /// Returns true if `left` and `right` are proofs of the same proposition.

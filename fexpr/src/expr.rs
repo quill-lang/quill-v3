@@ -17,6 +17,8 @@
 //! Since [`ExpressionT<(), Term>`] is parametrised by the interned `Term` type, when we look up an interned term value, we only 'unbox' one level at a time.
 //! This improves efficiency, and allows us to cache various results about many small terms, such as their type.
 
+use std::cmp::max;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -98,6 +100,16 @@ impl BoundVariable<Provenance, Box<Expression>> {
     }
 }
 
+impl BoundVariable<(), Term> {
+    fn synthetic(&self, db: &dyn Db) -> BoundVariable<Provenance, Box<Expression>> {
+        BoundVariable {
+            name: self.name.synthetic(),
+            ty: Box::new(self.ty.to_expression(db)),
+            ownership: self.ownership,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Let<P, E>
 where
@@ -150,6 +162,17 @@ impl BinderStructure<Provenance, Box<Expression>> {
     }
 }
 
+impl BinderStructure<(), Term> {
+    fn synthetic(&self, db: &dyn Db) -> BinderStructure<Provenance, Box<Expression>> {
+        BinderStructure {
+            bound: self.bound.synthetic(db),
+            binder_annotation: self.binder_annotation,
+            invocation_type: self.invocation_type,
+            region: Box::new(self.region.to_expression(db)),
+        }
+    }
+}
+
 /// Either a lambda abstraction or the type of such lambda abstractions.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Binder<P, E>
@@ -183,9 +206,9 @@ where
     /// Generates a local constant that represents the argument to this dependent function type.
     /// The index of the metavariable is guaranteed not to collide with the metavariables in `t`.
     pub fn generate_local(&self, db: &dyn Db, t: Term) -> LocalConstant<P, E> {
-        self.generate_local_with_gen(&mut MetavariableGenerator::new(Some(
+        self.generate_local_with_gen(&mut MetavariableGenerator::new(
             largest_unusable_metavariable(db, t),
-        )))
+        ))
     }
 }
 
@@ -302,6 +325,14 @@ pub struct Expression {
     pub value: WithProvenance<Provenance, ExpressionT<Provenance, Box<Expression>>>,
 }
 
+impl Expression {
+    pub fn new_synthetic(value: ExpressionT<Provenance, Box<Expression>>) -> Self {
+        Self {
+            value: WithProvenance::new_synthetic(value),
+        }
+    }
+}
+
 impl Serialize for Expression {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -346,29 +377,130 @@ impl Term {
     }
 }
 
-/// Returns the largest metavariable index that was referenced in the given term, or `0` if none were referenced.
+/// Returns the largest metavariable index that was referenced in the given term, or [`None`] if none were referenced.
 /// We are free to use metavariables with strictly higher indices than what is returned here without name clashing.
 #[must_use]
 #[salsa::tracked]
-pub fn largest_unusable_metavariable(db: &dyn Db, t: Term) -> u32 {
+pub fn largest_unusable_metavariable(db: &dyn Db, t: Term) -> Option<u32> {
     match t.value(db) {
-        ExpressionT::Local(_) => todo!(),
-        ExpressionT::Borrow(_) => todo!(),
-        ExpressionT::Delta(_) => todo!(),
-        ExpressionT::Inst(_) => todo!(),
-        ExpressionT::Let(_) => todo!(),
-        ExpressionT::Lambda(_) => todo!(),
-        ExpressionT::Pi(_) => todo!(),
-        ExpressionT::RegionLambda(_) => todo!(),
-        ExpressionT::RegionPi(_) => todo!(),
-        ExpressionT::Apply(_) => todo!(),
-        ExpressionT::Sort(_) => todo!(),
-        ExpressionT::Region => todo!(),
-        ExpressionT::RegionT => todo!(),
-        ExpressionT::StaticRegion => todo!(),
-        ExpressionT::Lifespan(_) => todo!(),
-        ExpressionT::Metavariable(_) => todo!(),
-        ExpressionT::LocalConstant(_) => todo!(),
+        ExpressionT::Local(_) => None,
+        ExpressionT::Borrow(t) => max(
+            largest_unusable_metavariable(db, t.region),
+            largest_unusable_metavariable(db, t.value),
+        ),
+        ExpressionT::Delta(t) => max(
+            largest_unusable_metavariable(db, t.region),
+            largest_unusable_metavariable(db, t.ty),
+        ),
+        ExpressionT::Inst(_) => None,
+        ExpressionT::Let(t) => max(
+            max(
+                largest_unusable_metavariable(db, t.bound.ty),
+                largest_unusable_metavariable(db, t.to_assign),
+            ),
+            largest_unusable_metavariable(db, t.body),
+        ),
+        ExpressionT::Lambda(t) | ExpressionT::Pi(t) => max(
+            max(
+                largest_unusable_metavariable(db, t.structure.bound.ty),
+                largest_unusable_metavariable(db, t.structure.region),
+            ),
+            largest_unusable_metavariable(db, t.result),
+        ),
+        ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => {
+            largest_unusable_metavariable(db, t.body)
+        }
+        ExpressionT::Apply(t) => max(
+            largest_unusable_metavariable(db, t.function),
+            largest_unusable_metavariable(db, t.argument),
+        ),
+        ExpressionT::Sort(_)
+        | ExpressionT::Region
+        | ExpressionT::RegionT
+        | ExpressionT::StaticRegion => None,
+        ExpressionT::Lifespan(t) => largest_unusable_metavariable(db, t.ty),
+        ExpressionT::Metavariable(t) => Some(t.index),
+        ExpressionT::LocalConstant(t) => Some(t.metavariable.index),
+    }
+}
+
+impl Term {
+    /// Converts a term into an expression, using [`Provenance::Synthetic`] where necessary.
+    pub fn to_expression(&self, db: &dyn Db) -> Expression {
+        match self.value(db) {
+            ExpressionT::Local(e) => Expression::new_synthetic(ExpressionT::Local(*e)),
+            ExpressionT::Borrow(e) => Expression::new_synthetic(ExpressionT::Borrow(Borrow {
+                region: Box::new(e.region.to_expression(db)),
+                value: Box::new(e.value.to_expression(db)),
+            })),
+            ExpressionT::Delta(e) => Expression::new_synthetic(ExpressionT::Delta(Delta {
+                region: Box::new(e.region.to_expression(db)),
+                ty: Box::new(e.ty.to_expression(db)),
+            })),
+            ExpressionT::Inst(e) => Expression::new_synthetic(ExpressionT::Inst(Inst {
+                name: e.name.synthetic(),
+                universes: e
+                    .universes
+                    .iter()
+                    .map(|u| WithProvenance::new_synthetic(u.synthetic()))
+                    .collect(),
+            })),
+            ExpressionT::Let(e) => Expression::new_synthetic(ExpressionT::Let(Let {
+                bound: e.bound.synthetic(db),
+                to_assign: Box::new(e.to_assign.to_expression(db)),
+                body: Box::new(e.body.to_expression(db)),
+            })),
+            ExpressionT::Lambda(e) => Expression::new_synthetic(ExpressionT::Lambda(Binder {
+                structure: e.structure.synthetic(db),
+                result: Box::new(e.result.to_expression(db)),
+            })),
+            ExpressionT::Pi(e) => Expression::new_synthetic(ExpressionT::Pi(Binder {
+                structure: e.structure.synthetic(db),
+                result: Box::new(e.result.to_expression(db)),
+            })),
+            ExpressionT::RegionLambda(e) => {
+                Expression::new_synthetic(ExpressionT::RegionLambda(RegionBinder {
+                    region_name: e.region_name.synthetic(),
+                    body: Box::new(e.body.to_expression(db)),
+                }))
+            }
+            ExpressionT::RegionPi(e) => {
+                Expression::new_synthetic(ExpressionT::RegionPi(RegionBinder {
+                    region_name: e.region_name.synthetic(),
+                    body: Box::new(e.body.to_expression(db)),
+                }))
+            }
+            ExpressionT::Apply(e) => Expression::new_synthetic(ExpressionT::Apply(Apply {
+                function: Box::new(e.function.to_expression(db)),
+                argument: Box::new(e.argument.to_expression(db)),
+            })),
+            ExpressionT::Sort(e) => Expression::new_synthetic(ExpressionT::Sort(Sort(
+                WithProvenance::new_synthetic(e.0.synthetic()),
+            ))),
+            ExpressionT::Region => Expression::new_synthetic(ExpressionT::Region),
+            ExpressionT::RegionT => Expression::new_synthetic(ExpressionT::RegionT),
+            ExpressionT::StaticRegion => Expression::new_synthetic(ExpressionT::StaticRegion),
+            ExpressionT::Lifespan(e) => {
+                Expression::new_synthetic(ExpressionT::Lifespan(Lifespan {
+                    ty: Box::new(e.ty.to_expression(db)),
+                }))
+            }
+            ExpressionT::Metavariable(e) => {
+                Expression::new_synthetic(ExpressionT::Metavariable(Metavariable {
+                    index: e.index,
+                    ty: Box::new(e.ty.to_expression(db)),
+                }))
+            }
+            ExpressionT::LocalConstant(e) => {
+                Expression::new_synthetic(ExpressionT::LocalConstant(LocalConstant {
+                    metavariable: Metavariable {
+                        index: e.metavariable.index,
+                        ty: Box::new(e.metavariable.ty.to_expression(db)),
+                    },
+                    structure: e.structure.synthetic(db),
+                }))
+            }
+        }
     }
 }
 
@@ -397,7 +529,7 @@ impl Expression {
                     universes: e
                         .universes
                         .iter()
-                        .map(Universe::without_provenance)
+                        .map(|u| WithProvenance::new(u.contents.without_provenance()))
                         .collect(),
                 }),
             ),
@@ -444,9 +576,10 @@ impl Expression {
                     argument: e.argument.to_term(db),
                 }),
             ),
-            ExpressionT::Sort(e) => {
-                Term::new(db, ExpressionT::Sort(Sort(e.0.without_provenance())))
-            }
+            ExpressionT::Sort(e) => Term::new(
+                db,
+                ExpressionT::Sort(Sort(WithProvenance::new(e.0.contents.without_provenance()))),
+            ),
             ExpressionT::Region => Term::new(db, ExpressionT::Region),
             ExpressionT::RegionT => Term::new(db, ExpressionT::RegionT),
             ExpressionT::StaticRegion => Term::new(db, ExpressionT::StaticRegion),

@@ -1,7 +1,6 @@
 // TODO: Document this module, taking care to detail each universe operation.
 
 use crate::basic::*;
-use fcommon::SourceSpan;
 use serde::{Deserialize, Serialize};
 
 /// A concrete universe level.
@@ -24,6 +23,10 @@ where
     pub fn without_provenance(&self) -> UniverseVariable<()> {
         UniverseVariable(self.0.without_provenance())
     }
+
+    pub fn synthetic(&self) -> UniverseVariable<Provenance> {
+        UniverseVariable(self.0.synthetic())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,7 +39,11 @@ where
     P: Default + PartialEq,
 {
     pub fn without_provenance(&self) -> UniverseSucc<()> {
-        UniverseSucc(Box::new(self.0.without_provenance()))
+        UniverseSucc(Box::new(WithProvenance::new(self.0.without_provenance())))
+    }
+
+    pub fn synthetic(&self) -> UniverseSucc<Provenance> {
+        UniverseSucc(Box::new(WithProvenance::new_synthetic(self.0.synthetic())))
     }
 }
 
@@ -56,8 +63,15 @@ where
 {
     pub fn without_provenance(&self) -> UniverseMax<()> {
         UniverseMax {
-            left: Box::new(self.left.without_provenance()),
-            right: Box::new(self.right.without_provenance()),
+            left: Box::new(WithProvenance::new(self.left.without_provenance())),
+            right: Box::new(WithProvenance::new(self.right.without_provenance())),
+        }
+    }
+
+    pub fn synthetic(&self) -> UniverseMax<Provenance> {
+        UniverseMax {
+            left: Box::new(WithProvenance::new_synthetic(self.left.synthetic())),
+            right: Box::new(WithProvenance::new_synthetic(self.right.synthetic())),
         }
     }
 }
@@ -78,8 +92,15 @@ where
 {
     pub fn without_provenance(&self) -> UniverseImpredicativeMax<()> {
         UniverseImpredicativeMax {
-            left: Box::new(self.left.without_provenance()),
-            right: Box::new(self.right.without_provenance()),
+            left: Box::new(WithProvenance::new(self.left.without_provenance())),
+            right: Box::new(WithProvenance::new(self.right.without_provenance())),
+        }
+    }
+
+    pub fn synthetic(&self) -> UniverseImpredicativeMax<Provenance> {
+        UniverseImpredicativeMax {
+            left: Box::new(WithProvenance::new_synthetic(self.left.synthetic())),
+            right: Box::new(WithProvenance::new_synthetic(self.right.synthetic())),
         }
     }
 }
@@ -124,6 +145,23 @@ where
             UniverseContents::Metauniverse(meta) => UniverseContents::Metauniverse(*meta),
         }
     }
+
+    pub fn synthetic(&self) -> UniverseContents<Provenance> {
+        match self {
+            UniverseContents::UniverseZero => UniverseContents::UniverseZero,
+            UniverseContents::UniverseVariable(var) => {
+                UniverseContents::UniverseVariable(var.synthetic())
+            }
+            UniverseContents::UniverseSucc(succ) => {
+                UniverseContents::UniverseSucc(succ.synthetic())
+            }
+            UniverseContents::UniverseMax(max) => UniverseContents::UniverseMax(max.synthetic()),
+            UniverseContents::UniverseImpredicativeMax(imax) => {
+                UniverseContents::UniverseImpredicativeMax(imax.synthetic())
+            }
+            UniverseContents::Metauniverse(meta) => UniverseContents::Metauniverse(*meta),
+        }
+    }
 }
 
 pub type Universe<P> = WithProvenance<P, UniverseContents<P>>;
@@ -133,43 +171,10 @@ pub struct Univ {
     pub value: Universe<()>,
 }
 
-impl Universe<Provenance> {
-    pub fn new_with_span(source_span: SourceSpan, contents: UniverseContents<Provenance>) -> Self {
-        Self {
-            provenance: Provenance::Feather(source_span),
-            contents,
-        }
-    }
-
-    pub fn new_synthetic(contents: UniverseContents<Provenance>) -> Self {
-        Self {
-            provenance: Provenance::Synthetic,
-            contents,
-        }
-    }
-
-    pub fn new_with_provenance(
-        provenance: Provenance,
-        contents: UniverseContents<Provenance>,
-    ) -> Self {
-        Self {
-            provenance,
-            contents,
-        }
-    }
-}
-
 impl<P> Universe<P>
 where
     P: Default + PartialEq,
 {
-    pub fn without_provenance(&self) -> Universe<()> {
-        Universe {
-            provenance: (),
-            contents: self.contents.without_provenance(),
-        }
-    }
-
     /// Compares two universes for equality, ignoring provenance data.
     pub fn eq_ignoring_provenance(&self, other: &Universe<P>) -> bool {
         match (&self.contents, &other.contents) {

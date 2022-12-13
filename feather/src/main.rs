@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use fcommon::{Path, Source, SourceType, Str};
+use fcommon::{with_local_database, Path, Source, SourceType, Str};
 use qdb::QuillDatabase;
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
@@ -38,6 +38,27 @@ fn main() {
 
     if let Some(result) = result.value() {
         println!("{result:#?}");
+
+        for def in &result.items {
+            if let fexpr::module::Item::Definition(def) = def {
+                if let Some(expr) = &def.expr {
+                    let result = fkernel::typeck::infer_type(&db, expr.to_term(&db));
+                    match result {
+                        Ok(result) => println!(
+                            "{}",
+                            with_local_database(&db, || {
+                                ron::ser::to_string_pretty(
+                                    &result.to_expression(&db),
+                                    ron::ser::PrettyConfig::default(),
+                                )
+                                .unwrap()
+                            })
+                        ),
+                        Err(error) => println!("Error: {error:#?}"),
+                    }
+                }
+            }
+        }
     }
 
     // TODO: <https://github.com/salsa-rs/salsa/blob/master/examples-2022/lazy-input/src/main.rs>

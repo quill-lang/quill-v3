@@ -206,6 +206,7 @@ dependencies = [
  "fexpr",
  "fkernel",
  "qdb",
+ "ron",
  "salsa-2022",
  "tracing",
  "tracing-subscriber",

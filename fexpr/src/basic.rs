@@ -85,6 +85,36 @@ impl<T> WithProvenance<(), T> {
     }
 }
 
+impl<T> WithProvenance<Provenance, T> {
+    pub fn without_provenance(self) -> WithProvenance<(), T> {
+        WithProvenance {
+            provenance: (),
+            contents: self.contents,
+        }
+    }
+
+    pub fn new_with_span(source_span: SourceSpan, contents: T) -> Self {
+        Self {
+            provenance: Provenance::Feather(source_span),
+            contents,
+        }
+    }
+
+    pub fn new_synthetic(contents: T) -> Self {
+        Self {
+            provenance: Provenance::Synthetic,
+            contents,
+        }
+    }
+
+    pub fn new_with_provenance(provenance: Provenance, contents: T) -> Self {
+        Self {
+            provenance,
+            contents,
+        }
+    }
+}
+
 impl<P, T> Debug for WithProvenance<P, T>
 where
     P: Debug + Default + PartialEq,
@@ -178,10 +208,11 @@ where
     P: Default + PartialEq,
 {
     pub fn without_provenance(&self) -> Name<()> {
-        Name(WithProvenance {
-            provenance: (),
-            contents: **self,
-        })
+        Name(WithProvenance::new(**self))
+    }
+
+    pub fn synthetic(&self) -> Name<Provenance> {
+        Name(WithProvenance::new_synthetic(**self))
     }
 }
 
@@ -332,6 +363,12 @@ where
                 .map(Name::without_provenance)
                 .collect(),
         })
+    }
+
+    pub fn synthetic(&self) -> QualifiedName<Provenance> {
+        QualifiedName(WithProvenance::new_synthetic(
+            self.0.contents.iter().map(Name::synthetic).collect(),
+        ))
     }
 }
 
