@@ -229,10 +229,14 @@ pub fn get_max_height(db: &dyn Db, t: Term) -> DefinitionHeight {
 
 /// Finds the first instance of the given constant in the term.
 #[must_use]
-pub fn find_constant(db: &dyn Db, t: Term, name: QualifiedName<()>) -> Option<&Inst<()>> {
+pub fn find_constant<'db>(
+    db: &'db dyn Db,
+    t: Term,
+    name: &QualifiedName<()>,
+) -> Option<&'db Inst<()>> {
     find_in_term(db, t, |inner, _offset| {
         if let ExpressionT::Inst(inst) = inner.value(db) {
-            inst.name == name
+            inst.name == *name
         } else {
             false
         }

@@ -9,6 +9,7 @@ use crate::Db;
 /// If the term is `let x = _ in #0`, we return `#0`, because the inner `#0` refers to `x`.
 /// If the term is `let x = _ in #1`, we return `#0`, because the `#1` inside the `let` body
 /// refers to what we would call `#0` from outside the term.
+#[must_use]
 #[salsa::tracked]
 pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
     match t.value(db) {
@@ -51,6 +52,7 @@ pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
 /// This doesn't track metavariables, and after a substitution, it's possible that closed terms
 /// now contain free variables.
 /// The opposite of [`has_free_variables`].
+#[must_use]
 #[salsa::tracked]
 pub fn closed(db: &dyn Db, t: Term) -> bool {
     first_free_variable_index(db, t) == DeBruijnIndex::zero()
@@ -58,6 +60,7 @@ pub fn closed(db: &dyn Db, t: Term) -> bool {
 
 /// An term has *free variables* if there are any de Bruijn indices pointing outside the term.
 /// The opposite of [`closed`].
+#[must_use]
 #[salsa::tracked]
 pub fn has_free_variables(db: &dyn Db, t: Term) -> bool {
     !closed(db, t)
