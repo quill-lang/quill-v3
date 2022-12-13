@@ -19,6 +19,7 @@
 
 use std::cmp::max;
 
+use fcommon::with_local_database;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -358,6 +359,14 @@ pub struct Term {
 }
 
 impl Term {
+    /// We use [`ron`] to provide nice debug output for terms.
+    pub fn display(&self, db: &dyn Db) -> String {
+        with_local_database(db, || {
+            ron::ser::to_string_pretty(&self.to_expression(db), ron::ser::PrettyConfig::default())
+                .unwrap()
+        })
+    }
+
     /// Returns the sort of proof-irrelevant propositions.
     pub fn sort_prop(db: &dyn Db) -> Term {
         Term::new(

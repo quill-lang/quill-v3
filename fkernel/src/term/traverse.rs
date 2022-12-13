@@ -84,7 +84,7 @@ fn replace_in_term_offset(
                             region: replace_in_term_offset(db, t.structure.region, replace_fn.clone(), offset),
                             ..t.structure
                         },
-                        result: replace_in_term_offset(db, t.result, replace_fn, offset),
+                        result: replace_in_term_offset(db, t.result, replace_fn, offset.succ()),
                     }),
                 ),
                 ExpressionT::Pi(t) => Term::new(
@@ -98,14 +98,14 @@ fn replace_in_term_offset(
                             region: replace_in_term_offset(db, t.structure.region, replace_fn.clone(), offset),
                             ..t.structure
                         },
-                        result: replace_in_term_offset(db, t.result, replace_fn, offset),
+                        result: replace_in_term_offset(db, t.result, replace_fn, offset.succ()),
                     }),
                 ),
                 ExpressionT::RegionLambda(t) => Term::new(
                     db,
                     ExpressionT::RegionLambda(RegionBinder {
                         region_name: t.region_name,
-                        body: replace_in_term_offset(db, t.body, replace_fn, offset),
+                        body: replace_in_term_offset(db, t.body, replace_fn, offset.succ()),
                     }),
                 ),
                 ExpressionT::RegionPi(t) => Term::new(
@@ -126,14 +126,29 @@ fn replace_in_term_offset(
                     db,
                     ExpressionT::Lifespan(Lifespan {
                         ty: replace_in_term_offset(db, t.ty, replace_fn, offset),
-                    })
+                    }),
                 ),
                 ExpressionT::Sort(_)
                 | ExpressionT::Region
                 | ExpressionT::RegionT
-                | ExpressionT::StaticRegion
-                | ExpressionT::Metavariable(_)
-                | ExpressionT::LocalConstant(_) => t,
+                | ExpressionT::StaticRegion => t,
+                ExpressionT::Metavariable(t) => Term::new(
+                    db,
+                    ExpressionT::Metavariable(Metavariable {
+                        index: t.index,
+                        ty: replace_in_term_offset(db, t.ty, replace_fn, offset),
+                    }),
+                ),
+                ExpressionT::LocalConstant(t) => Term::new(
+                    db,
+                    ExpressionT::LocalConstant(LocalConstant {
+                        metavariable: Metavariable {
+                            index: t.metavariable.index,
+                            ty: replace_in_term_offset(db, t.metavariable.ty, replace_fn, offset),
+                        },
+                        structure: t.structure,
+                    }),
+                ),
             }
         }
         ReplaceResult::ReplaceWith(t_replaced) => {

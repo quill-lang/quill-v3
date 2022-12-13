@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use fcommon::{with_local_database, Path, Source, SourceType, Str};
+use fcommon::{Path, Source, SourceType, Str};
 use qdb::QuillDatabase;
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
@@ -44,16 +44,7 @@ fn main() {
                 if let Some(expr) = &def.expr {
                     let result = fkernel::typeck::infer_type(&db, expr.to_term(&db));
                     match result {
-                        Ok(result) => println!(
-                            "{}",
-                            with_local_database(&db, || {
-                                ron::ser::to_string_pretty(
-                                    &result.to_expression(&db),
-                                    ron::ser::PrettyConfig::default(),
-                                )
-                                .unwrap()
-                            })
-                        ),
+                        Ok(result) => println!("{}", result.display(&db)),
                         Err(error) => println!("Error: {error:#?}"),
                     }
                 }
