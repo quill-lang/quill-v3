@@ -103,7 +103,7 @@ pub enum Erasure {
     NotErased,
 }
 
-/// The possible ownership states for a function parameter.
+/// The possible ownership states for a bound variable, such as a function parameter.
 /// More precisely, this is [`Ownership`] without [`ReadOnly`].
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ParameterOwnership {

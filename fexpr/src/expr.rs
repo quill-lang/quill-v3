@@ -26,14 +26,26 @@ use crate::{
     Db,
 };
 
-pub trait ExpressionVariant<E> {
-    fn sub_expressions(&self) -> Vec<&E>;
-    fn sub_expressions_mut(&mut self) -> Vec<&mut E>;
+/// Use a bound local variable inside a `let` or an abstraction.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Local {
+    /// The local variable to be used.
+    pub index: DeBruijnIndex,
 }
 
-/// A bound local variable inside an abstraction.
+/// Borrow from a bound local variable inside a `let` or an abstraction.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Bound {
+pub struct Borrow {
+    /// The local variable to be borrowed.
+    pub index: DeBruijnIndex,
+}
+
+/// Retrieves the region that a given local variable may be borrowed for.
+/// Intuitively, this is the set of instructions for which the variable is in scope
+/// but has not yet been used in a [`Bound`] expression.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct LocalRegion {
+    /// The local variable that we want to extract the region from.
     pub index: DeBruijnIndex,
 }
 
@@ -48,27 +60,41 @@ where
     pub universes: Vec<Universe<P>>,
 }
 
+/// A bound variable in a lambda, pi, let, or lifespan expression.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct BoundVariable<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The name of the local variable to bind.
+    pub name: Name<P>,
+    /// The type of the value assigned to the bound variable.
+    pub ty: E,
+    /// The multiplicity for which the value is bound.
+    pub ownership: ParameterOwnership,
+}
+
+impl BoundVariable<Provenance, Box<Expression>> {
+    fn without_provenance(self, db: &dyn Db) -> BoundVariable<(), Term> {
+        BoundVariable {
+            name: self.name.without_provenance(),
+            ty: self.ty.to_term(db),
+            ownership: self.ownership,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Let<P, E>
 where
     P: Default + PartialEq,
 {
-    /// The name of the local variable to bind.
-    pub name_to_assign: Name<P>,
+    /// The local variable to bind.
+    pub bound: BoundVariable<P, E>,
     /// The value to assign to the new bound variable.
     pub to_assign: E,
-    /// The type of the value to assign to the bound variable.
-    pub to_assign_ty: E,
     /// The main body of the expression to be executed after assigning the value.
     pub body: E,
-}
-
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Borrow<E> {
-    /// The region for which to borrow the value.
-    pub region: DeBruijnIndex,
-    /// The value to be borrowed.
-    pub value: E,
 }
 
 /// How should the argument to this function be given?
@@ -84,24 +110,40 @@ pub enum BinderAnnotation {
     ImplicitTypeclass,
 }
 
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct BinderStructure<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The local variable to bind.
+    pub bound: BoundVariable<P, E>,
+    /// How the parameter should be filled when calling the function.
+    pub binder_annotation: BinderAnnotation,
+    /// The style by which the function is invoked.
+    pub invocation_type: InvocationType,
+    /// The region for which the function may be owned.
+    pub region: E,
+}
+
+impl BinderStructure<Provenance, Box<Expression>> {
+    fn without_provenance(self, db: &dyn Db) -> BinderStructure<(), Term> {
+        BinderStructure {
+            bound: self.bound.without_provenance(db),
+            binder_annotation: self.binder_annotation,
+            invocation_type: self.invocation_type,
+            region: self.region.to_term(db),
+        }
+    }
+}
+
 /// Either a lambda abstraction or the type of such lambda abstractions.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Binder<P, E>
 where
     P: Default + PartialEq,
 {
-    /// The name of the parameter.
-    pub parameter_name: Name<P>,
-    /// How the parameter should be filled when calling the function.
-    pub binder_annotation: BinderAnnotation,
-    /// The multiplicity for which the parameter to the function is owned.
-    pub ownership: ParameterOwnership,
-    /// The style by which the function is invoked.
-    pub invocation_type: InvocationType,
-    /// The region for which the function may be owned.
-    pub region: E,
-    /// The type of the parameter.
-    pub parameter_ty: E,
+    /// The structure of the binder.
+    pub structure: BinderStructure<P, E>,
     /// The result.
     /// If this is a lambda abstraction, this is the lambda term.
     /// If this is a function type, this is the type of the function's body.
@@ -116,9 +158,8 @@ where
     /// Generates a local constant that represents the argument to this dependent function type.
     pub fn generate_local(&self, meta_gen: &mut MetavariableGenerator<E>) -> LocalConstant<P, E> {
         LocalConstant {
-            name: self.parameter_name.clone(),
-            metavariable: meta_gen.gen(self.parameter_ty.clone()),
-            binder_annotation: self.binder_annotation,
+            metavariable: meta_gen.gen(self.structure.bound.ty.clone()),
+            structure: self.structure.clone(),
         }
     }
 }
@@ -126,18 +167,6 @@ where
 /// A region-polymorphic value, or the type of such values.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RegionBinder<P, E>
-where
-    P: Default + PartialEq,
-{
-    /// The name of the parameter.
-    pub region_name: Name<P>,
-    /// The body of the expression.
-    pub body: E,
-}
-
-/// Introduces a new region variable into the local context.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct LetRegion<P, E>
 where
     P: Default + PartialEq,
 {
@@ -178,6 +207,13 @@ pub struct Sort<P>(pub Universe<P>)
 where
     P: Default + PartialEq;
 
+/// The maximum possible lifespan of a type.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Lifespan<E> {
+    /// The type we are analysing the lifespan of.
+    pub ty: E,
+}
+
 /// An inference variable.
 /// May have theoretically any type.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -194,11 +230,9 @@ pub struct LocalConstant<P, E>
 where
     P: Default + PartialEq,
 {
-    /// The position of the name is where it was defined, not where it was used.
-    pub name: Name<P>,
     pub metavariable: Metavariable<E>,
-    /// How was this local variable introduced?
-    pub binder_annotation: BinderAnnotation,
+    /// The structure of the binder that introduced this local constant.
+    pub structure: BinderStructure<P, E>,
 }
 
 /// Generates unique inference variable names.
@@ -232,20 +266,22 @@ pub enum ExpressionT<P, E>
 where
     P: Default + PartialEq,
 {
-    Bound(Bound),
+    Local(Local),
+    Borrow(Borrow),
+    LocalRegion(LocalRegion),
     Inst(Inst<P>),
     Let(Let<P, E>),
-    Borrow(Borrow<E>),
     Lambda(Binder<P, E>),
-    RegionLambda(RegionBinder<P, E>),
     Pi(Binder<P, E>),
+    RegionLambda(RegionBinder<P, E>),
     RegionPi(RegionBinder<P, E>),
-    LetRegion(LetRegion<P, E>),
     Delta(Delta<E>),
     Apply(Apply<E>),
     Sort(Sort<P>),
     Region,
+    /// TODO: Remove this field, replacing it with a call to [`Inst`] to simplify the kernel.
     StaticRegion,
+    Lifespan(Lifespan<E>),
     Metavariable(Metavariable<E>),
     LocalConstant(LocalConstant<P, E>),
 }
@@ -275,13 +311,16 @@ impl<'de> Deserialize<'de> for Expression {
 
 #[salsa::interned]
 pub struct Term {
+    #[return_ref]
     pub value: ExpressionT<(), Term>,
 }
 
 impl Expression {
     pub fn to_term(self, db: &dyn Db) -> Term {
         match self.value.contents {
-            ExpressionT::Bound(e) => Term::new(db, ExpressionT::Bound(e)),
+            ExpressionT::Local(e) => Term::new(db, ExpressionT::Local(e)),
+            ExpressionT::Borrow(e) => Term::new(db, ExpressionT::Borrow(e)),
+            ExpressionT::LocalRegion(e) => Term::new(db, ExpressionT::LocalRegion(e)),
             ExpressionT::Inst(e) => Term::new(
                 db,
                 ExpressionT::Inst(Inst {
@@ -296,28 +335,22 @@ impl Expression {
             ExpressionT::Let(e) => Term::new(
                 db,
                 ExpressionT::Let(Let {
-                    name_to_assign: e.name_to_assign.without_provenance(),
+                    bound: e.bound.without_provenance(db),
                     to_assign: e.to_assign.to_term(db),
-                    to_assign_ty: e.to_assign_ty.to_term(db),
                     body: e.body.to_term(db),
-                }),
-            ),
-            ExpressionT::Borrow(e) => Term::new(
-                db,
-                ExpressionT::Borrow(Borrow {
-                    region: e.region,
-                    value: e.value.to_term(db),
                 }),
             ),
             ExpressionT::Lambda(e) => Term::new(
                 db,
                 ExpressionT::Lambda(Binder {
-                    parameter_name: e.parameter_name.without_provenance(),
-                    binder_annotation: e.binder_annotation,
-                    ownership: e.ownership,
-                    invocation_type: e.invocation_type,
-                    region: e.region.to_term(db),
-                    parameter_ty: e.parameter_ty.to_term(db),
+                    structure: e.structure.without_provenance(db),
+                    result: e.result.to_term(db),
+                }),
+            ),
+            ExpressionT::Pi(e) => Term::new(
+                db,
+                ExpressionT::Pi(Binder {
+                    structure: e.structure.without_provenance(db),
                     result: e.result.to_term(db),
                 }),
             ),
@@ -328,28 +361,9 @@ impl Expression {
                     body: e.body.to_term(db),
                 }),
             ),
-            ExpressionT::Pi(e) => Term::new(
-                db,
-                ExpressionT::Pi(Binder {
-                    parameter_name: e.parameter_name.without_provenance(),
-                    binder_annotation: e.binder_annotation,
-                    ownership: e.ownership,
-                    invocation_type: e.invocation_type,
-                    region: e.region.to_term(db),
-                    parameter_ty: e.parameter_ty.to_term(db),
-                    result: e.result.to_term(db),
-                }),
-            ),
             ExpressionT::RegionPi(e) => Term::new(
                 db,
                 ExpressionT::RegionPi(RegionBinder {
-                    region_name: e.region_name.without_provenance(),
-                    body: e.body.to_term(db),
-                }),
-            ),
-            ExpressionT::LetRegion(e) => Term::new(
-                db,
-                ExpressionT::LetRegion(LetRegion {
                     region_name: e.region_name.without_provenance(),
                     body: e.body.to_term(db),
                 }),
@@ -373,6 +387,12 @@ impl Expression {
             }
             ExpressionT::Region => Term::new(db, ExpressionT::Region),
             ExpressionT::StaticRegion => Term::new(db, ExpressionT::StaticRegion),
+            ExpressionT::Lifespan(e) => Term::new(
+                db,
+                ExpressionT::Lifespan(Lifespan {
+                    ty: e.ty.to_term(db),
+                }),
+            ),
             ExpressionT::Metavariable(e) => Term::new(
                 db,
                 ExpressionT::Metavariable(Metavariable {
@@ -383,12 +403,11 @@ impl Expression {
             ExpressionT::LocalConstant(e) => Term::new(
                 db,
                 ExpressionT::LocalConstant(LocalConstant {
-                    name: e.name.without_provenance(),
                     metavariable: Metavariable {
                         index: e.metavariable.index,
                         ty: e.metavariable.ty.to_term(db),
                     },
-                    binder_annotation: e.binder_annotation,
+                    structure: e.structure.without_provenance(db),
                 }),
             ),
         }

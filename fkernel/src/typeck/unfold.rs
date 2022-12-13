@@ -26,7 +26,7 @@ pub fn head_definition_height(db: &dyn Db, t: Term) -> Option<DefinitionHeight> 
 
 /// Returns the height of the definition that this [`Inst`] refers to.
 /// If this instance could not be resolved, was not a definition, or was not reducible, return [`None`].
-pub fn definition_height(db: &dyn Db, inst: Inst<()>) -> Option<DefinitionHeight> {
+pub fn definition_height(db: &dyn Db, inst: &Inst<()>) -> Option<DefinitionHeight> {
     certify_definition(db, inst.name.to_path(db))
         .value()
         .as_ref()

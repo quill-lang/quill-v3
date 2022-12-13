@@ -12,26 +12,24 @@ use crate::Db;
 #[salsa::tracked]
 pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
     match t.value(db) {
-        ExpressionT::Bound(Bound { index }) => index.succ(),
+        ExpressionT::Local(Local { index })
+        | ExpressionT::Borrow(Borrow { index })
+        | ExpressionT::LocalRegion(LocalRegion { index }) => index.succ(),
         ExpressionT::Inst(_) => DeBruijnIndex::zero(),
         ExpressionT::Let(let_expr) => std::cmp::max(
-            first_free_variable_index(db, let_expr.to_assign_ty),
+            first_free_variable_index(db, let_expr.bound.ty),
             first_free_variable_index(db, let_expr.body).pred(),
         ),
-        ExpressionT::Borrow(Borrow { region, value }) => {
-            std::cmp::max(region.succ(), first_free_variable_index(db, value))
-        }
         ExpressionT::Lambda(binder) | ExpressionT::Pi(binder) => std::cmp::max(
-            first_free_variable_index(db, binder.region),
+            first_free_variable_index(db, binder.structure.region),
             std::cmp::max(
-                first_free_variable_index(db, binder.parameter_ty),
+                first_free_variable_index(db, binder.structure.bound.ty),
                 first_free_variable_index(db, binder.result).pred(),
             ),
         ),
         ExpressionT::RegionLambda(reg) | ExpressionT::RegionPi(reg) => {
             first_free_variable_index(db, reg.body)
         }
-        ExpressionT::LetRegion(reg) => first_free_variable_index(db, reg.body),
         ExpressionT::Delta(delta) => std::cmp::max(
             first_free_variable_index(db, delta.region),
             first_free_variable_index(db, delta.ty),
@@ -40,6 +38,7 @@ pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
             first_free_variable_index(db, apply.function),
             first_free_variable_index(db, apply.argument),
         ),
+        ExpressionT::Lifespan(lifespan) => first_free_variable_index(db, lifespan.ty),
         ExpressionT::Sort(_) => DeBruijnIndex::zero(),
         ExpressionT::Region | ExpressionT::StaticRegion => DeBruijnIndex::zero(),
         ExpressionT::Metavariable(_) => DeBruijnIndex::zero(),

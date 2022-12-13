@@ -8,37 +8,53 @@
             name: "id",
             universe_params: ["u"],
             ty: (contents: Pi(
-                parameter_name: "T",
-                binder_annotation: ImplicitEager,
-                ownership: PZero,
-                invocation_type: Once,
-                region: (contents: StaticRegion),
-                parameter_ty: (contents: Sort((contents: UniverseVariable("u")))),
-                result: (contents: Pi(
-                    parameter_name: "x",
-                    binder_annotation: Explicit,
-                    ownership: POwned,
+                structure: (
+                    bound: (
+                        name: "T",
+                        ty: (contents: Sort((contents: UniverseVariable("u")))),
+                        ownership: PZero,
+                    ),
+                    binder_annotation: ImplicitEager,
                     invocation_type: Once,
                     region: (contents: StaticRegion),
-                    parameter_ty: (contents: Bound(index: 0)),
-                    result: (contents: Bound(index: 1))
+                ),
+                result: (contents: Pi(
+                    structure: (
+                        bound: (
+                            name: "x",
+                            ty: (contents: Local(index: 0)),
+                            ownership: POwned,
+                        ),
+                        binder_annotation: Explicit,
+                        invocation_type: Once,
+                        region: (contents: StaticRegion),
+                    ),
+                    result: (contents: Local(index: 1))
                 ))
             )),
             expr: (contents: Lambda(
-                parameter_name: "T",
-                binder_annotation: ImplicitEager,
-                ownership: POwned,
+                structure: (
+                    bound: (
+                        name: "T",
+                        ty: (contents: Sort((contents: UniverseVariable("u")))),
+                        ownership: PZero,
+                    ),
+                    binder_annotation: ImplicitEager,
                     invocation_type: Once,
                     region: (contents: StaticRegion),
-                parameter_ty: (contents: Sort((contents: UniverseVariable("u")))),
+                ),
                 result: (contents: Lambda(
-                    parameter_name: "x",
-                    binder_annotation: Explicit,
-                    ownership: POwned,
-                    invocation_type: Once,
-                    region: (contents: StaticRegion),
-                    parameter_ty: (contents: Bound(index: 0)),
-                    result: (contents: Bound(index: 0))
+                    structure: (
+                        bound: (
+                            name: "x",
+                            ty: (contents: Local(index: 0)),
+                            ownership: POwned,
+                        ),
+                        binder_annotation: Explicit,
+                        invocation_type: Once,
+                        region: (contents: StaticRegion),
+                    ),
+                    result: (contents: Local(index: 0))
                 ))
             ))
         ))

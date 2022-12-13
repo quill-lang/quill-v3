@@ -16,8 +16,9 @@ pub struct QuillDatabase {
     storage: salsa::Storage<Self>,
     project_root: PathBuf,
     files: Arc<Mutex<HashMap<PathBuf, InputFile>>>,
-    watcher:
-        Arc<Mutex<notify_debouncer_mini::Debouncer<notify_debouncer_mini::notify::INotifyWatcher>>>,
+    watcher: Arc<
+        Mutex<notify_debouncer_mini::Debouncer<notify_debouncer_mini::notify::RecommendedWatcher>>,
+    >,
 }
 
 impl Debug for QuillDatabase {

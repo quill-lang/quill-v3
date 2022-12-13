@@ -10,7 +10,11 @@ pub mod queries;
 pub mod universe;
 
 #[salsa::jar(db = Db)]
-pub struct Jar(expr::Term, universe::Univ, queries::module_from_feather_source);
+pub struct Jar(
+    expr::Term,
+    universe::Univ,
+    queries::module_from_feather_source,
+);
 
 pub trait Db: fcommon::Db + salsa::DbWithJar<Jar> {}
 

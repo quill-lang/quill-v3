@@ -47,30 +47,44 @@ fn replace_in_term_offset(
         ReplaceResult::Skip => {
             // Traverse the sub-terms of `e`.
             match t.value(db) {
-                ExpressionT::Bound(_) | ExpressionT::Inst(_) => t,
+                ExpressionT::Local(_) | ExpressionT::Borrow(_) | ExpressionT::LocalRegion(_) | ExpressionT::Inst(_) => t,
                 ExpressionT::Let(t) => Term::new(
                     db,
                     ExpressionT::Let(Let {
-                        name_to_assign: t.name_to_assign,
+                        bound: BoundVariable {
+                            ty: replace_in_term_offset(db, t.bound.ty, replace_fn.clone(), offset),
+                            ..t.bound
+                        },
                         to_assign: replace_in_term_offset(db, t.to_assign, replace_fn.clone(), offset),
-                        to_assign_ty: replace_in_term_offset(db, t.to_assign_ty, replace_fn.clone(), offset),
                         body: replace_in_term_offset(db, t.body, replace_fn, offset.succ()),
-                    }),
-                ),
-                ExpressionT::Borrow(t) => Term::new(
-                    db,
-                    ExpressionT::Borrow(Borrow {
-                        region: t.region,
-                        value: replace_in_term_offset(db, t.value, replace_fn, offset),
                     }),
                 ),
                 ExpressionT::Lambda(t) => Term::new(
                     db,
                     ExpressionT::Lambda(Binder {
-                        region: replace_in_term_offset(db, t.region, replace_fn.clone(), offset),
-                        parameter_ty: replace_in_term_offset(db, t.parameter_ty, replace_fn.clone(), offset),
+                        structure: BinderStructure {
+                            bound: BoundVariable {
+                                ty: replace_in_term_offset(db, t.structure.bound.ty, replace_fn.clone(), offset),
+                                ..t.structure.bound
+                            },
+                            region: replace_in_term_offset(db, t.structure.region, replace_fn.clone(), offset),
+                            ..t.structure
+                        },
                         result: replace_in_term_offset(db, t.result, replace_fn, offset),
-                        ..t
+                    }),
+                ),
+                ExpressionT::Pi(t) => Term::new(
+                    db,
+                    ExpressionT::Pi(Binder {
+                        structure: BinderStructure {
+                            bound: BoundVariable {
+                                ty: replace_in_term_offset(db, t.structure.bound.ty, replace_fn.clone(), offset),
+                                ..t.structure.bound
+                            },
+                            region: replace_in_term_offset(db, t.structure.region, replace_fn.clone(), offset),
+                            ..t.structure
+                        },
+                        result: replace_in_term_offset(db, t.result, replace_fn, offset),
                     }),
                 ),
                 ExpressionT::RegionLambda(t) => Term::new(
@@ -80,25 +94,9 @@ fn replace_in_term_offset(
                         body: replace_in_term_offset(db, t.body, replace_fn, offset),
                     }),
                 ),
-                ExpressionT::Pi(t) => Term::new(
-                    db,
-                    ExpressionT::Pi(Binder {
-                        region: replace_in_term_offset(db, t.region, replace_fn.clone(), offset),
-                        parameter_ty: replace_in_term_offset(db, t.parameter_ty, replace_fn.clone(), offset),
-                        result: replace_in_term_offset(db, t.result, replace_fn, offset),
-                        ..t
-                    }),
-                ),
                 ExpressionT::RegionPi(t) => Term::new(
                     db,
                     ExpressionT::RegionPi(RegionBinder {
-                        region_name: t.region_name,
-                        body: replace_in_term_offset(db, t.body, replace_fn, offset.succ()),
-                    }),
-                ),
-                ExpressionT::LetRegion(t) => Term::new(
-                    db,
-                    ExpressionT::LetRegion(LetRegion {
                         region_name: t.region_name,
                         body: replace_in_term_offset(db, t.body, replace_fn, offset.succ()),
                     }),
@@ -116,6 +114,12 @@ fn replace_in_term_offset(
                         function: replace_in_term_offset(db, t.function, replace_fn.clone(), offset),
                         argument: replace_in_term_offset(db, t.argument, replace_fn, offset),
                     }),
+                ),
+                ExpressionT::Lifespan(t) => Term::new(
+                    db,
+                    ExpressionT::Lifespan(Lifespan {
+                        ty: replace_in_term_offset(db, t.ty, replace_fn, offset),
+                    })
                 ),
                 ExpressionT::Sort(_)
                 | ExpressionT::Region
@@ -154,26 +158,28 @@ fn find_in_term_offset(
         Some(t)
     } else {
         match t.value(db) {
-            ExpressionT::Bound(_) | ExpressionT::Inst(_) => None,
+            ExpressionT::Local(_)
+            | ExpressionT::Borrow(_)
+            | ExpressionT::LocalRegion(_)
+            | ExpressionT::Inst(_) => None,
             ExpressionT::Let(t) => find_in_term_offset(db, t.to_assign, predicate.clone(), offset)
-                .or_else(|| find_in_term_offset(db, t.to_assign_ty, predicate.clone(), offset))
+                .or_else(|| find_in_term_offset(db, t.bound.ty, predicate.clone(), offset))
                 .or_else(|| find_in_term_offset(db, t.body, predicate, offset.succ())),
-            ExpressionT::Borrow(t) => find_in_term_offset(db, t.value, predicate, offset),
             ExpressionT::Lambda(t) | ExpressionT::Pi(t) => {
-                find_in_term_offset(db, t.region, predicate.clone(), offset)
-                    .or_else(|| find_in_term_offset(db, t.parameter_ty, predicate.clone(), offset))
+                find_in_term_offset(db, t.structure.region, predicate.clone(), offset)
+                    .or_else(|| {
+                        find_in_term_offset(db, t.structure.bound.ty, predicate.clone(), offset)
+                    })
                     .or_else(|| find_in_term_offset(db, t.result, predicate, offset.succ()))
             }
             ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => {
-                find_in_term_offset(db, t.body, predicate, offset.succ())
-            }
-            ExpressionT::LetRegion(t) => {
                 find_in_term_offset(db, t.body, predicate, offset.succ())
             }
             ExpressionT::Delta(t) => find_in_term_offset(db, t.region, predicate.clone(), offset)
                 .or_else(|| find_in_term_offset(db, t.ty, predicate.clone(), offset)),
             ExpressionT::Apply(t) => find_in_term_offset(db, t.function, predicate.clone(), offset)
                 .or_else(|| find_in_term_offset(db, t.argument, predicate.clone(), offset)),
+            ExpressionT::Lifespan(t) => find_in_term_offset(db, t.ty, predicate, offset),
             ExpressionT::Sort(_)
             | ExpressionT::Region
             | ExpressionT::StaticRegion
@@ -223,7 +229,7 @@ pub fn get_max_height(db: &dyn Db, t: Term) -> DefinitionHeight {
 
 /// Finds the first instance of the given constant in the term.
 #[must_use]
-pub fn find_constant(db: &dyn Db, t: Term, name: QualifiedName<()>) -> Option<Inst<()>> {
+pub fn find_constant(db: &dyn Db, t: Term, name: QualifiedName<()>) -> Option<&Inst<()>> {
     find_in_term(db, t, |inner, _offset| {
         if let ExpressionT::Inst(inst) = inner.value(db) {
             inst.name == name
@@ -245,14 +251,9 @@ pub fn find_constant(db: &dyn Db, t: Term, name: QualifiedName<()>) -> Option<In
 #[must_use]
 #[salsa::tracked]
 pub fn instantiate(db: &dyn Db, t: Term, substitution: Term) -> Term {
-    fn replacement_function(
-        db: &dyn Db,
-        substitution: Term,
-        t: Term,
-        offset: DeBruijnOffset,
-    ) -> ReplaceResult {
+    replace_in_term(db, t, |t, offset| {
         match t.value(db) {
-            ExpressionT::Bound(Bound { index }) => {
+            ExpressionT::Local(Local { index }) => {
                 match index.cmp(&(DeBruijnIndex::zero() + offset)) {
                     Ordering::Less => {
                         // The variable is bound and has index lower than the offset, so we don't change it.
@@ -268,42 +269,15 @@ pub fn instantiate(db: &dyn Db, t: Term, substitution: Term) -> Term {
                         // instantiated a variable below it.
                         ReplaceResult::ReplaceWith(Term::new(
                             db,
-                            ExpressionT::Bound(Bound {
+                            ExpressionT::Local(Local {
                                 index: index.pred(),
                             }),
                         ))
                     }
                 }
             }
-            ExpressionT::Borrow(Borrow { region, value }) => {
-                match region.cmp(&(DeBruijnIndex::zero() + offset)) {
-                    Ordering::Less => ReplaceResult::Skip,
-                    Ordering::Equal => {
-                        // The variable is the smallest free de Bruijn index.
-                        // It is exactly the one we need to substitute.
-                        // But we cannot substitute anything for the region referenced by a [`Borrow`].
-                        todo!()
-                    }
-                    Ordering::Greater => ReplaceResult::ReplaceWith(Term::new(
-                        db,
-                        ExpressionT::Borrow(Borrow {
-                            region: region.pred(),
-                            value: replace_in_term_offset(
-                                db,
-                                t,
-                                |t, offset| replacement_function(db, substitution, t, offset),
-                                offset,
-                            ),
-                        }),
-                    )),
-                }
-            }
             _ => ReplaceResult::Skip,
         }
-    }
-
-    replace_in_term(db, t, |t, offset| {
-        replacement_function(db, substitution, t, offset)
     })
 }
 
@@ -317,7 +291,8 @@ pub fn instantiate_universe_parameters(
     universe_arguments: &[Universe<()>],
 ) -> Term {
     replace_in_term(db, t, |t, _offset| match t.value(db) {
-        ExpressionT::Inst(mut inst) => {
+        ExpressionT::Inst(inst) => {
+            let mut inst = inst.clone();
             for univ in &mut inst.universes {
                 for (param, replacement) in universe_params.iter().zip(universe_arguments) {
                     instantiate_universe(univ, &UniverseVariable(*param), replacement);
@@ -325,7 +300,8 @@ pub fn instantiate_universe_parameters(
             }
             ReplaceResult::ReplaceWith(Term::new(db, ExpressionT::Inst(inst)))
         }
-        ExpressionT::Sort(mut sort) => {
+        ExpressionT::Sort(sort) => {
+            let mut sort = sort.clone();
             for (param, replacement) in universe_params.iter().zip(universe_arguments) {
                 instantiate_universe(&mut sort.0, &UniverseVariable(*param), replacement);
             }
@@ -340,13 +316,13 @@ pub fn instantiate_universe_parameters(
 pub fn lift_free_vars(db: &dyn Db, t: Term, shift: DeBruijnOffset) -> Term {
     replace_in_term(db, t, |t, offset| {
         match t.value(db) {
-            ExpressionT::Bound(Bound { index }) => {
-                if index >= DeBruijnIndex::zero() + offset {
+            ExpressionT::Local(Local { index }) => {
+                if *index >= DeBruijnIndex::zero() + offset {
                     // The variable is free.
                     ReplaceResult::ReplaceWith(Term::new(
                         db,
-                        ExpressionT::Bound(Bound {
-                            index: index + shift,
+                        ExpressionT::Local(Local {
+                            index: *index + shift,
                         }),
                     ))
                 } else {
@@ -367,10 +343,10 @@ pub fn abstract_binder(
 ) -> Binder<(), Term> {
     let return_type = replace_in_term(db, return_type, |t, offset| match t.value(db) {
         ExpressionT::LocalConstant(inner_local) => {
-            if inner_local == local {
+            if *inner_local == local {
                 ReplaceResult::ReplaceWith(Term::new(
                     db,
-                    ExpressionT::Bound(Bound {
+                    ExpressionT::Local(Local {
                         index: DeBruijnIndex::zero() + offset,
                     }),
                 ))
@@ -382,12 +358,7 @@ pub fn abstract_binder(
     });
 
     Binder {
-        parameter_name: local.name,
-        binder_annotation: local.binder_annotation,
-        ownership: todo!(),
-        invocation_type: todo!(),
-        region: todo!(),
-        parameter_ty: local.metavariable.ty,
+        structure: local.structure,
         result: return_type,
     }
 }
@@ -419,13 +390,15 @@ pub fn replace_universe_variable(
     replacement: &Universe<()>,
 ) -> Term {
     replace_in_term(db, t, |t, _offset| match t.value(db) {
-        ExpressionT::Inst(mut inst) => {
+        ExpressionT::Inst(inst) => {
+            let mut inst = inst.clone();
             for u in &mut inst.universes {
                 instantiate_universe(u, var, replacement);
             }
             ReplaceResult::ReplaceWith(Term::new(db, ExpressionT::Inst(inst)))
         }
-        ExpressionT::Sort(mut sort) => {
+        ExpressionT::Sort(sort) => {
+            let mut sort = sort.clone();
             instantiate_universe(&mut sort.0, var, replacement);
             ReplaceResult::ReplaceWith(Term::new(db, ExpressionT::Sort(sort)))
         }
