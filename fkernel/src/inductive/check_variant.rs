@@ -106,22 +106,23 @@ pub(in crate::inductive) fn check_variant<'db>(
                             if result {
                                 Dr::ok(())
                             } else {
+                                println!(
+                                    "failed on {}",
+                                    variant.intro_rule.result.to_term(db).display(db)
+                                );
                                 Dr::fail(todo!())
                             }
                         })
                     })
                 }
             }
-            Err(err) => {
-                tracing::info!("{err:?}");
-                Dr::fail(
-                    intro_rule_ty
-                        .value
-                        .provenance
-                        .report(ReportKind::Error)
-                        .with_message("this introduction rule was not type correct"),
-                )
-            }
+            Err(err) => Dr::fail(
+                intro_rule_ty
+                    .value
+                    .provenance
+                    .report(ReportKind::Error)
+                    .with_message("this introduction rule was not type correct"),
+            ),
         }
     })
 }
@@ -268,15 +269,13 @@ fn is_valid_inductive_application<'db>(
                     .iter()
                     .take(info.inductive.global_params as usize)
                     .enumerate()
-                    .all(|(index, field)| {
-                        *field
-                            == Term::new(
-                                db,
-                                ExpressionT::Local(Local {
-                                    index: DeBruijnIndex::zero()
-                                        + DeBruijnOffset::new((field_index - index) as u32),
-                                }),
-                            )
+                    .all(|(index, field)| match field.value(db) {
+                        ExpressionT::Local(local) => {
+                            local.index + DeBruijnOffset::zero().succ()
+                                == DeBruijnIndex::zero()
+                                    + DeBruijnOffset::new((field_index - index) as u32)
+                        }
+                        _ => false,
                     });
                 // Check that the inductive does not appear in the index parameters.
                 let inductive_not_in_index = arguments

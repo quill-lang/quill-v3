@@ -9,16 +9,20 @@ include!(concat!(env!("OUT_DIR"), "/tests.rs"));
 fn run_test(file: &str) {
     let (db, _rx) = QuillDatabase::new(PathBuf::from("tests/src"));
 
+    println!("testing {file}");
+
     let source = Source::new(
         &db,
         Path::new(
             &db,
             file.split('/')
-                .map(|segment| Str::new(&db, segment.to_owned()))
+                .map(|segment| Str::new(&db, segment.replace(".ron", "")))
                 .collect(),
         ),
         SourceType::Feather,
     );
+
+    println!("source file is {}", source.path(&db).display(&db));
 
     let result = fexpr::queries::module_from_feather_source(&db, source);
     for report in result.reports() {
@@ -29,17 +33,29 @@ fn run_test(file: &str) {
 
     if let Some(result) = result.value() {
         for def in &result.items {
-            if let fexpr::module::Item::Definition(def) = def {
-                let result = fkernel::typeck::certify_definition(
-                    &db,
-                    Path::new(&db, {
+            match def {
+                fexpr::module::Item::Definition(def) => {
+                    let path = Path::new(&db, {
                         let mut segments = source.path(&db).segments(&db).clone();
                         segments.push(*def.name);
                         segments
-                    }),
-                );
+                    });
+                    println!("certifying {}", path.display(&db));
+                    let result = fkernel::typeck::certify_definition(&db, path);
 
-                assert!(result.reports().is_empty());
+                    assert!(result.reports().is_empty());
+                }
+                fexpr::module::Item::Inductive(ind) => {
+                    let path = Path::new(&db, {
+                        let mut segments = source.path(&db).segments(&db).clone();
+                        segments.push(*ind.name);
+                        segments
+                    });
+                    println!("certifying {}", path.display(&db));
+                    let result = fkernel::inductive::certify_inductive(&db, path);
+
+                    assert!(result.reports().is_empty());
+                }
             }
         }
     }
