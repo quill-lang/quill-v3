@@ -1,15 +1,17 @@
 //! Infers types of terms.
 
 use fcommon::Path;
-use fexpr::{expr::*, universe::*};
+use fexpr::{basic::Provenance, expr::*, universe::*};
 
-use crate::term::{
-    abstract_binder, has_free_variables, instantiate, instantiate_universe_parameters,
+use crate::{
+    inductive::get_inductive,
+    term::{
+        abstract_binder, has_free_variables, instantiate, instantiate_universe_parameters,
+        nary_binder_to_pi_expression,
+    },
 };
 
-use super::{
-    defeq::definitionally_equal, get_certified_definition, whnf::to_weak_head_normal_form, Db,
-};
+use super::{defeq::definitionally_equal, get_definition, whnf::to_weak_head_normal_form, Db};
 
 /// An error emitted by the kernel when performing type inference or definitional equality checking.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,23 +106,44 @@ fn infer_type_delta(db: &dyn Db, delta: &Delta<Term>) -> Ir<Term> {
 
 fn infer_type_inst(db: &dyn Db, inst: &Inst<()>) -> Ir<Term> {
     let path = inst.name.to_path(db);
-    match get_certified_definition(db, path) {
+    match get_definition(db, path).value() {
         Some(def) => {
-            if def.def().contents.universe_params.len() == inst.universes.len() {
+            if def.contents.universe_params.len() == inst.universes.len() {
                 for u in &inst.universes {
                     check_valid_universe(u)?;
                 }
                 Ok(instantiate_universe_parameters(
                     db,
-                    def.def().contents.ty.to_term(db),
-                    &def.def().contents.universe_params,
+                    def.contents.ty.to_term(db),
+                    &def.contents.universe_params,
                     &inst.universes,
                 ))
             } else {
                 Err(InferenceError::IncorrectUniverseArity)
             }
         }
-        None => Err(InferenceError::DefinitionNotFound(path)),
+        None => match get_inductive(db, path).value() {
+            Some(ind) => {
+                if ind.contents.universe_params.len() == inst.universes.len() {
+                    for u in &inst.universes {
+                        check_valid_universe(u)?;
+                    }
+                    Ok(instantiate_universe_parameters(
+                        db,
+                        nary_binder_to_pi_expression(
+                            Provenance::Synthetic,
+                            ind.contents.ty.clone(),
+                        )
+                        .to_term(db),
+                        &ind.contents.universe_params,
+                        &inst.universes,
+                    ))
+                } else {
+                    Err(InferenceError::IncorrectUniverseArity)
+                }
+            }
+            None => Err(InferenceError::DefinitionNotFound(path)),
+        },
     }
 }
 

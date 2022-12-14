@@ -5,9 +5,8 @@ use fexpr::{
 
 use crate::Db;
 
-mod check;
-
-pub use check::*;
+mod check_type;
+mod check_variant;
 
 /// Retrieves the definition with the given name.
 /// This definition will not have been type checked.
@@ -49,7 +48,16 @@ pub fn get_inductive(db: &dyn Db, path: Path) -> Dr<Inductive<Provenance, Box<Ex
 /// These should only be accessed using [`get_certified_inductive`], so that we don't double any error messages emitted.
 #[salsa::tracked(return_ref)]
 pub fn certify_inductive(db: &dyn Db, path: Path) -> Dr<()> {
-    check_inductive_type(db, path).map(|_| ())
+    check_type::check_inductive_type(db, path).bind(|info| {
+        Dr::sequence_unfail(
+            info.inductive
+                .variants
+                .iter()
+                .map(|variant| check_variant::check_variant(db, &info, variant)),
+        )
+        .deny()
+        .map(|_| ())
+    })
 }
 
 /// Type checks the definition with the given name, or retrieves it from the database if it was already type checked.

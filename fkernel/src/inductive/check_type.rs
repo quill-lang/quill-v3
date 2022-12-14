@@ -9,7 +9,7 @@ use fexpr::{
 use crate::{
     term::nary_binder_to_pi_expression,
     typeck::{as_sort, check_no_local_or_metavariable, infer_type},
-    universe::{is_nonzero, normalise_universe, is_zero},
+    universe::{is_nonzero, is_zero, normalise_universe},
     Db,
 };
 
@@ -41,7 +41,8 @@ fn largest_unusable_metavariable_in_inductive(
 }
 
 /// Some information used when creating things to do with inductives, such as match expressions.
-pub(in crate::inductive) struct InductiveTypeInformation {
+pub(in crate::inductive) struct InductiveTypeInformation<'db> {
+    pub inductive: &'db Inductive<Provenance, Box<Expression>>,
     /// The type yielded after all parameters have been applied to the inductive type.
     pub sort: Sort<()>,
     /// An [`Inst`] node which will instantiate the type of the inductive, with the given universe parameters.
@@ -76,6 +77,7 @@ pub(super) fn check_inductive_type(db: &dyn Db, path: Path) -> Dr<InductiveTypeI
                                 let never_zero = is_nonzero(&sort.0);
                                 let dependent_elimination = !is_zero(&sort.0);
                                 Dr::ok(InductiveTypeInformation {
+                                    inductive: ind,
                                     sort,
                                     inst: Inst {
                                         name: QualifiedName::from_path(db, path),

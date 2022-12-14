@@ -224,6 +224,19 @@ pub fn first_local_or_metavariable(db: &dyn Db, t: Term) -> Option<Term> {
     })
 }
 
+/// Returns true if the local variable given by `local` appears in `t`.
+#[must_use]
+pub fn local_is_bound(db: &dyn Db, t: Term, local: DeBruijnIndex) -> bool {
+    find_in_term(db, t, |inner, offset| {
+        if let ExpressionT::Local(bound) = inner.value(db) {
+            bound.index == local + offset
+        } else {
+            false
+        }
+    })
+    .is_some()
+}
+
 /// Traverses the term tree and finds terms matching the provided predicate.
 /// If any return `true`, the first such term is returned.
 /// The tree is traversed depth first.
@@ -250,13 +263,9 @@ pub fn get_max_height(db: &dyn Db, t: Term) -> DefinitionHeight {
     height
 }
 
-/// Finds the first instance of the given constant in the term.
+/// Finds the first instance of the given [`Inst`] in the term.
 #[must_use]
-pub fn find_constant<'db>(
-    db: &'db dyn Db,
-    t: Term,
-    name: &QualifiedName<()>,
-) -> Option<&'db Inst<()>> {
+pub fn find_inst<'db>(db: &'db dyn Db, t: Term, name: &QualifiedName<()>) -> Option<&'db Inst<()>> {
     find_in_term(db, t, |inner, _offset| {
         if let ExpressionT::Inst(inst) = inner.value(db) {
             inst.name == *name

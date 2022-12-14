@@ -27,11 +27,21 @@ impl Default for Provenance {
 
 impl Provenance {
     pub fn report(&self, report_kind: ReportKind) -> Report {
-        Report::new(report_kind, self.source().unwrap(), self.span().start)
+        Report::new(
+            report_kind,
+            self.source()
+                .expect("cannot create a report from synthetic provenance"),
+            self.span().start,
+        )
     }
 
     pub fn label(&self, ty: LabelType) -> Label {
-        Label::new(self.source().unwrap(), self.span(), ty)
+        Label::new(
+            self.source()
+                .expect("cannot create a label from synthetic provenance"),
+            self.span(),
+            ty,
+        )
     }
 }
 
@@ -443,6 +453,10 @@ impl DeBruijnOffset {
     /// Increase the offset by one.
     pub fn succ(self) -> DeBruijnOffset {
         Self(self.0 + 1)
+    }
+
+    pub fn new(offset: u32) -> DeBruijnOffset {
+        Self(offset)
     }
 }
 
