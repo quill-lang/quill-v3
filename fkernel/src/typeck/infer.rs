@@ -1,5 +1,6 @@
 //! Infers types of terms.
 
+use fcommon::Path;
 use fexpr::{expr::*, universe::*};
 
 use crate::term::{
@@ -15,12 +16,29 @@ use super::{
 pub enum InferenceError {
     TermNotClosed,
     IncorrectUniverseArity,
-    DefinitionNotFound,
+    DefinitionNotFound(Path),
     LetTypeMismatch,
     ApplyTypeMismatch,
     ExpectedSort,
     ExpectedPi,
     UnexpectedMetauniverse,
+}
+
+impl InferenceError {
+    pub fn display(&self, db: &dyn Db) -> String {
+        match self {
+            InferenceError::TermNotClosed => todo!(),
+            InferenceError::IncorrectUniverseArity => todo!(),
+            InferenceError::DefinitionNotFound(path) => {
+                format!("definition {} not found", path.to_string(db))
+            }
+            InferenceError::LetTypeMismatch => todo!(),
+            InferenceError::ApplyTypeMismatch => todo!(),
+            InferenceError::ExpectedSort => todo!(),
+            InferenceError::ExpectedPi => todo!(),
+            InferenceError::UnexpectedMetauniverse => todo!(),
+        }
+    }
 }
 
 /// Short for "inference result".
@@ -102,7 +120,7 @@ fn infer_type_inst(db: &dyn Db, inst: &Inst<()>) -> Ir<Term> {
                 Err(InferenceError::IncorrectUniverseArity)
             }
         }
-        None => Err(InferenceError::DefinitionNotFound),
+        None => Err(InferenceError::DefinitionNotFound(path)),
     }
 }
 

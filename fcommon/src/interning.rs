@@ -244,7 +244,11 @@ impl Path {
     }
 
     pub fn to_string(&self, db: &dyn Db) -> String {
-        self.to_path_buf(db).to_string_lossy().to_string()
+        self.segments(db)
+            .iter()
+            .map(|s| s.text(db).to_owned())
+            .collect::<Vec<_>>()
+            .join("::")
     }
 }
 

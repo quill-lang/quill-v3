@@ -24,5 +24,23 @@ fn run_test(file: &str) {
     for report in result.reports() {
         report.render(&db, std::io::stdout());
     }
+
     assert!(result.reports().is_empty());
+
+    if let Some(result) = result.value() {
+        for def in &result.items {
+            if let fexpr::module::Item::Definition(def) = def {
+                let result = fkernel::typeck::certify_definition(
+                    &db,
+                    Path::new(&db, {
+                        let mut segments = source.path(&db).segments(&db).clone();
+                        segments.push(*def.name);
+                        segments
+                    }),
+                );
+
+                assert!(result.reports().is_empty());
+            }
+        }
+    }
 }

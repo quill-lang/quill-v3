@@ -161,7 +161,7 @@
                             function: (contents: Apply(
                                 function: (contents: Apply(
                                     function: (contents: Inst(
-                                        name: (contents: ["test", "test", "K_combinator"]),
+                                        name: (contents: ["delta", "K_combinator"]),
                                         universes: [
                                             (contents: UniverseVariable("u")),
                                             (contents: UniverseVariable("u"))

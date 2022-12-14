@@ -159,6 +159,237 @@
                     ))
                 ))
             ))
+        )),
+        Definition(contents: (
+            name: "S_combinator",
+            universe_params: ["u", "v", "w"],
+            ty: (contents: Pi(
+                structure: (
+                    bound: (
+                        name: "A",
+                        ty: (contents: Sort((contents: UniverseVariable("u")))),
+                        ownership: PZero,
+                    ),
+                    binder_annotation: ImplicitEager,
+                    invocation_type: Once,
+                    region: (contents: StaticRegion),
+                ),
+                result: (contents: Pi(
+                    structure: (
+                        bound: (
+                            name: "B",
+                            ty: (contents: Sort((contents: UniverseVariable("v")))),
+                            ownership: PZero,
+                        ),
+                        binder_annotation: ImplicitEager,
+                        invocation_type: Once,
+                        region: (contents: StaticRegion),
+                    ),
+                    result: (contents: Pi(
+                        structure: (
+                            bound: (
+                                name: "C",
+                                ty: (contents: Sort((contents: UniverseVariable("w")))),
+                                ownership: PZero,
+                            ),
+                            binder_annotation: ImplicitEager,
+                            invocation_type: Once,
+                            region: (contents: StaticRegion),
+                        ),
+                        result: (contents: Pi(
+                            structure: (
+                                bound: (
+                                    name: "x",
+                                    ty: (contents: Pi(
+                                        structure: (
+                                            bound: (
+                                                name: "a",
+                                                ty: (contents: Local(index: 2)),
+                                                ownership: POwned,
+                                            ),
+                                            binder_annotation: Explicit,
+                                            invocation_type: Once,
+                                            region: (contents: StaticRegion),
+                                        ),
+                                        result: (contents: Pi(
+                                            structure: (
+                                                bound: (
+                                                    name: "a",
+                                                    ty: (contents: Local(index: 2)),
+                                                    ownership: POwned,
+                                                ),
+                                                binder_annotation: Explicit,
+                                                invocation_type: Once,
+                                                region: (contents: StaticRegion),
+                                            ),
+                                            result: (contents: Local(index: 2)),
+                                        ))
+                                    )),
+                                    ownership: PZero,
+                                ),
+                                binder_annotation: Explicit,
+                                invocation_type: Once,
+                                region: (contents: StaticRegion),
+                            ),
+                            result: (contents: Pi(
+                                structure: (
+                                    bound: (
+                                        name: "y",
+                                        ty: (contents: Pi(
+                                            structure: (
+                                                bound: (
+                                                    name: "a",
+                                                    ty: (contents: Local(index: 3)),
+                                                    ownership: POwned,
+                                                ),
+                                                binder_annotation: Explicit,
+                                                invocation_type: Once,
+                                                region: (contents: StaticRegion),
+                                            ),
+                                            result: (contents: Local(index: 3)),
+                                        )),
+                                        ownership: POwned,
+                                    ),
+                                    binder_annotation: Explicit,
+                                    invocation_type: Once,
+                                    region: (contents: StaticRegion),
+                                ),
+                                result: (contents: Pi(
+                                    structure: (
+                                        bound: (
+                                            name: "z",
+                                            ty: (contents: Local(index: 4)),
+                                            ownership: POwned,
+                                        ),
+                                        binder_annotation: Explicit,
+                                        invocation_type: Once,
+                                        region: (contents: StaticRegion),
+                                    ),
+                                    result: (contents: Local(index: 3)),
+                                ))
+                            ))
+                        ))
+                    ))
+                ))
+            )),
+            expr: (contents: Lambda(
+                structure: (
+                    bound: (
+                        name: "A",
+                        ty: (contents: Sort((contents: UniverseVariable("u")))),
+                        ownership: PZero,
+                    ),
+                    binder_annotation: ImplicitEager,
+                    invocation_type: Once,
+                    region: (contents: StaticRegion),
+                ),
+                result: (contents: Lambda(
+                    structure: (
+                        bound: (
+                            name: "B",
+                            ty: (contents: Sort((contents: UniverseVariable("v")))),
+                            ownership: PZero,
+                        ),
+                        binder_annotation: ImplicitEager,
+                        invocation_type: Once,
+                        region: (contents: StaticRegion),
+                    ),
+                    result: (contents: Lambda(
+                        structure: (
+                            bound: (
+                                name: "C",
+                                ty: (contents: Sort((contents: UniverseVariable("w")))),
+                                ownership: PZero,
+                            ),
+                            binder_annotation: ImplicitEager,
+                            invocation_type: Once,
+                            region: (contents: StaticRegion),
+                        ),
+                        result: (contents: Lambda(
+                            structure: (
+                                bound: (
+                                    name: "x",
+                                    ty: (contents: Pi(
+                                        structure: (
+                                            bound: (
+                                                name: "a",
+                                                ty: (contents: Local(index: 2)),
+                                                ownership: POwned,
+                                            ),
+                                            binder_annotation: Explicit,
+                                            invocation_type: Once,
+                                            region: (contents: StaticRegion),
+                                        ),
+                                        result: (contents: Pi(
+                                            structure: (
+                                                bound: (
+                                                    name: "a",
+                                                    ty: (contents: Local(index: 2)),
+                                                    ownership: POwned,
+                                                ),
+                                                binder_annotation: Explicit,
+                                                invocation_type: Once,
+                                                region: (contents: StaticRegion),
+                                            ),
+                                            result: (contents: Local(index: 2)),
+                                        ))
+                                    )),
+                                    ownership: PZero,
+                                ),
+                                binder_annotation: Explicit,
+                                invocation_type: Once,
+                                region: (contents: StaticRegion),
+                            ),
+                            result: (contents: Lambda(
+                                structure: (
+                                    bound: (
+                                        name: "y",
+                                        ty: (contents: Pi(
+                                            structure: (
+                                                bound: (
+                                                    name: "a",
+                                                    ty: (contents: Local(index: 3)),
+                                                    ownership: POwned,
+                                                ),
+                                                binder_annotation: Explicit,
+                                                invocation_type: Once,
+                                                region: (contents: StaticRegion),
+                                            ),
+                                            result: (contents: Local(index: 3)),
+                                        )),
+                                        ownership: POwned,
+                                    ),
+                                    binder_annotation: Explicit,
+                                    invocation_type: Once,
+                                    region: (contents: StaticRegion),
+                                ),
+                                result: (contents: Lambda(
+                                    structure: (
+                                        bound: (
+                                            name: "z",
+                                            ty: (contents: Local(index: 4)),
+                                            ownership: POwned,
+                                        ),
+                                        binder_annotation: Explicit,
+                                        invocation_type: Once,
+                                        region: (contents: StaticRegion),
+                                    ),
+                                    result: (contents: Apply(
+                                        function: (contents: Apply(
+                                            function: (contents: Local(index: 2)),
+                                            argument: (contents: Local(index: 0)),
+                                        )),
+                                        argument: (contents: Apply(
+                                            function: (contents: Local(index: 1)),
+                                            argument: (contents: Local(index: 0)),
+                                        )),
+                                    )),
+                                ))
+                            ))
+                        ))
+                    ))
+                ))
+            ))
         ))
     ]
 ))
