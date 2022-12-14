@@ -13,7 +13,6 @@ pub mod universe;
 pub struct Jar(
     expr::largest_unusable_metavariable,
     expr::Term,
-    universe::Univ,
     queries::module_from_feather_source,
 );
 

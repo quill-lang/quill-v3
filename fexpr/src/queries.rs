@@ -7,7 +7,7 @@ use crate::{basic::Provenance, expr::Expression, module::Module, Db};
 pub fn module_from_feather_source(
     db: &dyn Db,
     source: Source,
-) -> Dr<Module<Provenance, Expression>> {
+) -> Dr<Module<Provenance, Box<Expression>>> {
     fcommon::source(db, source).bind(|file_contents| {
         with_local_database(db, || match ron::from_str(file_contents.contents(db)) {
             Ok(module) => Dr::ok(module),

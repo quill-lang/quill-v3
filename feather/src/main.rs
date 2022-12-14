@@ -38,25 +38,48 @@ fn main() {
 
     if let Some(result) = result.value() {
         for def in &result.items {
-            if let fexpr::module::Item::Definition(def) = def {
-                let result = fkernel::typeck::certify_definition(
-                    &db,
-                    Path::new(
+            match def {
+                fexpr::module::Item::Definition(def) => {
+                    let result = fkernel::typeck::certify_definition(
                         &db,
-                        vec![
-                            Str::new(&db, "test".to_string()),
-                            Str::new(&db, "test".to_string()),
-                            *def.name,
-                        ],
-                    ),
-                );
+                        Path::new(
+                            &db,
+                            vec![
+                                Str::new(&db, "test".to_string()),
+                                Str::new(&db, "test".to_string()),
+                                *def.name,
+                            ],
+                        ),
+                    );
 
-                for report in result.reports() {
-                    report.render(&db, &mut stderr);
+                    for report in result.reports() {
+                        report.render(&db, &mut stderr);
+                    }
+
+                    if result.value().is_some() {
+                        tracing::info!("certified {}", def.name.text(&db));
+                    }
                 }
+                fexpr::module::Item::Inductive(ind) => {
+                    let result = fkernel::inductive::certify_inductive(
+                        &db,
+                        Path::new(
+                            &db,
+                            vec![
+                                Str::new(&db, "test".to_string()),
+                                Str::new(&db, "test".to_string()),
+                                *ind.name,
+                            ],
+                        ),
+                    );
 
-                if result.value().is_some() {
-                    tracing::info!("certified {}", def.name.text(&db));
+                    for report in result.reports() {
+                        report.render(&db, &mut stderr);
+                    }
+
+                    if result.value().is_some() {
+                        tracing::info!("certified {}", ind.name.text(&db));
+                    }
                 }
             }
         }

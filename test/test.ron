@@ -4,179 +4,26 @@
 
 (contents: (
     items: [
-        Definition(contents: (
-            name: "K_combinator",
-            universe_params: ["u", "v"],
-            ty: (contents: Pi(
-                structure: (
-                    bound: (
-                        name: "A",
-                        ty: (contents: Sort((contents: UniverseVariable("u")))),
-                        ownership: PZero,
-                    ),
-                    binder_annotation: ImplicitEager,
-                    invocation_type: Once,
-                    region: (contents: StaticRegion),
-                ),
-                result: (contents: Pi(
-                    structure: (
-                        bound: (
-                            name: "B",
-                            ty: (contents: Sort((contents: UniverseVariable("v")))),
-                            ownership: PZero,
-                        ),
-                        binder_annotation: ImplicitEager,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                    result: (contents: Pi(
-                        structure: (
-                            bound: (
-                                name: "x",
-                                ty: (contents: Local(index: 1)),
-                                ownership: POwned,
-                            ),
-                            binder_annotation: Explicit,
-                            invocation_type: Once,
-                            region: (contents: StaticRegion),
-                        ),
-                        result: (contents: Pi(
-                            structure: (
-                                bound: (
-                                    name: "y",
-                                    ty: (contents: Local(index: 1)),
-                                    ownership: POwned,
-                                ),
-                                binder_annotation: Explicit,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            result: (contents: Local(index: 3)),
-                        ))
-                    ))
-                ))
-            )),
-            expr: (contents: Lambda(
-                structure: (
-                    bound: (
-                        name: "A",
-                        ty: (contents: Sort((contents: UniverseVariable("u")))),
-                        ownership: PZero,
-                    ),
-                    binder_annotation: ImplicitEager,
-                    invocation_type: Once,
-                    region: (contents: StaticRegion),
-                ),
-                result: (contents: Lambda(
-                    structure: (
-                        bound: (
-                            name: "B",
-                            ty: (contents: Sort((contents: UniverseVariable("v")))),
-                            ownership: PZero,
-                        ),
-                        binder_annotation: ImplicitEager,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                    result: (contents: Lambda(
-                        structure: (
-                            bound: (
-                                name: "x",
-                                ty: (contents: Local(index: 1)),
-                                ownership: POwned,
-                            ),
-                            binder_annotation: Explicit,
-                            invocation_type: Once,
-                            region: (contents: StaticRegion),
-                        ),
-                        result: (contents: Lambda(
-                            structure: (
-                                bound: (
-                                    name: "y",
-                                    ty: (contents: Local(index: 1)),
-                                    ownership: POwned,
-                                ),
-                                binder_annotation: Explicit,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            result: (contents: Local(index: 1)),
-                        ))
-                    ))
-                ))
-            ))
-        )),
-        Definition(contents: (
-            name: "I_combinator_from_K",
+        Inductive(contents: (
+            name: "PUnit",
             universe_params: ["u"],
-            ty: (contents: Pi(
-                structure: (
-                    bound: (
-                        name: "T",
-                        ty: (contents: Sort((contents: UniverseVariable("u")))),
-                        ownership: PZero,
-                    ),
-                    binder_annotation: ImplicitEager,
-                    invocation_type: Once,
-                    region: (contents: StaticRegion),
-                ),
-                result: (contents: Pi(
-                    structure: (
-                        bound: (
-                            name: "x",
-                            ty: (contents: Local(index: 0)),
-                            ownership: POwned,
-                        ),
-                        binder_annotation: Explicit,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                    result: (contents: Local(index: 1))
-                ))
-            )),
-            expr: (contents: Lambda(
-                structure: (
-                    bound: (
-                        name: "T",
-                        ty: (contents: Sort((contents: UniverseVariable("u")))),
-                        ownership: PZero,
-                    ),
-                    binder_annotation: ImplicitEager,
-                    invocation_type: Once,
-                    region: (contents: StaticRegion),
-                ),
-                result: (contents: Lambda(
-                    structure: (
-                        bound: (
-                            name: "x",
-                            ty: (contents: Local(index: 0)),
-                            ownership: POwned,
-                        ),
-                        binder_annotation: Explicit,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                    result: (contents: Apply(
-                        function: (contents: Apply(
-                            function: (contents: Apply(
-                                function: (contents: Apply(
-                                    function: (contents: Inst(
-                                        name: (contents: ["test", "test", "K_combinator"]),
-                                        universes: [
-                                            (contents: UniverseVariable("u")),
-                                            (contents: UniverseVariable("u"))
-                                        ],
-                                    )),
-                                    argument: (contents: Local(index: 1)),
-                                )),
-                                argument: (contents: Local(index: 1)),
-                            )),
-                            argument: (contents: Local(index: 0)),
-                        )),
-                        argument: (contents: Local(index: 0)),
-                    ))
-                ))
-            ))
-        )),
+            ty: (
+                structures: [],
+                result: (contents: Sort((contents: UniverseVariable("u")))),
+            ),
+            global_params: 0,
+            variants: [
+                (
+                    name: "star",
+                    intro_rule: (
+                        structures: [],
+                        result: (contents: Inst(
+                            name: (contents: ["test", "test", "PUnit"]),
+                            universes: [(contents: UniverseVariable("u"))],
+                        ))
+                    )
+                )
+            ],
+        ))
     ]
 ))

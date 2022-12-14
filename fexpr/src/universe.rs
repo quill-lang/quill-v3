@@ -166,11 +166,6 @@ where
 
 pub type Universe<P> = WithProvenance<P, UniverseContents<P>>;
 
-#[salsa::interned]
-pub struct Univ {
-    pub value: Universe<()>,
-}
-
 impl<P> Universe<P>
 where
     P: Default + PartialEq,

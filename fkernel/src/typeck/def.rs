@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// No data inside a certified definition can be changed; this preserves the certification status.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CertifiedDefinition {
-    def: Definition<Provenance, Expression>,
+    def: Definition<Provenance, Box<Expression>>,
     /// The type of the type of the definition, stored as a sort.
     sort: Sort<()>,
     reducibility_hints: ReducibilityHints,
@@ -32,7 +32,7 @@ pub enum DefinitionOrigin {
 
 impl CertifiedDefinition {
     pub(in crate::typeck) fn new(
-        def: Definition<Provenance, Expression>,
+        def: Definition<Provenance, Box<Expression>>,
         sort: Sort<()>,
         reducibility_hints: ReducibilityHints,
         origin: DefinitionOrigin,
@@ -45,7 +45,7 @@ impl CertifiedDefinition {
         }
     }
 
-    pub fn def(&self) -> &Definition<Provenance, Expression> {
+    pub fn def(&self) -> &Definition<Provenance, Box<Expression>> {
         &self.def
     }
 

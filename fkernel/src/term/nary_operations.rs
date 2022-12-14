@@ -1,7 +1,10 @@
 //! Provides utilities for working with n-ary functions, even though
 //! function currying makes all functions behave like they are unary.
 
-use fexpr::expr::*;
+use fexpr::{
+    basic::{Provenance, WithProvenance},
+    expr::*,
+};
 
 use crate::Db;
 
@@ -97,4 +100,52 @@ pub fn abstract_nary_pi(
     locals.rev().fold(result, |result, local| {
         Term::new(db, ExpressionT::Pi(abstract_binder(db, local, result)))
     })
+}
+
+/// Converts an [`NaryBinder`] into a [`ExpressionT::Lambda`] expression that represents the same binders.
+#[must_use]
+pub fn nary_binder_to_lambda(db: &dyn Db, nary_binder: NaryBinder<(), Term>) -> Term {
+    nary_binder
+        .structures
+        .iter()
+        .copied()
+        .rev()
+        .fold(nary_binder.result, |result, structure| {
+            Term::new(db, ExpressionT::Lambda(Binder { structure, result }))
+        })
+}
+
+/// Converts an [`NaryBinder`] into a [`ExpressionT::Pi`] expression that represents the same binders.
+#[must_use]
+pub fn nary_binder_to_pi(db: &dyn Db, nary_binder: NaryBinder<(), Term>) -> Term {
+    nary_binder
+        .structures
+        .iter()
+        .copied()
+        .rev()
+        .fold(nary_binder.result, |result, structure| {
+            Term::new(db, ExpressionT::Pi(Binder { structure, result }))
+        })
+}
+
+/// Converts an [`NaryBinder`] into a [`ExpressionT::Pi`] expression that represents the same binders.
+#[must_use]
+pub fn nary_binder_to_pi_expression(
+    provenance: Provenance,
+    nary_binder: NaryBinder<Provenance, Box<Expression>>,
+) -> Expression {
+    nary_binder
+        .structures
+        .iter()
+        .cloned()
+        .rev()
+        .fold(*nary_binder.result, |result, structure| Expression {
+            value: WithProvenance::new_with_provenance(
+                provenance,
+                ExpressionT::Pi(Binder {
+                    structure,
+                    result: Box::new(result),
+                }),
+            ),
+        })
 }

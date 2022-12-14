@@ -4,7 +4,6 @@ use fexpr::{
     definition::Definition,
     expr::{Expression, Sort},
     queries::module_from_feather_source,
-    universe::Univ,
 };
 
 use crate::{
@@ -28,7 +27,7 @@ pub use whnf::*;
 /// Retrieves the definition with the given name.
 /// This definition will not have been type checked.
 #[salsa::tracked(return_ref)]
-pub fn get_definition(db: &dyn Db, path: Path) -> Dr<Definition<Provenance, Expression>> {
+pub fn get_definition(db: &dyn Db, path: Path) -> Dr<Definition<Provenance, Box<Expression>>> {
     let (source, name) = path.split_last(db);
     module_from_feather_source(db, Source::new(db, source, SourceType::Feather))
         .as_ref()
@@ -91,7 +90,7 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
 
             match sort {
                 Ok(sort) => {
-                    let sort = Sort(normalise_universe(db, Univ::new(db, sort.0)).value(db));
+                    let sort = Sort(normalise_universe(db, sort.0));
                     if let Some(expr) = &def.contents.expr {
                         let expr = expr.clone();
                         check_no_local_or_metavariable(db, &expr).bind(|()| {

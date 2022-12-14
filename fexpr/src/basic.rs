@@ -342,6 +342,22 @@ impl<P> QualifiedName<P>
 where
     P: Default + PartialEq,
 {
+    pub fn from_path(db: &dyn Db, path: Path) -> Self {
+        QualifiedName(WithProvenance {
+            provenance: P::default(),
+            contents: path
+                .segments(db)
+                .iter()
+                .map(|s| {
+                    Name(WithProvenance {
+                        provenance: P::default(),
+                        contents: *s,
+                    })
+                })
+                .collect(),
+        })
+    }
+
     pub fn to_path(&self, db: &dyn Db) -> Path {
         Path::new(db, self.iter().map(|name| *name.deref()).collect())
     }

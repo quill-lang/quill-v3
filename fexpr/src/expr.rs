@@ -213,6 +213,21 @@ where
     }
 }
 
+/// A [`Binder`] that takes an arbitrary amount of parameters, including zero.
+/// Each binder may depend on the previous ones.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct NaryBinder<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The structures of each successive binder.
+    pub structures: Vec<BinderStructure<P, E>>,
+    /// The result.
+    /// If this is a lambda abstraction, this is the lambda term.
+    /// If this is a function type, this is the type of the function's body.
+    pub result: E,
+}
+
 /// A region-polymorphic value, or the type of such values.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RegionBinder<P, E>

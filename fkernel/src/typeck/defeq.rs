@@ -1,10 +1,6 @@
 use std::cmp::Ordering;
 
-use fexpr::{
-    basic::{DeBruijnIndex, WithProvenance},
-    expr::*,
-    universe::{Univ, Universe},
-};
+use fexpr::{basic::DeBruijnIndex, expr::*, universe::Universe};
 
 use crate::{term::instantiate, universe::normalise_universe, Db};
 
@@ -163,13 +159,7 @@ fn delta_definitionally_equal(db: &dyn Db, left: &Delta<Term>, right: &Delta<Ter
 }
 
 fn universe_definitionally_equal(db: &dyn Db, left: &Universe<()>, right: &Universe<()>) -> bool {
-    normalise_universe(
-        db,
-        Univ::new(db, WithProvenance::new(left.without_provenance())),
-    ) == normalise_universe(
-        db,
-        Univ::new(db, WithProvenance::new(right.without_provenance())),
-    )
+    normalise_universe(db, left.clone()) == normalise_universe(db, right.clone())
 }
 
 /// Returns true if `left` and `right` are proofs of the same proposition.
