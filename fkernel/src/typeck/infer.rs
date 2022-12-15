@@ -20,10 +20,16 @@ pub enum InferenceError {
     IncorrectUniverseArity,
     DefinitionNotFound(Path),
     LetTypeMismatch,
-    ApplyTypeMismatch,
+    ApplyTypeMismatch {
+        function: Term,
+        function_type: Term,
+        argument: Term,
+        argument_type: Term,
+    },
     ExpectedSort,
     ExpectedPi,
     UnexpectedMetauniverse,
+    IncorrectIntroParameters,
 }
 
 impl InferenceError {
@@ -35,10 +41,22 @@ impl InferenceError {
                 format!("definition {} not found", path.to_string(db))
             }
             InferenceError::LetTypeMismatch => todo!(),
-            InferenceError::ApplyTypeMismatch => todo!(),
+            InferenceError::ApplyTypeMismatch {
+                function,
+                function_type,
+                argument,
+                argument_type,
+            } => format!(
+                "cannot apply function\n{}\nof type\n{}\nto term\n{}\nof type\n{}",
+                function.display(db),
+                function_type.display(db),
+                argument.display(db),
+                argument_type.display(db),
+            ),
             InferenceError::ExpectedSort => todo!(),
             InferenceError::ExpectedPi => todo!(),
             InferenceError::UnexpectedMetauniverse => todo!(),
+            InferenceError::IncorrectIntroParameters => todo!(),
         }
     }
 }
@@ -78,6 +96,9 @@ pub(crate) fn infer_type_core(db: &dyn Db, t: Term) -> Ir<Term> {
         ExpressionT::RegionLambda(_) => todo!(),
         ExpressionT::RegionPi(_) => todo!(),
         ExpressionT::Apply(apply) => infer_type_apply(db, apply),
+        ExpressionT::Intro(intro) => infer_type_intro(db, intro),
+        ExpressionT::Match(match_expr) => infer_type_match(db, match_expr),
+        ExpressionT::Fix(fix) => infer_type_fix(db, fix),
         ExpressionT::Sort(sort) => infer_type_sort(db, sort),
         ExpressionT::Region | ExpressionT::RegionT => Ok(Term::new(db, ExpressionT::RegionT)),
         ExpressionT::StaticRegion => Ok(Term::new(db, ExpressionT::Region)),
@@ -112,6 +133,9 @@ fn infer_type_inst(db: &dyn Db, inst: &Inst<()>) -> Ir<Term> {
                 for u in &inst.universes {
                     check_valid_universe(u)?;
                 }
+                if def.contents.universe_params.len() != inst.universes.len() {
+                    todo!()
+                }
                 Ok(instantiate_universe_parameters(
                     db,
                     def.contents.ty.to_term(db),
@@ -127,6 +151,9 @@ fn infer_type_inst(db: &dyn Db, inst: &Inst<()>) -> Ir<Term> {
                 if ind.contents.universe_params.len() == inst.universes.len() {
                     for u in &inst.universes {
                         check_valid_universe(u)?;
+                    }
+                    if ind.contents.universe_params.len() != inst.universes.len() {
+                        todo!()
                     }
                     Ok(instantiate_universe_parameters(
                         db,
@@ -211,14 +238,63 @@ fn infer_type_pi(db: &dyn Db, pi: &Binder<(), Term>) -> Ir<Term> {
 }
 
 fn infer_type_apply(db: &dyn Db, apply: &Apply<Term>) -> Ir<Term> {
-    let function_type = as_pi(db, infer_type_core(db, apply.function)?)?;
+    let function_type = infer_type_core(db, apply.function)?;
+    let function_type_binder = as_pi(db, function_type)?;
     let argument_type = infer_type_core(db, apply.argument)?;
 
-    if !definitionally_equal(db, argument_type, function_type.structure.bound.ty)? {
-        return Err(InferenceError::ApplyTypeMismatch);
+    if !definitionally_equal(db, argument_type, function_type_binder.structure.bound.ty)? {
+        return Err(InferenceError::ApplyTypeMismatch {
+            function: apply.function,
+            function_type,
+            argument: apply.argument,
+            argument_type,
+        });
     }
 
-    Ok(instantiate(db, function_type.result, apply.argument))
+    Ok(instantiate(db, function_type_binder.result, apply.argument))
+}
+
+fn infer_type_intro(db: &dyn Db, intro: &Intro<(), Term>) -> Ir<Term> {
+    match get_inductive(db, intro.inductive.to_path(db)).value() {
+        Some(inductive) => {
+            match inductive
+                .variants
+                .iter()
+                .find(|variant| *variant.name == *intro.variant)
+            {
+                Some(variant) => {
+                    if intro.parameters.len() != variant.intro_rule.structures.len() {
+                        tracing::error!(
+                            "{} != {}",
+                            intro.parameters.len(),
+                            variant.intro_rule.structures.len()
+                        );
+                        return Err(InferenceError::IncorrectIntroParameters);
+                    }
+
+                    Ok(intro.parameters.iter().rev().fold(
+                        instantiate_universe_parameters(
+                            db,
+                            variant.intro_rule.result.to_term(db),
+                            &inductive.universe_params,
+                            &intro.universes,
+                        ),
+                        |t, param| instantiate(db, t, *param),
+                    ))
+                }
+                None => todo!(),
+            }
+        }
+        None => todo!(),
+    }
+}
+
+fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
+    todo!()
+}
+
+fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {
+    todo!()
 }
 
 fn infer_type_sort(db: &dyn Db, sort: &Sort<()>) -> Ir<Term> {

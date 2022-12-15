@@ -1,7 +1,7 @@
 use fcommon::{Dr, LabelType, ReportKind};
 use fexpr::{
     basic::{DeBruijnIndex, DeBruijnOffset, Provenance},
-    expr::{Expression, ExpressionT, Local, Term},
+    expr::{Expression, ExpressionT, Term},
     inductive::Variant,
 };
 
@@ -85,13 +85,7 @@ pub(in crate::inductive) fn check_variant<'db>(
                             .enumerate()
                             .skip(info.inductive.global_params as usize)
                             .map(|(i, _)| {
-                                check_index_parameter(
-                                    db,
-                                    info,
-                                    variant,
-                                    i,
-                                    &mut found_recursive_parameter,
-                                )
+                                check_field(db, info, variant, i, &mut found_recursive_parameter)
                             }),
                     );
 
@@ -106,10 +100,6 @@ pub(in crate::inductive) fn check_variant<'db>(
                             if result {
                                 Dr::ok(())
                             } else {
-                                println!(
-                                    "failed on {}",
-                                    variant.intro_rule.result.to_term(db).display(db)
-                                );
                                 Dr::fail(todo!())
                             }
                         })
@@ -127,7 +117,7 @@ pub(in crate::inductive) fn check_variant<'db>(
     })
 }
 
-fn check_index_parameter<'db>(
+fn check_field<'db>(
     db: &'db dyn Db,
     info: &InductiveTypeInformation<'db>,
     variant: &Variant<Provenance, Box<Expression>>,

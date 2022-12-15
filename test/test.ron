@@ -243,5 +243,66 @@
                 )
             ]
         )),
+        Definition(contents: (
+            name: "star",
+            universe_params: ["u"],
+            ty: (contents: Inst(
+                name: (contents: ["test", "test", "PUnit"]),
+                universes: [(contents: UniverseVariable("u"))],
+            )),
+            expr: (contents: Intro(
+                inductive: (contents: ["test", "test", "PUnit"]),
+                universes: [(contents: UniverseVariable("u"))],
+                variant: "star",
+                parameters: [],
+            ))
+        )),
+        Definition(contents: (
+            name: "true_eq_true",
+            universe_params: [],
+            ty: (contents: Apply(
+                function: (contents: Apply(
+                    function: (contents: Apply(
+                        function: (contents: Inst(
+                            name: (contents: ["test", "test", "Eq"]),
+                            universes: [(contents: UniverseZero)],
+                        )),
+                        argument: (contents: Inst(
+                            name: (contents: ["test", "test", "True"]),
+                            universes: [],
+                        )),
+                    )),
+                    argument: (contents: Intro(
+                        inductive: (contents: ["test", "test", "True"]),
+                        universes: [],
+                        variant: "True",
+                        parameters: [],
+                    )),
+                )),
+                argument: (contents: Intro(
+                    inductive: (contents: ["test", "test", "True"]),
+                    universes: [],
+                    variant: "True",
+                    parameters: [],
+                )),
+            )),
+            expr: (contents: Intro(
+                inductive: (contents: ["test", "test", "Eq"]),
+                universes: [(contents: UniverseZero)],
+                variant: "refl",
+                parameters: [
+                    (contents: Inst(
+                        name: (contents: ["test", "test", "True"]),
+                        universes: [],
+                    )),
+                    (contents: Intro(
+                        inductive: (contents: ["test", "test", "True"]),
+                        universes: [],
+                        variant: "True",
+                        parameters: [],
+                    )),
+                ],
+            ))
+        )),
     ]
 ))

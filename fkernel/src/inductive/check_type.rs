@@ -49,7 +49,7 @@ pub(in crate::inductive) struct InductiveTypeInformation<'db> {
     pub inst: Inst<()>,
     /// True if the field `sort` is never the zero universe.
     pub never_zero: bool,
-    /// True if we need to perform dependent elimination in match expressions.
+    /// True if we are allowed to perform dependent elimination in match expressions.
     /// This means that the type former can depend on the value of the inductive in question.
     pub dependent_elimination: bool,
 }

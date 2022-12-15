@@ -2,7 +2,7 @@
 
 use std::{
     fmt::{Debug, Display},
-    ops::{Add, Deref, DerefMut},
+    ops::{Add, Deref, DerefMut, Sub},
 };
 
 use fcommon::{Label, LabelType, Path, Report, ReportKind, Source, SourceSpan, Span, Str};
@@ -465,5 +465,29 @@ impl Add<DeBruijnOffset> for DeBruijnIndex {
 
     fn add(self, rhs: DeBruijnOffset) -> Self::Output {
         Self(self.0 + rhs.0)
+    }
+}
+
+impl Sub<DeBruijnOffset> for DeBruijnIndex {
+    type Output = DeBruijnIndex;
+
+    fn sub(self, rhs: DeBruijnOffset) -> Self::Output {
+        Self(self.0.saturating_sub(rhs.0))
+    }
+}
+
+impl Add for DeBruijnOffset {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Sub for DeBruijnOffset {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0.saturating_sub(rhs.0))
     }
 }

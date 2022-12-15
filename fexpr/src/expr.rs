@@ -248,6 +248,89 @@ pub struct Apply<E> {
     pub argument: E,
 }
 
+/// Constructs an inductive data type using an introduction rule.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Intro<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The inductive that we are constructing.
+    pub inductive: QualifiedName<P>,
+    /// The universe parameters on the inductive.
+    pub universes: Vec<Universe<P>>,
+    /// The name of the variant we are constructing.
+    pub variant: Name<P>,
+    /// The parameters we supply to the introduction rule.
+    /// This is the sequence of global parameters, followed by the list of fields.
+    pub parameters: Vec<E>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MinorPremise<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The variant that this minor premise operates on.
+    pub variant: Name<P>,
+    /// The number of fields (non-global parameters) that this variant has.
+    ///
+    /// Technically this is data duplication, since we can infer it from the type of the major premise after
+    /// scanning the environment for the relevant definition.
+    /// However, we would like to be able to compute with de Bruijn indices without consulting the definitions in the database.
+    pub fields: u32,
+    /// The result that this pattern match operation yields.
+    /// Inside this expression, the lowest indices of local variables correspond to the fields of the relevant inductive
+    /// (excluding the global parameters, which are implicitly given by supplying the major premise to the match expression).
+    pub result: E,
+}
+
+/// Performs dependent pattern matching on an inductive data type.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Match<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The value to eliminate.
+    /// The type of the major premise must be an inductive.
+    /// We supply this here, instead of making [`Match`] return a function, to avoid issues with lifetimes.
+    pub major_premise: E,
+    /// The number of index parameters that this inductive has.
+    ///
+    /// Technically this is data duplication, since we can infer it from the type of the major premise after
+    /// scanning the environment for the relevant definition.
+    /// However, we would like to be able to compute with de Bruijn indices without consulting the definitions in the database.
+    pub index_params: u32,
+    /// The type that will be produced by the match operation.
+    /// Inside this expression, the local variable with index zero represents the major premise, and higher variables are
+    /// the indices of the inductive being matched, so `index_params + 1` variables are bound in this expression.
+    /// The type of this expression should be a [`Sort`].
+    pub motive: E,
+    /// The set of minor premises that represent each possible branch of the match expression.
+    pub minor_premises: Vec<MinorPremise<P, E>>,
+}
+
+/// The fixed point construction on inductive data types.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Fix<P, E>
+where
+    P: Default + PartialEq,
+{
+    /// The bound parameter to the fixed point construction.
+    /// The type of this parameter must be inductive.
+    pub parameter: BoundVariable<P, E>,
+    /// The local variable to be constructed by a fixed point process.
+    /// The `parameter` is bound at index 0 in this expression.
+    pub fixpoint: BoundVariable<P, E>,
+    /// The main body of the fixed point expression.
+    /// `parameter` is bound at index 0 and the function `parameter -> fixpoint` is bound at index 1 in this expression.
+    /// The parameter `fixpoint` should only be invoked with structurally smaller parameters.
+    /// The type of this expression should be `fixpoint.ty`.
+    pub body: E,
+    /// The concrete argument to instantiate the `parameter` with.
+    /// We supply this here, instead of making [`Fix`] return a function, to avoid issues with lifetimes.
+    pub argument: E,
+}
+
 /// Represents the universe of types corresponding to the given universe.
 /// For example, if the universe is `0`, this is `Prop`, the type of propositions.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -325,6 +408,9 @@ where
     RegionLambda(RegionBinder<P, E>),
     RegionPi(RegionBinder<P, E>),
     Apply(Apply<E>),
+    Intro(Intro<P, E>),
+    Match(Match<P, E>),
+    Fix(Fix<P, E>),
     Sort(Sort<P>),
     Region,
     /// The type of [`ExpressionT::Region`], and the type of itself.
@@ -438,6 +524,33 @@ pub fn largest_unusable_metavariable(db: &dyn Db, t: Term) -> Option<u32> {
             largest_unusable_metavariable(db, t.function),
             largest_unusable_metavariable(db, t.argument),
         ),
+        ExpressionT::Intro(t) => t
+            .parameters
+            .iter()
+            .map(|param| largest_unusable_metavariable(db, *param))
+            .max()
+            .unwrap_or(None),
+        ExpressionT::Match(t) => t
+            .minor_premises
+            .iter()
+            .map(|premise| largest_unusable_metavariable(db, premise.result))
+            .chain(std::iter::once(largest_unusable_metavariable(
+                db,
+                t.major_premise,
+            )))
+            .chain(std::iter::once(largest_unusable_metavariable(db, t.motive)))
+            .max()
+            .unwrap(),
+        ExpressionT::Fix(t) => max(
+            max(
+                max(
+                    largest_unusable_metavariable(db, t.parameter.ty),
+                    largest_unusable_metavariable(db, t.fixpoint.ty),
+                ),
+                largest_unusable_metavariable(db, t.body),
+            ),
+            largest_unusable_metavariable(db, t.argument),
+        ),
         ExpressionT::Sort(_)
         | ExpressionT::Region
         | ExpressionT::RegionT
@@ -496,6 +609,40 @@ impl Term {
             }
             ExpressionT::Apply(e) => Expression::new_synthetic(ExpressionT::Apply(Apply {
                 function: Box::new(e.function.to_expression(db)),
+                argument: Box::new(e.argument.to_expression(db)),
+            })),
+            ExpressionT::Intro(e) => Expression::new_synthetic(ExpressionT::Intro(Intro {
+                inductive: e.inductive.synthetic(),
+                universes: e
+                    .universes
+                    .iter()
+                    .map(|u| WithProvenance::new_synthetic(u.synthetic()))
+                    .collect(),
+                variant: e.variant.synthetic(),
+                parameters: e
+                    .parameters
+                    .iter()
+                    .map(|term| Box::new(term.to_expression(db)))
+                    .collect(),
+            })),
+            ExpressionT::Match(e) => Expression::new_synthetic(ExpressionT::Match(Match {
+                major_premise: Box::new(e.major_premise.to_expression(db)),
+                index_params: e.index_params,
+                motive: Box::new(e.motive.to_expression(db)),
+                minor_premises: e
+                    .minor_premises
+                    .iter()
+                    .map(|premise| MinorPremise {
+                        variant: premise.variant.synthetic(),
+                        fields: premise.fields,
+                        result: Box::new(premise.result.to_expression(db)),
+                    })
+                    .collect(),
+            })),
+            ExpressionT::Fix(e) => Expression::new_synthetic(ExpressionT::Fix(Fix {
+                parameter: e.parameter.synthetic(db),
+                fixpoint: e.fixpoint.synthetic(db),
+                body: Box::new(e.body.to_expression(db)),
                 argument: Box::new(e.argument.to_expression(db)),
             })),
             ExpressionT::Sort(e) => Expression::new_synthetic(ExpressionT::Sort(Sort(
@@ -597,6 +744,45 @@ impl Expression {
                 db,
                 ExpressionT::Apply(Apply {
                     function: e.function.to_term(db),
+                    argument: e.argument.to_term(db),
+                }),
+            ),
+            ExpressionT::Intro(e) => Term::new(
+                db,
+                ExpressionT::Intro(Intro {
+                    inductive: e.inductive.without_provenance(),
+                    universes: e
+                        .universes
+                        .iter()
+                        .map(|u| WithProvenance::new(u.contents.without_provenance()))
+                        .collect(),
+                    variant: e.variant.without_provenance(),
+                    parameters: e.parameters.iter().map(|e| e.to_term(db)).collect(),
+                }),
+            ),
+            ExpressionT::Match(e) => Term::new(
+                db,
+                ExpressionT::Match(Match {
+                    major_premise: e.major_premise.to_term(db),
+                    index_params: e.index_params,
+                    motive: e.motive.to_term(db),
+                    minor_premises: e
+                        .minor_premises
+                        .iter()
+                        .map(|premise| MinorPremise {
+                            variant: premise.variant.without_provenance(),
+                            fields: premise.fields,
+                            result: premise.result.to_term(db),
+                        })
+                        .collect(),
+                }),
+            ),
+            ExpressionT::Fix(e) => Term::new(
+                db,
+                ExpressionT::Fix(Fix {
+                    parameter: e.parameter.without_provenance(db),
+                    fixpoint: e.fixpoint.without_provenance(db),
+                    body: e.body.to_term(db),
                     argument: e.argument.to_term(db),
                 }),
             ),

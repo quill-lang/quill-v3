@@ -122,6 +122,31 @@ fn replace_in_term_offset(
                         argument: replace_in_term_offset(db, t.argument, replace_fn, offset),
                     }),
                 ),
+                ExpressionT::Intro(t) => Term::new(db, ExpressionT::Intro(Intro {
+                    inductive: t.inductive.clone(),
+                    universes: t.universes.clone(),
+                    variant: t.variant,
+                    parameters: t.parameters.iter().map(|t| replace_in_term_offset(db, *t, replace_fn.clone(), offset)).collect(),
+                })),
+                ExpressionT::Match(t) => Term::new(db, ExpressionT::Match(Match {
+                    major_premise: replace_in_term_offset(db, t.major_premise, replace_fn.clone(), offset),
+                    index_params: t.index_params,
+                    motive: replace_in_term_offset(db, t.motive, replace_fn.clone(), offset.succ() + DeBruijnOffset::new(t.index_params)),
+                    minor_premises: t.minor_premises
+                        .iter()
+                        .map(|premise| MinorPremise {
+                            variant: premise.variant,
+                            fields: premise.fields,
+                            result: replace_in_term_offset(db, premise.result, replace_fn.clone(), offset + DeBruijnOffset::new(premise.fields))
+                        })
+                        .collect(),
+                })),
+                ExpressionT::Fix(t) => Term::new(db, ExpressionT::Fix(Fix {
+                    parameter: BoundVariable { ty: replace_in_term_offset(db, t.parameter.ty, replace_fn.clone(), offset), ..t.parameter },
+                    fixpoint: BoundVariable { ty: replace_in_term_offset(db, t.fixpoint.ty, replace_fn.clone(), offset.succ()), ..t.fixpoint },
+                    body: replace_in_term_offset(db, t.body, replace_fn.clone(), offset.succ().succ()),
+                    argument: replace_in_term_offset(db, t.argument, replace_fn, offset),
+                })),
                 ExpressionT::Lifespan(t) => Term::new(
                     db,
                     ExpressionT::Lifespan(Lifespan {
@@ -201,6 +226,41 @@ fn find_in_term_offset(
             }
             ExpressionT::Apply(t) => find_in_term_offset(db, t.function, predicate.clone(), offset)
                 .or_else(|| find_in_term_offset(db, t.argument, predicate.clone(), offset)),
+            ExpressionT::Intro(t) => t
+                .parameters
+                .iter()
+                .find_map(|t| find_in_term_offset(db, *t, predicate.clone(), offset)),
+            ExpressionT::Match(t) => {
+                find_in_term_offset(db, t.major_premise, predicate.clone(), offset)
+                    .or_else(|| {
+                        find_in_term_offset(
+                            db,
+                            t.motive,
+                            predicate.clone(),
+                            offset.succ() + DeBruijnOffset::new(t.index_params),
+                        )
+                    })
+                    .or_else(|| {
+                        t.minor_premises.iter().find_map(|premise| {
+                            find_in_term_offset(
+                                db,
+                                premise.result,
+                                predicate.clone(),
+                                offset + DeBruijnOffset::new(premise.fields),
+                            )
+                        })
+                    })
+            }
+            ExpressionT::Fix(t) => {
+                find_in_term_offset(db, t.parameter.ty, predicate.clone(), offset)
+                    .or_else(|| {
+                        find_in_term_offset(db, t.fixpoint.ty, predicate.clone(), offset.succ())
+                    })
+                    .or_else(|| {
+                        find_in_term_offset(db, t.body, predicate.clone(), offset.succ().succ())
+                    })
+                    .or_else(|| find_in_term_offset(db, t.argument, predicate, offset))
+            }
             ExpressionT::Lifespan(t) => find_in_term_offset(db, t.ty, predicate, offset),
             ExpressionT::Sort(_)
             | ExpressionT::Region
@@ -240,7 +300,7 @@ pub fn local_is_bound(db: &dyn Db, t: Term, local: DeBruijnIndex) -> bool {
 /// Traverses the term tree and finds terms matching the provided predicate.
 /// If any return `true`, the first such term is returned.
 /// The tree is traversed depth first.
-fn for_each_term(db: &dyn Db, t: Term, func: impl FnMut(Term, DeBruijnOffset)) {
+pub fn for_each_term(db: &dyn Db, t: Term, func: impl FnMut(Term, DeBruijnOffset)) {
     let cell = RefCell::new(func);
     find_in_term(db, t, |inner, offset| {
         cell.borrow_mut()(inner, offset);

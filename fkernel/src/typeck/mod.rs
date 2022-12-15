@@ -112,7 +112,17 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
                                     },
                                     origin,
                                 )),
-                                Ok((_ty, false)) => todo!(),
+                                Ok((_ty, false)) => Dr::fail(
+                                    Report::new(
+                                        ReportKind::Error,
+                                        Source::new(db, path.split_last(db).0, SourceType::Feather),
+                                        def.provenance.span().start,
+                                    )
+                                    .with_message(format!(
+                                        "body of definition {} had incorrect type",
+                                        def.name.text(db),
+                                    )),
+                                ),
                                 Err(e) => Dr::fail(
                                     Report::new(
                                         ReportKind::Error,

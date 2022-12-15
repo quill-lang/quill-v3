@@ -2,7 +2,10 @@
 
 use std::cmp::max;
 
-use fexpr::{basic::DeBruijnIndex, expr::*};
+use fexpr::{
+    basic::{DeBruijnIndex, DeBruijnOffset},
+    expr::*,
+};
 
 use crate::Db;
 
@@ -40,11 +43,43 @@ pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
             first_free_variable_index(db, apply.function),
             first_free_variable_index(db, apply.argument),
         ),
-        ExpressionT::Lifespan(lifespan) => first_free_variable_index(db, lifespan.ty),
+        ExpressionT::Intro(intro) => intro
+            .parameters
+            .iter()
+            .map(|param| first_free_variable_index(db, *param))
+            .max()
+            .unwrap_or(DeBruijnIndex::zero()),
+        ExpressionT::Match(match_expr) => max(
+            max(
+                first_free_variable_index(db, match_expr.major_premise),
+                first_free_variable_index(db, match_expr.motive).pred()
+                    - DeBruijnOffset::new(match_expr.index_params),
+            ),
+            match_expr
+                .minor_premises
+                .iter()
+                .map(|premise| {
+                    first_free_variable_index(db, premise.result)
+                        - DeBruijnOffset::new(premise.fields)
+                })
+                .max()
+                .unwrap_or(DeBruijnIndex::zero()),
+        ),
+        ExpressionT::Fix(fix) => max(
+            max(
+                max(
+                    first_free_variable_index(db, fix.parameter.ty),
+                    first_free_variable_index(db, fix.fixpoint.ty).pred(),
+                ),
+                first_free_variable_index(db, fix.body).pred().pred(),
+            ),
+            first_free_variable_index(db, fix.argument),
+        ),
         ExpressionT::Sort(_) => DeBruijnIndex::zero(),
         ExpressionT::Region | ExpressionT::RegionT | ExpressionT::StaticRegion => {
             DeBruijnIndex::zero()
         }
+        ExpressionT::Lifespan(lifespan) => first_free_variable_index(db, lifespan.ty),
         ExpressionT::Metavariable(_) => DeBruijnIndex::zero(),
         ExpressionT::LocalConstant(_) => DeBruijnIndex::zero(),
     }
