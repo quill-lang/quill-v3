@@ -1,7 +1,7 @@
 use fcommon::{Dr, LabelType, Path, ReportKind};
 use fexpr::{
     basic::{Name, Provenance, QualifiedName, WithProvenance},
-    expr::{largest_unusable_metavariable, Expression, Inst, NaryBinder, Sort},
+    expr::{Expression, Inst, Sort},
     inductive::Inductive,
     universe::{Universe, UniverseContents, UniverseVariable},
 };
@@ -9,36 +9,11 @@ use fexpr::{
 use crate::{
     term::nary_binder_to_pi_expression,
     typeck::{as_sort, check_no_local_or_metavariable, infer_type},
-    universe::{is_nonzero, is_zero, normalise_universe},
+    universe::normalise_universe,
     Db,
 };
 
 use super::get_inductive;
-
-fn largest_unusable_metavariable_in_nary(
-    db: &dyn Db,
-    nary_binder: NaryBinder<Provenance, Box<Expression>>,
-) -> Option<u32> {
-    largest_unusable_metavariable(
-        db,
-        nary_binder_to_pi_expression(Provenance::Synthetic, nary_binder).to_term(db),
-    )
-}
-
-fn largest_unusable_metavariable_in_inductive(
-    db: &dyn Db,
-    ind: &Inductive<Provenance, Box<Expression>>,
-) -> Option<u32> {
-    ind.variants
-        .iter()
-        .map(|variant| largest_unusable_metavariable_in_nary(db, variant.intro_rule.clone()))
-        .chain(std::iter::once(largest_unusable_metavariable_in_nary(
-            db,
-            ind.ty.clone(),
-        )))
-        .max()
-        .unwrap()
-}
 
 /// Some information used when creating things to do with inductives, such as match expressions.
 pub(in crate::inductive) struct InductiveTypeInformation<'db> {
@@ -47,11 +22,6 @@ pub(in crate::inductive) struct InductiveTypeInformation<'db> {
     pub sort: Sort<()>,
     /// An [`Inst`] node which will instantiate the type of the inductive, with the given universe parameters.
     pub inst: Inst<()>,
-    /// True if the field `sort` is never the zero universe.
-    pub never_zero: bool,
-    /// True if we are allowed to perform dependent elimination in match expressions.
-    /// This means that the type former can depend on the value of the inductive in question.
-    pub dependent_elimination: bool,
 }
 
 pub(super) fn check_inductive_type(db: &dyn Db, path: Path) -> Dr<InductiveTypeInformation> {
@@ -74,8 +44,6 @@ pub(super) fn check_inductive_type(db: &dyn Db, path: Path) -> Dr<InductiveTypeI
                         match as_sort(db, ind.contents.ty.result.to_term(db)) {
                             Ok(sort) => {
                                 let sort = Sort(normalise_universe(db, sort.0));
-                                let never_zero = is_nonzero(&sort.0);
-                                let dependent_elimination = !is_zero(&sort.0);
                                 Dr::ok(InductiveTypeInformation {
                                     inductive: ind,
                                     sort,
@@ -89,8 +57,6 @@ pub(super) fn check_inductive_type(db: &dyn Db, path: Path) -> Dr<InductiveTypeI
                                                 )))
                                             .collect()
                                     },
-                                    never_zero,
-                                    dependent_elimination,
                                 })
                             },
                             Err(_) => todo!()

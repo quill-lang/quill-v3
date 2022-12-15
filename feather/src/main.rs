@@ -81,8 +81,12 @@ fn main() {
                         report.render(&db, &mut stderr);
                     }
 
-                    if result.value().is_some() {
-                        tracing::info!("certified {}", ind.name.text(&db));
+                    if let Some(result) = result.value() {
+                        tracing::info!(
+                            "certified {} (eliminate only into Prop: {})",
+                            ind.name.text(&db),
+                            result.eliminate_only_into_prop
+                        );
                     }
                 }
             }

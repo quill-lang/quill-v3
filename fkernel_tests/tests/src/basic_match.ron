@@ -12,7 +12,7 @@
                     (
                         bound: (
                             name: "A",
-                            ty: (contents: Sort((contents: UniverseVariable("u")))),
+                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
@@ -22,7 +22,7 @@
                     (
                         bound: (
                             name: "B",
-                            ty: (contents: Sort((contents: UniverseVariable("v")))),
+                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
@@ -31,8 +31,8 @@
                     ),
                 ],
                 result: (contents: Sort((contents: UniverseMax(
-                    left: (contents: UniverseVariable("u")),
-                    right: (contents: UniverseVariable("v")),
+                    left: (contents: UniverseSucc((contents: UniverseVariable("u")))),
+                    right: (contents: UniverseSucc((contents: UniverseVariable("v")))),
                 )))),
             ),
             global_params: 2,
@@ -44,7 +44,7 @@
                             (
                                 bound: (
                                     name: "A",
-                                    ty: (contents: Sort((contents: UniverseVariable("u")))),
+                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
@@ -54,7 +54,7 @@
                             (
                                 bound: (
                                     name: "B",
-                                    ty: (contents: Sort((contents: UniverseVariable("v")))),
+                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
@@ -106,7 +106,7 @@
                 structure: (
                     bound: (
                         name: "A",
-                        ty: (contents: Sort((contents: UniverseVariable("u")))),
+                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                         ownership: PZero,
                     ),
                     binder_annotation: ImplicitEager,
@@ -117,7 +117,7 @@
                     structure: (
                         bound: (
                             name: "B",
-                            ty: (contents: Sort((contents: UniverseVariable("v")))),
+                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
@@ -155,7 +155,7 @@
                 structure: (
                     bound: (
                         name: "A",
-                        ty: (contents: Sort((contents: UniverseVariable("u")))),
+                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                         ownership: PZero,
                     ),
                     binder_annotation: ImplicitEager,
@@ -166,7 +166,7 @@
                     structure: (
                         bound: (
                             name: "B",
-                            ty: (contents: Sort((contents: UniverseVariable("v")))),
+                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
@@ -220,7 +220,7 @@
                     (
                         bound: (
                             name: "A",
-                            ty: (contents: Sort((contents: UniverseVariable("u")))),
+                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
@@ -230,7 +230,7 @@
                     (
                         bound: (
                             name: "B",
-                            ty: (contents: Sort((contents: UniverseVariable("v")))),
+                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
@@ -239,8 +239,8 @@
                     ),
                 ],
                 result: (contents: Sort((contents: UniverseMax(
-                    left: (contents: UniverseVariable("u")),
-                    right: (contents: UniverseVariable("v")),
+                    left: (contents: UniverseSucc((contents: UniverseVariable("u")))),
+                    right: (contents: UniverseSucc((contents: UniverseVariable("v")))),
                 )))),
             ),
             global_params: 2,
@@ -252,7 +252,7 @@
                             (
                                 bound: (
                                     name: "A",
-                                    ty: (contents: Sort((contents: UniverseVariable("u")))),
+                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
@@ -262,7 +262,7 @@
                             (
                                 bound: (
                                     name: "B",
-                                    ty: (contents: Sort((contents: UniverseVariable("v")))),
+                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
@@ -302,7 +302,7 @@
                             (
                                 bound: (
                                     name: "A",
-                                    ty: (contents: Sort((contents: UniverseVariable("u")))),
+                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
@@ -312,7 +312,7 @@
                             (
                                 bound: (
                                     name: "B",
-                                    ty: (contents: Sort((contents: UniverseVariable("v")))),
+                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
@@ -354,7 +354,7 @@
                 structure: (
                     bound: (
                         name: "A",
-                        ty: (contents: Sort((contents: UniverseVariable("u")))),
+                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                         ownership: PZero,
                     ),
                     binder_annotation: ImplicitEager,
@@ -391,7 +391,7 @@
                 structure: (
                     bound: (
                         name: "A",
-                        ty: (contents: Sort((contents: UniverseVariable("u")))),
+                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
                         ownership: PZero,
                     ),
                     binder_annotation: ImplicitEager,

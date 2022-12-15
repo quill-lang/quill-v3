@@ -9,12 +9,13 @@ use fexpr::{
 };
 
 use crate::{
-    inductive::get_inductive,
+    inductive::{get_certified_inductive, get_inductive},
     term::{
         abstract_binder, create_nary_application, destructure_as_nary_application,
         has_free_variables, instantiate, instantiate_universe_parameters, nary_binder_to_lambda,
         nary_binder_to_pi_expression,
     },
+    universe::is_zero,
 };
 
 use super::{defeq::definitionally_equal, get_definition, whnf::to_weak_head_normal_form, Db};
@@ -331,12 +332,13 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
     // TODO: Check if we need to `lift_free_vars` on the global parameters below.
     match inductive_term.value(db) {
         ExpressionT::Inst(inst) => {
-            match get_inductive(db, inst.name.to_path(db)).value() {
+            match get_certified_inductive(db, inst.name.to_path(db)) {
                 Some(inductive) => {
                     // The major premise is indeed of an inductive type, and the inductive type exists.
                     // Check that `index_params` is correct.
                     if match_expr.index_params
-                        != (inductive.ty.structures.len() as u32) - inductive.global_params
+                        != (inductive.inductive.ty.structures.len() as u32)
+                            - inductive.inductive.global_params
                     {
                         // The number of `index_params` stated in the match expression was wrong.
                         todo!()
@@ -346,11 +348,11 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                     // This is accomplished by turning the motive into a lambda abstraction
                     // where the parameters are the inductive's index parameters and then the major premise,
                     // then checking the type of the resulting lambda.
-                    let mut binders = inductive.ty.without_provenance(db);
+                    let mut binders = inductive.inductive.ty.without_provenance(db);
                     binders.structures = binders
                         .structures
                         .into_iter()
-                        .skip(inductive.global_params as usize)
+                        .skip(inductive.inductive.global_params as usize)
                         .chain(std::iter::once(BinderStructure {
                             // The structure here isn't really relevant.
                             bound: BoundVariable {
@@ -361,16 +363,21 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                                 ty: create_nary_application(
                                     db,
                                     inductive_term,
-                                    inductive.ty.structures.iter().enumerate().rev().map(
-                                        |(index, _)| {
+                                    inductive
+                                        .inductive
+                                        .ty
+                                        .structures
+                                        .iter()
+                                        .enumerate()
+                                        .rev()
+                                        .map(|(index, _)| {
                                             Term::new(
                                                 db,
                                                 ExpressionT::Local(Local {
                                                     index: DeBruijnIndex::new(index as u32),
                                                 }),
                                             )
-                                        },
-                                    ),
+                                        }),
                                 ),
                                 ownership: ParameterOwnership::POwned,
                             },
@@ -382,7 +389,7 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                     binders.result = match_expr.motive;
                     let motive_lambda = parameters
                         .iter()
-                        .take(inductive.global_params as usize)
+                        .take(inductive.inductive.global_params as usize)
                         .rev()
                         .fold(nary_binder_to_lambda(db, binders), |ty, term| {
                             instantiate(db, ty, *term)
@@ -392,7 +399,7 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
 
                     // Check each minor premise.
                     // First, check that there is exactly one minor premise for each variant.
-                    for variant in &inductive.variants {
+                    for variant in &inductive.inductive.variants {
                         let matching_minor_premises = match_expr
                             .minor_premises
                             .iter()
@@ -407,6 +414,7 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                     for premise in &match_expr.minor_premises {
                         // Get the variant of the inductive that this minor premise matches.
                         let variant = if let Some(variant) = inductive
+                            .inductive
                             .variants
                             .iter()
                             .find(|variant| *premise.variant == *variant.name)
@@ -419,7 +427,7 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                         // Check that `premise.fields` is correct.
                         if premise.fields
                             != (variant.intro_rule.structures.len() as u32)
-                                - inductive.global_params
+                                - inductive.inductive.global_params
                         {
                             // The number of fields stated in the match expression was wrong.
                             todo!()
@@ -429,12 +437,12 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                         binders.structures = binders
                             .structures
                             .into_iter()
-                            .skip(inductive.global_params as usize)
+                            .skip(inductive.inductive.global_params as usize)
                             .collect();
                         binders.result = premise.result;
                         let premise_lambda = parameters
                             .iter()
-                            .take(inductive.global_params as usize)
+                            .take(inductive.inductive.global_params as usize)
                             .rev()
                             .fold(nary_binder_to_lambda(db, binders), |ty, term| {
                                 instantiate(db, ty, *term)
@@ -472,7 +480,7 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                                 variant: variant.name.without_provenance(),
                                 parameters: parameters
                                     .iter()
-                                    .take(inductive.global_params as usize)
+                                    .take(inductive.inductive.global_params as usize)
                                     .copied()
                                     .chain(fields.iter().map(|field| {
                                         Term::new(db, ExpressionT::LocalConstant(*field))
@@ -486,7 +494,7 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                         );
                         let specialised_motive = specialised_major_premise_args
                             .into_iter()
-                            .skip(inductive.global_params as usize)
+                            .skip(inductive.inductive.global_params as usize)
                             .rev()
                             .fold(
                                 instantiate(db, match_expr.motive, specialised_major_premise),
@@ -503,14 +511,29 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                     }
 
                     // The major and minor premises are correct.
-                    Ok(parameters
+                    let result = parameters
                         .iter()
-                        .skip(inductive.global_params as usize)
+                        .skip(inductive.inductive.global_params as usize)
                         .rev()
                         .fold(
                             instantiate(db, match_expr.motive, match_expr.major_premise),
                             |term, param| instantiate(db, term, *param),
-                        ))
+                        );
+
+                    // Check if we're eliminating into a permitted universe.
+                    if inductive.eliminate_only_into_prop {
+                        let sort = as_sort(db, infer_type(db, result)?)?;
+                        if !is_zero(&sort.0) {
+                            tracing::error!(
+                                "can't eliminate into {}",
+                                infer_type(db, result)?.display(db)
+                            );
+                            todo!()
+                        }
+                    }
+
+                    // All checks have passed, so the match expression is type correct.
+                    Ok(result)
                 }
                 None => todo!(),
             }
