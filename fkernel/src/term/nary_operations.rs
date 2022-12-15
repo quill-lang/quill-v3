@@ -128,6 +128,28 @@ pub fn nary_binder_to_pi(db: &dyn Db, nary_binder: NaryBinder<(), Term>) -> Term
         })
 }
 
+/// Converts an [`NaryBinder`] into a [`ExpressionT::Lambda`] expression that represents the same binders.
+#[must_use]
+pub fn nary_binder_to_lambda_expression(
+    provenance: Provenance,
+    nary_binder: NaryBinder<Provenance, Box<Expression>>,
+) -> Expression {
+    nary_binder
+        .structures
+        .iter()
+        .cloned()
+        .rev()
+        .fold(*nary_binder.result, |result, structure| Expression {
+            value: WithProvenance::new_with_provenance(
+                provenance,
+                ExpressionT::Lambda(Binder {
+                    structure,
+                    result: Box::new(result),
+                }),
+            ),
+        })
+}
+
 /// Converts an [`NaryBinder`] into a [`ExpressionT::Pi`] expression that represents the same binders.
 #[must_use]
 pub fn nary_binder_to_pi_expression(

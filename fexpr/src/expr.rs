@@ -228,6 +228,19 @@ where
     pub result: E,
 }
 
+impl NaryBinder<Provenance, Box<Expression>> {
+    pub fn without_provenance(&self, db: &dyn Db) -> NaryBinder<(), Term> {
+        NaryBinder {
+            structures: self
+                .structures
+                .iter()
+                .map(|structure| structure.without_provenance(db))
+                .collect(),
+            result: self.result.to_term(db),
+        }
+    }
+}
+
 /// A region-polymorphic value, or the type of such values.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RegionBinder<P, E>

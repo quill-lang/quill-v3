@@ -85,7 +85,7 @@
                         result: (contents: Apply(
                             function: (contents: Apply(
                                 function: (contents: Inst(
-                                    name: (contents: ["products_coproducts", "Prod"]),
+                                    name: (contents: ["basic_match", "Prod"]),
                                     universes: [
                                         (contents: UniverseVariable("u")),
                                         (contents: UniverseVariable("v"))
@@ -100,8 +100,8 @@
             ],
         )),
         Definition(contents: (
-            name: "diagonal",
-            universe_params: ["u"],
+            name: "fst",
+            universe_params: ["u", "v"],
             ty: (contents: Pi(
                 structure: (
                     bound: (
@@ -116,27 +116,39 @@
                 result: (contents: Pi(
                     structure: (
                         bound: (
-                            name: "x",
-                            ty: (contents: Local(index: 0)),
-                            ownership: POwned,
+                            name: "B",
+                            ty: (contents: Sort((contents: UniverseVariable("v")))),
+                            ownership: PZero,
                         ),
-                        binder_annotation: Explicit,
+                        binder_annotation: ImplicitEager,
                         invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: Apply(
-                        function: (contents: Apply(
-                            function: (contents: Inst(
-                                name: (contents: ["products_coproducts", "Prod"]),
-                                universes: [
-                                    (contents: UniverseVariable("u")),
-                                    (contents: UniverseVariable("u"))
-                                ],
-                            )),
-                            argument: (contents: Local(index: 1)),
-                        )),
-                        argument: (contents: Local(index: 1)),
-                    ))
+                    result: (contents: Pi(
+                        structure: (
+                            bound: (
+                                name: "x",
+                                ty: (contents: Apply(
+                                    function: (contents: Apply(
+                                        function: (contents: Inst(
+                                            name: (contents: ["basic_match", "Prod"]),
+                                            universes: [
+                                                (contents: UniverseVariable("u")),
+                                                (contents: UniverseVariable("v"))
+                                            ],
+                                        )),
+                                        argument: (contents: Local(index: 1)),
+                                    )),
+                                    argument: (contents: Local(index: 0)),
+                                )),
+                                ownership: POwned,
+                            ),
+                            binder_annotation: Explicit,
+                            invocation_type: Once,
+                            region: (contents: StaticRegion),
+                        ),
+                        result: (contents: Local(index: 2)))
+                    )
                 ))
             )),
             expr: (contents: Lambda(
@@ -153,30 +165,52 @@
                 result: (contents: Lambda(
                     structure: (
                         bound: (
-                            name: "x",
-                            ty: (contents: Local(index: 0)),
-                            ownership: POwned,
+                            name: "B",
+                            ty: (contents: Sort((contents: UniverseVariable("v")))),
+                            ownership: PZero,
                         ),
-                        binder_annotation: Explicit,
+                        binder_annotation: ImplicitEager,
                         invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: Intro(
-                        inductive: (contents: ["products_coproducts", "Prod"]),
-                        universes: [
-                            (contents: UniverseVariable("u")),
-                            (contents: UniverseVariable("u"))
-                        ],
-                        variant: "Prod",
-                        parameters: [
-                            (contents: Local(index: 1)),
-                            (contents: Local(index: 1)),
-                            (contents: Local(index: 0)),
-                            (contents: Local(index: 0)),
-                        ],
+                    result: (contents: Lambda(
+                        structure: (
+                            bound: (
+                                name: "x",
+                                ty: (contents: Apply(
+                                    function: (contents: Apply(
+                                        function: (contents: Inst(
+                                            name: (contents: ["basic_match", "Prod"]),
+                                            universes: [
+                                                (contents: UniverseVariable("u")),
+                                                (contents: UniverseVariable("v"))
+                                            ],
+                                        )),
+                                        argument: (contents: Local(index: 1)),
+                                    )),
+                                    argument: (contents: Local(index: 0)),
+                                )),
+                                ownership: POwned,
+                            ),
+                            binder_annotation: Explicit,
+                            invocation_type: Once,
+                            region: (contents: StaticRegion),
+                        ),
+                        result: (contents: Match(
+                            major_premise: (contents: Local(index: 0)),
+                            index_params: 0,
+                            motive: (contents: Local(index: 3)),
+                            minor_premises: [
+                                (
+                                    variant: "Prod",
+                                    fields: 2,
+                                    result: (contents: Local(index: 1)),
+                                )
+                            ],
+                        ))
                     ))
                 ))
-            ))
+            )),
         )),
         Inductive(contents: (
             name: "Sum",
@@ -249,7 +283,7 @@
                         result: (contents: Apply(
                             function: (contents: Apply(
                                 function: (contents: Inst(
-                                    name: (contents: ["products_coproducts", "Sum"]),
+                                    name: (contents: ["basic_match", "Sum"]),
                                     universes: [
                                         (contents: UniverseVariable("u")),
                                         (contents: UniverseVariable("v"))
@@ -299,7 +333,7 @@
                         result: (contents: Apply(
                             function: (contents: Apply(
                                 function: (contents: Inst(
-                                    name: (contents: ["products_coproducts", "Sum"]),
+                                    name: (contents: ["basic_match", "Sum"]),
                                     universes: [
                                         (contents: UniverseVariable("u")),
                                         (contents: UniverseVariable("v"))
@@ -314,7 +348,7 @@
             ],
         )),
         Definition(contents: (
-            name: "inl_diagonal",
+            name: "undiagonal",
             universe_params: ["u"],
             ty: (contents: Pi(
                 structure: (
@@ -330,28 +364,28 @@
                 result: (contents: Pi(
                     structure: (
                         bound: (
-                            name: "a",
-                            ty: (contents: Local(index: 0)),
+                            name: "x",
+                            ty: (contents: Apply(
+                                function: (contents: Apply(
+                                    function: (contents: Inst(
+                                        name: (contents: ["basic_match", "Sum"]),
+                                        universes: [
+                                            (contents: UniverseVariable("u")),
+                                            (contents: UniverseVariable("u"))
+                                        ],
+                                    )),
+                                    argument: (contents: Local(index: 0)),
+                                )),
+                                argument: (contents: Local(index: 0)),
+                            )),
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
                         invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: Apply(
-                        function: (contents: Apply(
-                            function: (contents: Inst(
-                                name: (contents: ["products_coproducts", "Sum"]),
-                                universes: [
-                                    (contents: UniverseVariable("u")),
-                                    (contents: UniverseVariable("u"))
-                                ],
-                            )),
-                            argument: (contents: Local(index: 1)),
-                        )),
-                        argument: (contents: Local(index: 1)),
-                    ))
-                ))
+                    result: (contents: Local(index: 1)))
+                )
             )),
             expr: (contents: Lambda(
                 structure: (
@@ -368,28 +402,44 @@
                     structure: (
                         bound: (
                             name: "x",
-                            ty: (contents: Local(index: 0)),
+                            ty: (contents: Apply(
+                                function: (contents: Apply(
+                                    function: (contents: Inst(
+                                        name: (contents: ["basic_match", "Sum"]),
+                                        universes: [
+                                            (contents: UniverseVariable("u")),
+                                            (contents: UniverseVariable("u"))
+                                        ],
+                                    )),
+                                    argument: (contents: Local(index: 0)),
+                                )),
+                                argument: (contents: Local(index: 0)),
+                            )),
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
                         invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: Intro(
-                        inductive: (contents: ["products_coproducts", "Sum"]),
-                        universes: [
-                            (contents: UniverseVariable("u")),
-                            (contents: UniverseVariable("u"))
+                    result: (contents: Match(
+                        major_premise: (contents: Local(index: 0)),
+                        index_params: 0,
+                        motive: (contents: Local(index: 2)),
+                        minor_premises: [
+                            (
+                                variant: "inl",
+                                fields: 1,
+                                result: (contents: Local(index: 0)),
+                            ),
+                            (
+                                variant: "inr",
+                                fields: 1,
+                                result: (contents: Local(index: 0)),
+                            ),
                         ],
-                        variant: "inl",
-                        parameters: [
-                            (contents: Local(index: 1)),
-                            (contents: Local(index: 1)),
-                            (contents: Local(index: 0)),
-                        ],
-                    ))
-                ))
-            ))
+                    )))
+                )
+            )),
         )),
     ]
 ))

@@ -1,12 +1,18 @@
 //! Infers types of terms.
 
-use fcommon::Path;
-use fexpr::{basic::Provenance, expr::*, universe::*};
+use fcommon::{Path, Str};
+use fexpr::{
+    basic::{DeBruijnIndex, Name, Provenance, WithProvenance},
+    expr::*,
+    multiplicity::{InvocationType, ParameterOwnership},
+    universe::*,
+};
 
 use crate::{
     inductive::get_inductive,
     term::{
-        abstract_binder, has_free_variables, instantiate, instantiate_universe_parameters,
+        abstract_binder, create_nary_application, destructure_as_nary_application,
+        has_free_variables, instantiate, instantiate_universe_parameters, nary_binder_to_lambda,
         nary_binder_to_pi_expression,
     },
 };
@@ -320,7 +326,197 @@ fn infer_type_intro(db: &dyn Db, intro: &Intro<(), Term>) -> Ir<Term> {
 }
 
 fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
-    todo!()
+    let major_premise_type = infer_type(db, match_expr.major_premise)?;
+    let (inductive_term, parameters) = destructure_as_nary_application(db, major_premise_type);
+    // TODO: Check if we need to `lift_free_vars` on the global parameters below.
+    match inductive_term.value(db) {
+        ExpressionT::Inst(inst) => {
+            match get_inductive(db, inst.name.to_path(db)).value() {
+                Some(inductive) => {
+                    // The major premise is indeed of an inductive type, and the inductive type exists.
+                    // Check that `index_params` is correct.
+                    if match_expr.index_params
+                        != (inductive.ty.structures.len() as u32) - inductive.global_params
+                    {
+                        // The number of `index_params` stated in the match expression was wrong.
+                        todo!()
+                    }
+
+                    // Check the type of the motive.
+                    // This is accomplished by turning the motive into a lambda abstraction
+                    // where the parameters are the inductive's index parameters and then the major premise,
+                    // then checking the type of the resulting lambda.
+                    let mut binders = inductive.ty.without_provenance(db);
+                    binders.structures = binders
+                        .structures
+                        .into_iter()
+                        .skip(inductive.global_params as usize)
+                        .chain(std::iter::once(BinderStructure {
+                            // The structure here isn't really relevant.
+                            bound: BoundVariable {
+                                name: Name(WithProvenance::new(Str::new(
+                                    db,
+                                    "_major_premise".to_owned(),
+                                ))),
+                                ty: create_nary_application(
+                                    db,
+                                    inductive_term,
+                                    inductive.ty.structures.iter().enumerate().rev().map(
+                                        |(index, _)| {
+                                            Term::new(
+                                                db,
+                                                ExpressionT::Local(Local {
+                                                    index: DeBruijnIndex::new(index as u32),
+                                                }),
+                                            )
+                                        },
+                                    ),
+                                ),
+                                ownership: ParameterOwnership::POwned,
+                            },
+                            binder_annotation: BinderAnnotation::Explicit,
+                            invocation_type: InvocationType::Once,
+                            region: Term::new(db, ExpressionT::StaticRegion),
+                        }))
+                        .collect();
+                    binders.result = match_expr.motive;
+                    let motive_lambda = parameters
+                        .iter()
+                        .take(inductive.global_params as usize)
+                        .rev()
+                        .fold(nary_binder_to_lambda(db, binders), |ty, term| {
+                            instantiate(db, ty, *term)
+                        });
+                    infer_type(db, motive_lambda)?;
+                    // The motive is type correct.
+
+                    // Check each minor premise.
+                    // First, check that there is exactly one minor premise for each variant.
+                    for variant in &inductive.variants {
+                        let matching_minor_premises = match_expr
+                            .minor_premises
+                            .iter()
+                            .filter(|premise| *premise.variant == *variant.name)
+                            .collect::<Vec<_>>();
+                        if matching_minor_premises.len() != 1 {
+                            todo!()
+                        }
+                    }
+
+                    // Check that each minor premise is type correct.
+                    for premise in &match_expr.minor_premises {
+                        // Get the variant of the inductive that this minor premise matches.
+                        let variant = if let Some(variant) = inductive
+                            .variants
+                            .iter()
+                            .find(|variant| *premise.variant == *variant.name)
+                        {
+                            variant
+                        } else {
+                            todo!()
+                        };
+
+                        // Check that `premise.fields` is correct.
+                        if premise.fields
+                            != (variant.intro_rule.structures.len() as u32)
+                                - inductive.global_params
+                        {
+                            // The number of fields stated in the match expression was wrong.
+                            todo!()
+                        }
+
+                        let mut binders = variant.intro_rule.without_provenance(db);
+                        binders.structures = binders
+                            .structures
+                            .into_iter()
+                            .skip(inductive.global_params as usize)
+                            .collect();
+                        binders.result = premise.result;
+                        let premise_lambda = parameters
+                            .iter()
+                            .take(inductive.global_params as usize)
+                            .rev()
+                            .fold(nary_binder_to_lambda(db, binders), |ty, term| {
+                                instantiate(db, ty, *term)
+                            });
+                        let mut minor_premise_type = infer_type(db, premise_lambda)?;
+
+                        // Check that the minor premise type matches the motive.
+                        // Strip off the fields from the type of the minor premise.
+                        let mut fields = Vec::new();
+                        let mut meta_gen =
+                            MetavariableGenerator::new(largest_unusable_metavariable(
+                                db,
+                                Term::new(db, ExpressionT::Match(match_expr.clone())),
+                            ));
+                        for _ in 0..premise.fields {
+                            match minor_premise_type.value(db) {
+                                ExpressionT::Pi(pi) => {
+                                    let field = pi.structure.generate_local_with_gen(&mut meta_gen);
+                                    minor_premise_type = instantiate(
+                                        db,
+                                        pi.result,
+                                        Term::new(db, ExpressionT::LocalConstant(field)),
+                                    );
+                                    fields.push(field);
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                        // Instantiate the motive with the index parameters and the inductive.
+                        let specialised_major_premise = Term::new(
+                            db,
+                            ExpressionT::Intro(Intro {
+                                inductive: inst.name.clone(),
+                                universes: inst.universes.clone(),
+                                variant: variant.name.without_provenance(),
+                                parameters: parameters
+                                    .iter()
+                                    .take(inductive.global_params as usize)
+                                    .copied()
+                                    .chain(fields.iter().map(|field| {
+                                        Term::new(db, ExpressionT::LocalConstant(*field))
+                                    }))
+                                    .collect(),
+                            }),
+                        );
+                        let (_, specialised_major_premise_args) = destructure_as_nary_application(
+                            db,
+                            infer_type(db, specialised_major_premise)?,
+                        );
+                        let specialised_motive = specialised_major_premise_args
+                            .into_iter()
+                            .skip(inductive.global_params as usize)
+                            .rev()
+                            .fold(
+                                instantiate(db, match_expr.motive, specialised_major_premise),
+                                |term, param| instantiate(db, term, param),
+                            );
+                        if !definitionally_equal(db, minor_premise_type, specialised_motive)? {
+                            tracing::error!(
+                                "{} != {}",
+                                minor_premise_type.display(db),
+                                specialised_motive.display(db)
+                            );
+                            todo!()
+                        }
+                    }
+
+                    // The major and minor premises are correct.
+                    Ok(parameters
+                        .iter()
+                        .skip(inductive.global_params as usize)
+                        .rev()
+                        .fold(
+                            instantiate(db, match_expr.motive, match_expr.major_premise),
+                            |term, param| instantiate(db, term, *param),
+                        ))
+                }
+                None => todo!(),
+            }
+        }
+        _ => todo!(),
+    }
 }
 
 fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {

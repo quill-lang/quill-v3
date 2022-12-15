@@ -73,7 +73,7 @@
                             function: (contents: Apply(
                                 function: (contents: Apply(
                                     function: (contents: Inst(
-                                        name: (contents: ["test", "test", "Eq"]),
+                                        name: (contents: ["cast", "Eq"]),
                                         universes: [(contents: UniverseVariable("u"))],
                                     )),
                                     argument: (contents: Local(index: 1)),
@@ -119,7 +119,7 @@
                                     function: (contents: Apply(
                                         function: (contents: Apply(
                                             function: (contents: Inst(
-                                                name: (contents: ["test", "test", "Eq"]),
+                                                name: (contents: ["cast", "Eq"]),
                                                 universes: [(contents: UniverseSucc((contents: UniverseVariable("u"))))]
                                             )),
                                             argument: (contents: Sort((contents: UniverseVariable("u")))),
@@ -180,7 +180,7 @@
                                     function: (contents: Apply(
                                         function: (contents: Apply(
                                             function: (contents: Inst(
-                                                name: (contents: ["test", "test", "Eq"]),
+                                                name: (contents: ["cast", "Eq"]),
                                                 universes: [(contents: UniverseSucc((contents: UniverseVariable("u"))))]
                                             )),
                                             argument: (contents: Sort((contents: UniverseVariable("u")))),

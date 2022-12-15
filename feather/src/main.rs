@@ -57,7 +57,11 @@ fn main() {
                     }
 
                     if result.value().is_some() {
-                        tracing::info!("certified {}", def.name.text(&db));
+                        tracing::info!(
+                            "certified {} (has body: {})",
+                            def.name.text(&db),
+                            def.contents.expr.is_some()
+                        );
                     }
                 }
                 fexpr::module::Item::Inductive(ind) => {

@@ -8,8 +8,8 @@ use crate::Db;
 mod check_type;
 mod check_variant;
 
-/// Retrieves the definition with the given name.
-/// This definition will not have been type checked.
+/// Retrieves the inductive with the given name.
+/// This inductive will not have been type checked.
 #[salsa::tracked(return_ref)]
 pub fn get_inductive(db: &dyn Db, path: Path) -> Dr<Inductive<Provenance, Box<Expression>>> {
     let (source, name) = path.split_last(db);
