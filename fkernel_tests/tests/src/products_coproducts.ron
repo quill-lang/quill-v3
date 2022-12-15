@@ -85,7 +85,7 @@
                         result: (contents: Apply(
                             function: (contents: Apply(
                                 function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Prod"]),
+                                    name: (contents: ["products_coproducts", "Prod"]),
                                     universes: [
                                         (contents: UniverseVariable("u")),
                                         (contents: UniverseVariable("v"))
@@ -127,7 +127,7 @@
                     result: (contents: Apply(
                         function: (contents: Apply(
                             function: (contents: Inst(
-                                name: (contents: ["test", "test", "Prod"]),
+                                name: (contents: ["products_coproducts", "Prod"]),
                                 universes: [
                                     (contents: UniverseVariable("u")),
                                     (contents: UniverseVariable("u"))
@@ -162,7 +162,7 @@
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Intro(
-                        inductive: (contents: ["test", "test", "Prod"]),
+                        inductive: (contents: ["products_coproducts", "Prod"]),
                         universes: [
                             (contents: UniverseVariable("u")),
                             (contents: UniverseVariable("u"))
@@ -249,7 +249,7 @@
                         result: (contents: Apply(
                             function: (contents: Apply(
                                 function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Sum"]),
+                                    name: (contents: ["products_coproducts", "Sum"]),
                                     universes: [
                                         (contents: UniverseVariable("u")),
                                         (contents: UniverseVariable("v"))
@@ -299,7 +299,7 @@
                         result: (contents: Apply(
                             function: (contents: Apply(
                                 function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Sum"]),
+                                    name: (contents: ["products_coproducts", "Sum"]),
                                     universes: [
                                         (contents: UniverseVariable("u")),
                                         (contents: UniverseVariable("v"))
@@ -341,7 +341,7 @@
                     result: (contents: Apply(
                         function: (contents: Apply(
                             function: (contents: Inst(
-                                name: (contents: ["test", "test", "Sum"]),
+                                name: (contents: ["products_coproducts", "Sum"]),
                                 universes: [
                                     (contents: UniverseVariable("u")),
                                     (contents: UniverseVariable("u"))
@@ -376,7 +376,7 @@
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Intro(
-                        inductive: (contents: ["test", "test", "Sum"]),
+                        inductive: (contents: ["products_coproducts", "Sum"]),
                         universes: [
                             (contents: UniverseVariable("u")),
                             (contents: UniverseVariable("u"))

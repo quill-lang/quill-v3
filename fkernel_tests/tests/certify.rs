@@ -28,7 +28,6 @@ fn run_test(file: &str) {
     for report in result.reports() {
         report.render(&db, std::io::stdout());
     }
-
     assert!(result.reports().is_empty());
 
     if let Some(result) = result.value() {
@@ -42,7 +41,9 @@ fn run_test(file: &str) {
                     });
                     println!("certifying {}", path.display(&db));
                     let result = fkernel::typeck::certify_definition(&db, path);
-
+                    for report in result.reports() {
+                        report.render(&db, std::io::stdout());
+                    }
                     assert!(result.reports().is_empty());
                 }
                 fexpr::module::Item::Inductive(ind) => {
@@ -53,7 +54,9 @@ fn run_test(file: &str) {
                     });
                     println!("certifying {}", path.display(&db));
                     let result = fkernel::inductive::certify_inductive(&db, path);
-
+                    for report in result.reports() {
+                        report.render(&db, std::io::stdout());
+                    }
                     assert!(result.reports().is_empty());
                 }
             }

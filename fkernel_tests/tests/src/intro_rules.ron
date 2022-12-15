@@ -1,0 +1,193 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+
+(contents: (
+    items: [
+        Inductive(contents: (
+            name: "PUnit",
+            universe_params: ["u"],
+            ty: (
+                structures: [],
+                result: (contents: Sort((contents: UniverseVariable("u")))),
+            ),
+            global_params: 0,
+            variants: [
+                (
+                    name: "star",
+                    intro_rule: (
+                        structures: [],
+                        result: (contents: Inst(
+                            name: (contents: ["intro_rules", "PUnit"]),
+                            universes: [(contents: UniverseVariable("u"))],
+                        ))
+                    )
+                )
+            ],
+        )),
+        Inductive(contents: (
+            name: "True",
+            universe_params: [],
+            ty: (
+                structures: [],
+                result: (contents: Sort((contents: UniverseZero))),
+            ),
+            global_params: 0,
+            variants: [
+                (
+                    name: "True",
+                    intro_rule: (
+                        structures: [],
+                        result: (contents: Inst(
+                            name: (contents: ["intro_rules", "True"]),
+                            universes: [],
+                        ))
+                    )
+                )
+            ]
+        )),
+        Inductive(contents: (
+            name: "Eq",
+            universe_params: ["u"],
+            ty: (
+                structures: [
+                    (
+                        bound: (
+                            name: "A",
+                            ty: (contents: Sort((contents: UniverseVariable("u")))),
+                            ownership: PZero,
+                        ),
+                        binder_annotation: ImplicitEager,
+                        invocation_type: Once,
+                        region: (contents: StaticRegion)
+                    ),
+                    (
+                        bound: (
+                            name: "a",
+                            ty: (contents: Local(index: 0)),
+                            ownership: PZero,
+                        ),
+                        binder_annotation: Explicit,
+                        invocation_type: Once,
+                        region: (contents: StaticRegion)
+                    ),
+                    (
+                        bound: (
+                            name: "b",
+                            ty: (contents: Local(index: 1)),
+                            ownership: PZero,
+                        ),
+                        binder_annotation: Explicit,
+                        invocation_type: Once,
+                        region: (contents: StaticRegion)
+                    ),
+                ],
+                result: (contents: Sort((contents: UniverseZero))),
+            ),
+            global_params: 2,
+            variants: [
+                (
+                    name: "refl",
+                    intro_rule: (
+                        structures: [
+                            (
+                                bound: (
+                                    name: "A",
+                                    ty: (contents: Sort((contents: UniverseVariable("u")))),
+                                    ownership: PZero,
+                                ),
+                                binder_annotation: ImplicitEager,
+                                invocation_type: Once,
+                                region: (contents: StaticRegion)
+                            ),
+                            (
+                                bound: (
+                                    name: "a",
+                                    ty: (contents: Local(index: 0)),
+                                    ownership: PZero,
+                                ),
+                                binder_annotation: Explicit,
+                                invocation_type: Once,
+                                region: (contents: StaticRegion)
+                            ),
+                        ],
+                        result: (contents: Apply(
+                            function: (contents: Apply(
+                                function: (contents: Apply(
+                                    function: (contents: Inst(
+                                        name: (contents: ["intro_rules", "Eq"]),
+                                        universes: [(contents: UniverseVariable("u"))],
+                                    )),
+                                    argument: (contents: Local(index: 1)),
+                                )),
+                                argument: (contents: Local(index: 0)),
+                            )),
+                            argument: (contents: Local(index: 0)),
+                        )),
+                    )
+                )
+            ]
+        )),
+        Definition(contents: (
+            name: "star",
+            universe_params: ["u"],
+            ty: (contents: Inst(
+                name: (contents: ["intro_rules", "PUnit"]),
+                universes: [(contents: UniverseVariable("u"))],
+            )),
+            expr: (contents: Intro(
+                inductive: (contents: ["intro_rules", "PUnit"]),
+                universes: [(contents: UniverseVariable("u"))],
+                variant: "star",
+                parameters: [],
+            ))
+        )),
+        Definition(contents: (
+            name: "true_eq_true",
+            universe_params: [],
+            ty: (contents: Apply(
+                function: (contents: Apply(
+                    function: (contents: Apply(
+                        function: (contents: Inst(
+                            name: (contents: ["intro_rules", "Eq"]),
+                            universes: [(contents: UniverseZero)],
+                        )),
+                        argument: (contents: Inst(
+                            name: (contents: ["intro_rules", "True"]),
+                            universes: [],
+                        )),
+                    )),
+                    argument: (contents: Intro(
+                        inductive: (contents: ["intro_rules", "True"]),
+                        universes: [],
+                        variant: "True",
+                        parameters: [],
+                    )),
+                )),
+                argument: (contents: Intro(
+                    inductive: (contents: ["intro_rules", "True"]),
+                    universes: [],
+                    variant: "True",
+                    parameters: [],
+                )),
+            )),
+            expr: (contents: Intro(
+                inductive: (contents: ["intro_rules", "Eq"]),
+                universes: [(contents: UniverseZero)],
+                variant: "refl",
+                parameters: [
+                    (contents: Inst(
+                        name: (contents: ["intro_rules", "True"]),
+                        universes: [],
+                    )),
+                    (contents: Intro(
+                        inductive: (contents: ["intro_rules", "True"]),
+                        universes: [],
+                        variant: "True",
+                        parameters: [],
+                    )),
+                ],
+            ))
+        )),
+    ]
+))

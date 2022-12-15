@@ -50,7 +50,7 @@ pub fn pi_args(
     let mut result = Vec::new();
     while let ExpressionT::Pi(pi) = t.value(db) {
         t = pi.result;
-        result.push(pi.generate_local_with_gen(meta_gen));
+        result.push(pi.structure.generate_local_with_gen(meta_gen));
     }
     result
 }

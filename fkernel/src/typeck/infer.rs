@@ -16,7 +16,7 @@ use super::{defeq::definitionally_equal, get_definition, whnf::to_weak_head_norm
 /// An error emitted by the kernel when performing type inference or definitional equality checking.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InferenceError {
-    TermNotClosed,
+    TermNotClosed(Term),
     IncorrectUniverseArity,
     DefinitionNotFound(Path),
     LetTypeMismatch,
@@ -35,7 +35,9 @@ pub enum InferenceError {
 impl InferenceError {
     pub fn display(&self, db: &dyn Db) -> String {
         match self {
-            InferenceError::TermNotClosed => todo!(),
+            InferenceError::TermNotClosed(term) => {
+                format!("term\n{}\nhad free variables", term.display(db))
+            }
             InferenceError::IncorrectUniverseArity => todo!(),
             InferenceError::DefinitionNotFound(path) => {
                 format!("definition {} not found", path.to_string(db))
@@ -73,7 +75,7 @@ pub type Ir<T> = Result<T, InferenceError>;
 #[salsa::tracked]
 pub fn infer_type(db: &dyn Db, t: Term) -> Ir<Term> {
     if has_free_variables(db, t) {
-        Err(InferenceError::TermNotClosed)
+        Err(InferenceError::TermNotClosed(t))
     } else {
         infer_type_core(db, t)
     }
@@ -198,7 +200,7 @@ fn infer_type_lambda(db: &dyn Db, lambda: &Binder<(), Term>) -> Ir<Term> {
     as_sort(db, argument_type_type)?;
 
     // Infer the return type of the lambda by first instantiating the parameter then inferring the resulting type.
-    let new_local = lambda.generate_local(db, lambda.result);
+    let new_local = lambda.structure.generate_local(db, lambda.result);
     let body = instantiate(
         db,
         lambda.result,
@@ -222,7 +224,7 @@ fn infer_type_pi(db: &dyn Db, pi: &Binder<(), Term>) -> Ir<Term> {
         pi.result,
         Term::new(
             db,
-            ExpressionT::LocalConstant(pi.generate_local(db, pi.result)),
+            ExpressionT::LocalConstant(pi.structure.generate_local(db, pi.result)),
         ),
     );
     let return_type = as_sort(db, infer_type_core(db, body)?)?;
@@ -270,6 +272,34 @@ fn infer_type_intro(db: &dyn Db, intro: &Intro<(), Term>) -> Ir<Term> {
                             variant.intro_rule.structures.len()
                         );
                         return Err(InferenceError::IncorrectIntroParameters);
+                    }
+
+                    // Check that all of the parameters are of the correct type.
+                    for (index, param) in intro.parameters.iter().enumerate() {
+                        let param_instantiated = intro
+                            .parameters
+                            .iter()
+                            .take(index)
+                            .rev()
+                            .fold(*param, |t, param| instantiate(db, t, *param));
+
+                        let expected_type = intro.parameters.iter().take(index).rev().fold(
+                            instantiate_universe_parameters(
+                                db,
+                                variant.intro_rule.structures[index].bound.ty.to_term(db),
+                                &inductive.universe_params,
+                                &intro.universes,
+                            ),
+                            |t, param| instantiate(db, t, *param),
+                        );
+
+                        if !definitionally_equal(
+                            db,
+                            infer_type(db, param_instantiated)?,
+                            expected_type,
+                        )? {
+                            todo!();
+                        }
                     }
 
                     Ok(intro.parameters.iter().rev().fold(

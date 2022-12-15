@@ -153,7 +153,7 @@ where
 }
 
 impl BinderStructure<Provenance, Box<Expression>> {
-    fn without_provenance(&self, db: &dyn Db) -> BinderStructure<(), Term> {
+    pub fn without_provenance(&self, db: &dyn Db) -> BinderStructure<(), Term> {
         BinderStructure {
             bound: self.bound.without_provenance(db),
             binder_annotation: self.binder_annotation,
@@ -164,7 +164,7 @@ impl BinderStructure<Provenance, Box<Expression>> {
 }
 
 impl BinderStructure<(), Term> {
-    fn synthetic(&self, db: &dyn Db) -> BinderStructure<Provenance, Box<Expression>> {
+    pub fn synthetic(&self, db: &dyn Db) -> BinderStructure<Provenance, Box<Expression>> {
         BinderStructure {
             bound: self.bound.synthetic(db),
             binder_annotation: self.binder_annotation,
@@ -188,7 +188,7 @@ where
     pub result: E,
 }
 
-impl<P, E> Binder<P, E>
+impl<P, E> BinderStructure<P, E>
 where
     P: Default + Clone + PartialEq,
     E: Clone,
@@ -199,8 +199,8 @@ where
         meta_gen: &mut MetavariableGenerator<E>,
     ) -> LocalConstant<P, E> {
         LocalConstant {
-            metavariable: meta_gen.gen(self.structure.bound.ty.clone()),
-            structure: self.structure.clone(),
+            metavariable: meta_gen.gen(self.bound.ty.clone()),
+            structure: self.clone(),
         }
     }
 

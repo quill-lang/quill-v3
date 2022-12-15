@@ -141,12 +141,12 @@ fn binder_definitionally_equal(
     // Now, substitute the parameter types in the body, and check if they are the same.
     let local = Term::new(
         db,
-        ExpressionT::LocalConstant(
-            left.generate_local_with_gen(&mut MetavariableGenerator::new(std::cmp::max(
+        ExpressionT::LocalConstant(left.structure.generate_local_with_gen(
+            &mut MetavariableGenerator::new(std::cmp::max(
                 largest_unusable_metavariable(db, left.result),
                 largest_unusable_metavariable(db, right.result),
-            ))),
-        ),
+            )),
+        )),
     );
     let left_body = instantiate(db, left.result, local);
     let right_body = instantiate(db, right.result, local);

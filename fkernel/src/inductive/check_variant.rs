@@ -1,13 +1,17 @@
 use fcommon::{Dr, LabelType, ReportKind};
 use fexpr::{
     basic::{DeBruijnIndex, DeBruijnOffset, Provenance},
-    expr::{Expression, ExpressionT, Term},
+    expr::{
+        largest_unusable_metavariable, Expression, ExpressionT, LocalConstant,
+        MetavariableGenerator, Term,
+    },
     inductive::Variant,
 };
 
 use crate::{
     term::{
-        destructure_as_nary_application, find_inst, local_is_bound, nary_binder_to_pi_expression,
+        destructure_as_nary_application, find_inst, instantiate, local_is_bound,
+        nary_binder_to_pi_expression,
     },
     typeck::{
         as_sort, check_no_local_or_metavariable, definitionally_equal, infer_type,
@@ -124,17 +128,28 @@ fn check_field<'db>(
     field_index: usize,
     found_recursive_parameter: &mut bool,
 ) -> Dr<()> {
-    match infer_type(
-        db,
-        variant.intro_rule.structures[field_index]
-            .bound
-            .ty
-            .to_term(db),
-    )
-    .and_then(|sort| as_sort(db, sort))
-    {
+    let mut term = variant.intro_rule.structures[field_index]
+        .bound
+        .ty
+        .to_term(db);
+    let mut meta_gen = MetavariableGenerator::new(largest_unusable_metavariable(db, term));
+    for param in variant.intro_rule.structures.iter().take(field_index).rev() {
+        term = instantiate(
+            db,
+            term,
+            Term::new(
+                db,
+                ExpressionT::LocalConstant(
+                    param
+                        .without_provenance(db)
+                        .generate_local_with_gen(&mut meta_gen),
+                ),
+            ),
+        );
+    }
+    match infer_type(db, term).and_then(|sort| as_sort(db, sort)) {
         Ok(sort) => {
-            // The type of the type of this index parameter is allowed if
+            // The type of the type of this field is allowed if
             // - its level is at most the level of the inductive data type being declared, or
             // - the inductive data type has sort 0.
             if !is_zero(&info.sort.0) && !universe_at_most(db, sort.0, info.sort.0.clone()) {
@@ -142,7 +157,7 @@ fn check_field<'db>(
             } else {
                 // Check that the inductive data type occurs strictly positively.
                 check_positivity(db, info, variant, field_index).bind(|()| {
-                    is_recursive_argument(db, info,variant.intro_rule.structures[field_index].bound.ty.to_term(db), field_index).bind(|is_recursive| {
+                    is_recursive_argument(db, info,term, field_index).bind(|is_recursive| {
                         if is_recursive {
                             *found_recursive_parameter = true;
                         }
