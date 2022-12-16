@@ -67,13 +67,10 @@ pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
         ),
         ExpressionT::Fix(fix) => max(
             max(
-                max(
-                    first_free_variable_index(db, fix.parameter.ty),
-                    first_free_variable_index(db, fix.fixpoint.ty).pred(),
-                ),
-                first_free_variable_index(db, fix.body).pred().pred(),
+                first_free_variable_index(db, fix.argument),
+                first_free_variable_index(db, fix.fixpoint.ty).pred(),
             ),
-            first_free_variable_index(db, fix.argument),
+            first_free_variable_index(db, fix.body).pred().pred(),
         ),
         ExpressionT::Sort(_) => DeBruijnIndex::zero(),
         ExpressionT::Region | ExpressionT::RegionT | ExpressionT::StaticRegion => {

@@ -5,110 +5,35 @@
 (contents: (
     items: [
         Inductive(contents: (
-            name: "Or",
+            name: "Nat",
             universe_params: [],
             ty: (
-                structures: [
-                    (
-                        bound: (
-                            name: "p",
-                            ty: (contents: Sort((contents: UniverseZero))),
-                            ownership: PZero,
-                        ),
-                        binder_annotation: ImplicitEager,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                    (
-                        bound: (
-                            name: "q",
-                            ty: (contents: Sort((contents: UniverseZero))),
-                            ownership: PZero,
-                        ),
-                        binder_annotation: ImplicitEager,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                ],
-                result: (contents: Sort((contents: UniverseZero))),
+                structures: [],
+                result: (contents: Sort((contents: UniverseSucc((contents: UniverseZero))))),
             ),
-            global_params: 2,
+            global_params: 0,
             variants: [
                 (
-                    name: "inl",
+                    name: "zero",
                     intro_rule: (
-                        structures: [
-                            (
-                                bound: (
-                                    name: "p",
-                                    ty: (contents: Sort((contents: UniverseZero))),
-                                    ownership: PZero,
-                                ),
-                                binder_annotation: ImplicitEager,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "q",
-                                    ty: (contents: Sort((contents: UniverseZero))),
-                                    ownership: PZero,
-                                ),
-                                binder_annotation: ImplicitEager,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "h",
-                                    ty: (contents: Local(index: 1)),
-                                    ownership: POwned,
-                                ),
-                                binder_annotation: Explicit,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                        ],
-                        result: (contents: Apply(
-                            function: (contents: Apply(
-                                function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Or"]),
-                                    universes: [],
-                                )),
-                                argument: (contents: Local(index: 2)),
-                            )),
-                            argument: (contents: Local(index: 1)),
+                        structures: [],
+                        result: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
                         ))
                     )
                 ),
                 (
-                    name: "inr",
+                    name: "succ",
                     intro_rule: (
                         structures: [
                             (
                                 bound: (
-                                    name: "p",
-                                    ty: (contents: Sort((contents: UniverseZero))),
-                                    ownership: PZero,
-                                ),
-                                binder_annotation: ImplicitEager,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "q",
-                                    ty: (contents: Sort((contents: UniverseZero))),
-                                    ownership: PZero,
-                                ),
-                                binder_annotation: ImplicitEager,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "h",
-                                    ty: (contents: Local(index: 0)),
+                                    name: "n",
+                                    ty: (contents: Inst(
+                                        name: (contents: ["test", "test", "Nat"]),
+                                        universes: [],
+                                    )),
                                     ownership: POwned,
                                 ),
                                 binder_annotation: Explicit,
@@ -116,166 +41,122 @@
                                 region: (contents: StaticRegion),
                             ),
                         ],
-                        result: (contents: Apply(
-                            function: (contents: Apply(
-                                function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Or"]),
-                                    universes: [],
-                                )),
-                                argument: (contents: Local(index: 2)),
-                            )),
-                            argument: (contents: Local(index: 1)),
+                        result: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
                         ))
                     )
                 ),
             ],
         )),
         Definition(contents: (
-            name: "or_comm",
+            name: "add",
             universe_params: [],
             ty: (contents: Pi(
                 structure: (
                     bound: (
-                        name: "p",
-                        ty: (contents: Sort((contents: UniverseZero))),
-                        ownership: PZero,
+                        name: "a",
+                        ty: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                        )),
+                        ownership: POwned,
                     ),
-                    binder_annotation: ImplicitEager,
+                    binder_annotation: Explicit,
                     invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Pi(
                     structure: (
                         bound: (
-                            name: "q",
-                            ty: (contents: Sort((contents: UniverseZero))),
-                            ownership: PZero,
+                            name: "b",
+                            ty: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                            )),
+                            ownership: POwned,
                         ),
-                        binder_annotation: ImplicitEager,
+                        binder_annotation: Explicit,
                         invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: Pi(
-                        structure: (
-                            bound: (
-                                name: "h",
-                                ty: (contents: Apply(
-                                    function: (contents: Apply(
-                                        function: (contents: Inst(
-                                            name: (contents: ["test", "test", "Or"]),
-                                            universes: [],
-                                        )),
-                                        argument: (contents: Local(index: 1)),
-                                    )),
-                                    argument: (contents: Local(index: 0)),
-                                )),
-                                ownership: PZero,
-                            ),
-                            binder_annotation: Explicit,
-                            invocation_type: Once,
-                            region: (contents: StaticRegion),
-                        ),
-                        result: (contents: Apply(
-                            function: (contents: Apply(
-                                function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Or"]),
-                                    universes: [],
-                                )),
-                                argument: (contents: Local(index: 1)),
-                            )),
-                            argument: (contents: Local(index: 2)),
-                        )),
-                    ))
-                ))
+                    result: (contents: Inst(
+                        name: (contents: ["test", "test", "Nat"]),
+                        universes: [],
+                    )),
+                )),
             )),
             expr: (contents: Lambda(
                 structure: (
                     bound: (
-                        name: "p",
-                        ty: (contents: Sort((contents: UniverseZero))),
-                        ownership: PZero,
+                        name: "a",
+                        ty: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                        )),
+                        ownership: POwned,
                     ),
-                    binder_annotation: ImplicitEager,
+                    binder_annotation: Explicit,
                     invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Lambda(
                     structure: (
                         bound: (
-                            name: "q",
-                            ty: (contents: Sort((contents: UniverseZero))),
-                            ownership: PZero,
+                            name: "b",
+                            ty: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                            )),
+                            ownership: POwned,
                         ),
-                        binder_annotation: ImplicitEager,
+                        binder_annotation: Explicit,
                         invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: Lambda(
-                        structure: (
-                            bound: (
-                                name: "h",
-                                ty: (contents: Apply(
-                                    function: (contents: Apply(
-                                        function: (contents: Inst(
-                                            name: (contents: ["test", "test", "Or"]),
-                                            universes: [],
-                                        )),
-                                        argument: (contents: Local(index: 1)),
-                                    )),
-                                    argument: (contents: Local(index: 0)),
-                                )),
-                                ownership: PZero,
-                            ),
-                            binder_annotation: Explicit,
-                            invocation_type: Once,
-                            region: (contents: StaticRegion),
+                    result: (contents: Fix(
+                        argument: (contents: Local(index: 0)),
+                        argument_name: "x",
+                        fixpoint: (
+                            name: "f",
+                            ty: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                            )),
+                            ownership: POwned,
                         ),
-                        result: (contents: Match(
+                        body: (contents: Match(
                             major_premise: (contents: Local(index: 0)),
                             index_params: 0,
-                            motive: (contents: Apply(
-                                function: (contents: Apply(
-                                    function: (contents: Inst(
-                                        name: (contents: ["test", "test", "Or"]),
-                                        universes: [],
-                                    )),
-                                    argument: (contents: Local(index: 2)),
-                                )),
-                                argument: (contents: Local(index: 3)),
+                            motive: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
                             )),
                             minor_premises: [
                                 (
-                                    variant: "inl",
-                                    fields: 1,
-                                    result: (contents: Intro(
-                                        inductive: (contents: ["test", "test", "Or"]),
-                                        universes: [],
-                                        variant: "inr",
-                                        parameters: [
-                                            (contents: Local(index: 2)),
-                                            (contents: Local(index: 3)),
-                                            (contents: Local(index: 0)),
-                                        ]
-                                    )),
+                                    variant: "zero",
+                                    fields: 0,
+                                    result: (contents: Local(index: 3)),
                                 ),
                                 (
-                                    variant: "inr",
+                                    variant: "succ",
                                     fields: 1,
                                     result: (contents: Intro(
-                                        inductive: (contents: ["test", "test", "Or"]),
+                                        inductive: (contents: ["test", "test", "Nat"]),
                                         universes: [],
-                                        variant: "inl",
+                                        variant: "succ",
                                         parameters: [
-                                            (contents: Local(index: 2)),
-                                            (contents: Local(index: 3)),
-                                            (contents: Local(index: 0)),
-                                        ]
+                                            (contents: Apply(
+                                                function: (contents: Local(index: 2)),
+                                                argument: (contents: Local(index: 0)),
+                                            ))
+                                        ],
                                     )),
                                 ),
-                            ]
+                            ],
                         )),
-                    ))
-                ))
+                    )),
+                )),
             )),
         )),
     ]

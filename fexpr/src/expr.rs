@@ -328,20 +328,19 @@ pub struct Fix<P, E>
 where
     P: Default + PartialEq,
 {
-    /// The bound parameter to the fixed point construction.
-    /// The type of this parameter must be inductive.
-    pub parameter: BoundVariable<P, E>,
+    /// The concrete argument to instantiate the parameter to the fixed point construction with.
+    /// We supply this here, instead of making [`Fix`] return a function, to avoid issues with lifetimes.
+    pub argument: E,
+    /// The name supplied to the argument to the fixed point construction.
+    pub argument_name: Name<P>,
     /// The local variable to be constructed by a fixed point process.
-    /// The `parameter` is bound at index 0 in this expression.
+    /// The parameter is bound at index 0 in this expression.
     pub fixpoint: BoundVariable<P, E>,
     /// The main body of the fixed point expression.
-    /// `parameter` is bound at index 0 and the function `parameter -> fixpoint` is bound at index 1 in this expression.
+    /// The parameter is bound at index 0 and the function `parameter -> fixpoint` is bound at index 1 in this expression.
     /// The parameter `fixpoint` should only be invoked with structurally smaller parameters.
     /// The type of this expression should be `fixpoint.ty`.
     pub body: E,
-    /// The concrete argument to instantiate the `parameter` with.
-    /// We supply this here, instead of making [`Fix`] return a function, to avoid issues with lifetimes.
-    pub argument: E,
 }
 
 /// Represents the universe of types corresponding to the given universe.
@@ -556,10 +555,7 @@ pub fn largest_unusable_metavariable(db: &dyn Db, t: Term) -> Option<u32> {
             .unwrap(),
         ExpressionT::Fix(t) => max(
             max(
-                max(
-                    largest_unusable_metavariable(db, t.parameter.ty),
-                    largest_unusable_metavariable(db, t.fixpoint.ty),
-                ),
+                largest_unusable_metavariable(db, t.fixpoint.ty),
                 largest_unusable_metavariable(db, t.body),
             ),
             largest_unusable_metavariable(db, t.argument),
@@ -653,10 +649,10 @@ impl Term {
                     .collect(),
             })),
             ExpressionT::Fix(e) => Expression::new_synthetic(ExpressionT::Fix(Fix {
-                parameter: e.parameter.synthetic(db),
+                argument: Box::new(e.argument.to_expression(db)),
+                argument_name: e.argument_name.synthetic(),
                 fixpoint: e.fixpoint.synthetic(db),
                 body: Box::new(e.body.to_expression(db)),
-                argument: Box::new(e.argument.to_expression(db)),
             })),
             ExpressionT::Sort(e) => Expression::new_synthetic(ExpressionT::Sort(Sort(
                 WithProvenance::new_synthetic(e.0.synthetic()),
@@ -793,10 +789,10 @@ impl Expression {
             ExpressionT::Fix(e) => Term::new(
                 db,
                 ExpressionT::Fix(Fix {
-                    parameter: e.parameter.without_provenance(db),
+                    argument: e.argument.to_term(db),
+                    argument_name: e.argument_name.without_provenance(),
                     fixpoint: e.fixpoint.without_provenance(db),
                     body: e.body.to_term(db),
-                    argument: e.argument.to_term(db),
                 }),
             ),
             ExpressionT::Sort(e) => Term::new(

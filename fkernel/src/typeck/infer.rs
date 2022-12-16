@@ -1,5 +1,7 @@
 //! Infers types of terms.
 
+use std::collections::HashSet;
+
 use fcommon::{Path, Str};
 use fexpr::{
     basic::{DeBruijnIndex, Name, Provenance, WithProvenance},
@@ -13,7 +15,7 @@ use crate::{
     term::{
         abstract_binder, create_nary_application, destructure_as_nary_application,
         has_free_variables, instantiate, instantiate_universe_parameters, nary_binder_to_lambda,
-        nary_binder_to_pi_expression,
+        nary_binder_to_pi_expression, subterms,
     },
     universe::is_zero,
 };
@@ -542,8 +544,192 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
     }
 }
 
+/// Ensures that arguments of `fixpoint` are structurally smaller than `local`.
+/// `structurally_smaller` is a set of metavariables that we know are structurally smaller than `local`.
+/// TODO: Fixed point expressions for borrowed inductive types.
+fn check_decreasing(
+    db: &dyn Db,
+    meta_gen: &mut MetavariableGenerator<Term>,
+    t: Term,
+    local: LocalConstant<(), Term>,
+    fixpoint: LocalConstant<(), Term>,
+    structurally_smaller: &HashSet<u32>,
+) -> Ir<()> {
+    match t.value(db) {
+        ExpressionT::Apply(apply) => {
+            if apply.function == Term::new(db, ExpressionT::LocalConstant(fixpoint)) {
+                // The fixpoint function is being invoked.
+                // Its argument must be a local constant that is structurally smaller than `local`.
+                match apply.argument.value(db) {
+                    ExpressionT::Metavariable(metavariable) => {
+                        if structurally_smaller.contains(&metavariable.index) {
+                            Ok(())
+                        } else {
+                            todo!()
+                        }
+                    }
+                    _ => {
+                        // The argument to the fixpoint function was not a metavariable.
+                        todo!()
+                    }
+                }
+            } else {
+                Ok(())
+            }
+        }
+        ExpressionT::Match(match_expr) => {
+            match match_expr.major_premise.value(db) {
+                ExpressionT::LocalConstant(constant) => {
+                    if local.metavariable.index == constant.metavariable.index {
+                        // We're performing pattern matching on the local constant we need to check.
+                        check_decreasing(
+                            db,
+                            meta_gen,
+                            match_expr.motive,
+                            local,
+                            fixpoint,
+                            structurally_smaller,
+                        )?;
+                        let dummy_term = Term::new(db, ExpressionT::RegionT);
+                        for premise in &match_expr.minor_premises {
+                            let mut smaller = structurally_smaller.clone();
+                            let mut premise_result = premise.result;
+                            for _ in 0..premise.fields {
+                                let metavariable = meta_gen.gen(dummy_term);
+                                premise_result = instantiate(
+                                    db,
+                                    premise_result,
+                                    Term::new(db, ExpressionT::Metavariable(metavariable)),
+                                );
+                                smaller.insert(metavariable.index);
+                            }
+                            check_decreasing(
+                                db,
+                                meta_gen,
+                                premise_result,
+                                local,
+                                fixpoint,
+                                &smaller,
+                            )?;
+                        }
+                        Ok(())
+                    } else {
+                        Ok(())
+                    }
+                }
+                _ => Ok(()),
+            }
+        }
+        ExpressionT::LocalConstant(constant) => {
+            if fixpoint.metavariable.index == constant.metavariable.index {
+                // The fixpoint function cannot occur in a position other than function application.
+                // Since we already handled function application earlier, this is an error.
+                todo!()
+            } else {
+                Ok(())
+            }
+        }
+        _ => {
+            for term in subterms(db, t) {
+                check_decreasing(db, meta_gen, term, local, fixpoint, structurally_smaller)?;
+            }
+            Ok(())
+        }
+    }
+}
+
 fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {
-    todo!()
+    let argument_type = infer_type(db, fix.argument)?;
+    let (inductive_term, parameters) = destructure_as_nary_application(db, argument_type);
+    match inductive_term.value(db) {
+        ExpressionT::Inst(inst) => {
+            match get_inductive(db, inst.name.to_path(db)).value() {
+                Some(inductive) => {
+                    // The argument is indeed of an inductive type, and the inductive type exists.
+                    // Check that the body of the fixed point expression is of the correct type.
+                    let mut meta_gen = MetavariableGenerator::new(largest_unusable_metavariable(
+                        db,
+                        Term::new(db, ExpressionT::Fix(fix.clone())),
+                    ));
+
+                    let argument_structure = BinderStructure {
+                        // The structure here isn't really relevant.
+                        bound: BoundVariable {
+                            name: Name(WithProvenance::new(Str::new(db, "_parameter".to_owned()))),
+                            ty: argument_type,
+                            ownership: ParameterOwnership::POwned,
+                        },
+                        binder_annotation: BinderAnnotation::Explicit,
+                        invocation_type: InvocationType::Once,
+                        region: Term::new(db, ExpressionT::StaticRegion),
+                    };
+                    let argument_local = LocalConstant {
+                        metavariable: meta_gen.gen(argument_type),
+                        structure: argument_structure,
+                    };
+                    let argument_local_term =
+                        Term::new(db, ExpressionT::LocalConstant(argument_local));
+                    let fixpoint_body_pi = Term::new(
+                        db,
+                        ExpressionT::Pi(Binder {
+                            structure: argument_structure,
+                            result: fix.fixpoint.ty,
+                        }),
+                    );
+                    let fixpoint_local = LocalConstant {
+                        metavariable: meta_gen.gen(fixpoint_body_pi),
+                        structure: BinderStructure {
+                            // The structure here isn't really relevant.
+                            bound: BoundVariable {
+                                name: Name(WithProvenance::new(Str::new(
+                                    db,
+                                    "_fixpoint".to_owned(),
+                                ))),
+                                ty: fixpoint_body_pi,
+                                ownership: ParameterOwnership::POwned,
+                            },
+                            binder_annotation: BinderAnnotation::Explicit,
+                            invocation_type: InvocationType::Once,
+                            region: Term::new(db, ExpressionT::StaticRegion),
+                        },
+                    };
+
+                    let body_instantiated = instantiate(
+                        db,
+                        instantiate(db, fix.body, argument_local_term),
+                        Term::new(db, ExpressionT::LocalConstant(fixpoint_local)),
+                    );
+
+                    let expected_fixpoint_body_type =
+                        instantiate(db, fix.fixpoint.ty, argument_local_term);
+
+                    if !definitionally_equal(
+                        db,
+                        expected_fixpoint_body_type,
+                        infer_type(db, body_instantiated)?,
+                    )? {
+                        todo!()
+                    }
+
+                    // The fixed point construction was correctly typed.
+                    // Check that the fixed point construction is only invoked using structurally smaller parameters.
+                    check_decreasing(
+                        db,
+                        &mut meta_gen,
+                        body_instantiated,
+                        argument_local,
+                        fixpoint_local,
+                        &HashSet::new(),
+                    )?;
+
+                    // The fixed point construction is sound and type correct.
+                    Ok(instantiate(db, fix.fixpoint.ty, fix.argument))
+                }
+                None => todo!(),
+            }
+        }
+        _ => todo!(),
+    }
 }
 
 fn infer_type_sort(db: &dyn Db, sort: &Sort<()>) -> Ir<Term> {

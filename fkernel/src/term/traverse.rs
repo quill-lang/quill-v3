@@ -21,6 +21,34 @@ enum ReplaceResult {
     ReplaceWith(Term),
 }
 
+pub fn subterms(db: &dyn Db, t: Term) -> Vec<Term> {
+    match t.value(db) {
+        ExpressionT::Local(_) => Vec::new(),
+        ExpressionT::Borrow(t) => vec![t.region, t.value],
+        ExpressionT::Delta(t) => vec![t.region, t.ty],
+        ExpressionT::Inst(_) => Vec::new(),
+        ExpressionT::Let(t) => vec![t.bound.ty, t.to_assign, t.body],
+        ExpressionT::Lambda(t) | ExpressionT::Pi(t) => {
+            vec![t.structure.bound.ty, t.structure.region, t.result]
+        }
+        ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => vec![t.body],
+        ExpressionT::Apply(t) => vec![t.function, t.argument],
+        ExpressionT::Intro(t) => t.parameters.clone(),
+        ExpressionT::Match(t) => std::iter::once(t.major_premise)
+            .chain(std::iter::once(t.motive))
+            .chain(t.minor_premises.iter().map(|premise| premise.result))
+            .collect(),
+        ExpressionT::Fix(t) => vec![t.argument, t.fixpoint.ty, t.body],
+        ExpressionT::Sort(_)
+        | ExpressionT::Region
+        | ExpressionT::RegionT
+        | ExpressionT::StaticRegion
+        | ExpressionT::Lifespan(_) => Vec::new(),
+        ExpressionT::Metavariable(t) => vec![t.ty],
+        ExpressionT::LocalConstant(t) => vec![t.metavariable.ty],
+    }
+}
+
 /// Traverses the term tree and finds terms matching the provided replacement function.
 /// If any matched, the replacement function generates the value to replace the found value with.
 /// The provided [`DeBruijnOffset`] gives the amount of binders the [`Expr`] argument is currently under.
@@ -142,10 +170,10 @@ fn replace_in_term_offset(
                         .collect(),
                 })),
                 ExpressionT::Fix(t) => Term::new(db, ExpressionT::Fix(Fix {
-                    parameter: BoundVariable { ty: replace_in_term_offset(db, t.parameter.ty, replace_fn.clone(), offset), ..t.parameter },
+                    argument: replace_in_term_offset(db, t.argument, replace_fn.clone(), offset),
+                    argument_name: t.argument_name,
                     fixpoint: BoundVariable { ty: replace_in_term_offset(db, t.fixpoint.ty, replace_fn.clone(), offset.succ()), ..t.fixpoint },
-                    body: replace_in_term_offset(db, t.body, replace_fn.clone(), offset.succ().succ()),
-                    argument: replace_in_term_offset(db, t.argument, replace_fn, offset),
+                    body: replace_in_term_offset(db, t.body, replace_fn, offset.succ().succ()),
                 })),
                 ExpressionT::Lifespan(t) => Term::new(
                     db,
@@ -169,9 +197,15 @@ fn replace_in_term_offset(
                     ExpressionT::LocalConstant(LocalConstant {
                         metavariable: Metavariable {
                             index: t.metavariable.index,
-                            ty: replace_in_term_offset(db, t.metavariable.ty, replace_fn, offset),
+                            ty: replace_in_term_offset(db, t.metavariable.ty, replace_fn.clone(), offset),
                         },
-                        structure: t.structure,
+                        structure: BinderStructure {
+                            bound: BoundVariable {
+                                ty: replace_in_term_offset(db, t.structure.bound.ty, replace_fn, offset),
+                                ..t.structure.bound
+                            },
+                            ..t.structure
+                        },
                     }),
                 ),
             }
@@ -252,14 +286,16 @@ fn find_in_term_offset(
                     })
             }
             ExpressionT::Fix(t) => {
-                find_in_term_offset(db, t.parameter.ty, predicate.clone(), offset)
+                find_in_term_offset(db, t.argument, predicate.clone(), offset.succ())
                     .or_else(|| {
-                        find_in_term_offset(db, t.fixpoint.ty, predicate.clone(), offset.succ())
+                        find_in_term_offset(
+                            db,
+                            t.fixpoint.ty,
+                            predicate.clone(),
+                            offset.succ().succ(),
+                        )
                     })
-                    .or_else(|| {
-                        find_in_term_offset(db, t.body, predicate.clone(), offset.succ().succ())
-                    })
-                    .or_else(|| find_in_term_offset(db, t.argument, predicate, offset))
+                    .or_else(|| find_in_term_offset(db, t.body, predicate, offset))
             }
             ExpressionT::Lifespan(t) => find_in_term_offset(db, t.ty, predicate, offset),
             ExpressionT::Sort(_)
