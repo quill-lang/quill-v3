@@ -14,7 +14,7 @@ use crate::{
     Db,
 };
 
-enum ReplaceResult {
+pub enum ReplaceResult {
     /// The term should not be replaced.
     Skip,
     /// The term should be replaced with the given value.
@@ -53,7 +53,7 @@ pub fn subterms(db: &dyn Db, t: Term) -> Vec<Term> {
 /// If any matched, the replacement function generates the value to replace the found value with.
 /// The provided [`DeBruijnOffset`] gives the amount of binders the [`Expr`] argument is currently under.
 #[must_use]
-fn replace_in_term(
+pub fn replace_in_term(
     db: &dyn Db,
     t: Term,
     replace_fn: impl Clone + Fn(Term, DeBruijnOffset) -> ReplaceResult,
@@ -394,7 +394,12 @@ pub fn instantiate(db: &dyn Db, t: Term, substitution: Term) -> Term {
                     Ordering::Equal => {
                         // The variable is the smallest free de Bruijn index.
                         // It is exactly the one we need to substitute.
-                        ReplaceResult::ReplaceWith(lift_free_vars(db, substitution, offset))
+                        ReplaceResult::ReplaceWith(lift_free_vars(
+                            db,
+                            substitution,
+                            DeBruijnOffset::zero(),
+                            offset,
+                        ))
                     }
                     Ordering::Greater => {
                         // This de Bruijn index must be decremented, since we just
@@ -455,12 +460,13 @@ where
 }
 
 /// Increase the de Bruijn indices of free variables by a certain offset.
+/// Before the check, we increase the index of each term by `bias`.
 #[must_use]
-pub fn lift_free_vars(db: &dyn Db, t: Term, shift: DeBruijnOffset) -> Term {
+pub fn lift_free_vars(db: &dyn Db, t: Term, bias: DeBruijnOffset, shift: DeBruijnOffset) -> Term {
     replace_in_term(db, t, |t, offset| {
         match t.value(db) {
             ExpressionT::Local(Local { index }) => {
-                if *index >= DeBruijnIndex::zero() + offset {
+                if *index >= DeBruijnIndex::zero() + offset + bias {
                     // The variable is free.
                     ReplaceResult::ReplaceWith(Term::new(
                         db,
@@ -518,7 +524,7 @@ pub fn replace_local(
         if let ExpressionT::LocalConstant(inner) = t.value(db)
             && inner.metavariable.index == local.metavariable.index {
             // We should replace this local variable.
-            ReplaceResult::ReplaceWith(lift_free_vars(db, replacement, offset))
+            ReplaceResult::ReplaceWith(lift_free_vars(db, replacement, DeBruijnOffset::zero(), offset))
         } else {
             ReplaceResult::Skip
         }

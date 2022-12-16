@@ -2,11 +2,23 @@
 //!
 //! Conversion rules: <https://coq.inria.fr/refman/language/core/conversion.html>
 
-use fexpr::expr::{Apply, ExpressionT, Match, Term};
+use std::cmp::Ordering;
 
-use crate::{term::instantiate, Db};
+use fexpr::{
+    basic::{DeBruijnIndex, DeBruijnOffset},
+    expr::{
+        Apply, Binder, BinderAnnotation, BinderStructure, BoundVariable, ExpressionT, Fix, Local,
+        Match, Term,
+    },
+    multiplicity::{InvocationType, ParameterOwnership},
+};
 
-use super::unfold::unfold_definition;
+use crate::{
+    term::{instantiate, lift_free_vars, replace_in_term, ReplaceResult},
+    Db,
+};
+
+use super::{infer_type, unfold::unfold_definition};
 
 /// Reduces an expression to weak head normal form.
 #[salsa::tracked]
@@ -78,6 +90,69 @@ fn whnf_core(db: &dyn Db, t: Term) -> Term {
                     }),
                 )
             }
+        }
+        ExpressionT::Fix(fix) => {
+            // Replace this expression with the body of the fixed point construction, where
+            // any instances of the fixed point function are replaced with the original term
+            // (with de Bruijn indices appropriately lifted).
+            let replacement =
+                replace_in_term(db, instantiate(db, fix.body, fix.argument), |t, offset| {
+                    match t.value(db) {
+                        ExpressionT::Local(Local { index }) => {
+                            match index.cmp(&(DeBruijnIndex::zero() + offset)) {
+                                Ordering::Less => ReplaceResult::Skip,
+                                Ordering::Equal => {
+                                    // Should have already been handled by the `Apply` case.
+                                    // The only way we can invoke the recursive fixed point construction
+                                    // is directly, using an `Apply` expression.
+                                    unreachable!()
+                                }
+                                Ordering::Greater => ReplaceResult::ReplaceWith(Term::new(
+                                    db,
+                                    ExpressionT::Local(Local {
+                                        index: index.pred(),
+                                    }),
+                                )),
+                            }
+                        }
+                        ExpressionT::Apply(ap) => {
+                            match ap.function.value(db) {
+                                ExpressionT::Local(Local { index }) => {
+                                    if *index == DeBruijnIndex::zero() + offset {
+                                        // This is a recursive application of the fixed point function.
+                                        ReplaceResult::ReplaceWith(Term::new(
+                                            db,
+                                            ExpressionT::Fix(Fix {
+                                                argument: ap.argument,
+                                                argument_name: fix.argument_name,
+                                                fixpoint: BoundVariable {
+                                                    ty: lift_free_vars(
+                                                        db,
+                                                        fix.fixpoint.ty,
+                                                        DeBruijnOffset::zero().succ(),
+                                                        offset,
+                                                    ),
+                                                    ..fix.fixpoint
+                                                },
+                                                body: lift_free_vars(
+                                                    db,
+                                                    fix.body,
+                                                    DeBruijnOffset::zero().succ().succ(),
+                                                    offset,
+                                                ),
+                                            }),
+                                        ))
+                                    } else {
+                                        ReplaceResult::Skip
+                                    }
+                                }
+                                _ => ReplaceResult::Skip,
+                            }
+                        }
+                        _ => ReplaceResult::Skip,
+                    }
+                });
+            whnf_core(db, replacement)
         }
         _ => t,
     }

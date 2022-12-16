@@ -76,6 +76,23 @@ pub fn definitionally_equal(db: &dyn Db, mut left: Term, mut right: Term) -> Ir<
                 return Ok(true);
             }
         }
+        (ExpressionT::Intro(left), ExpressionT::Intro(right)) => {
+            // Test if the two expressions are instantiations of the same inductive with the same fields.
+            return Ok(left.inductive == right.inductive
+                && left
+                    .universes
+                    .iter()
+                    .zip(&right.universes)
+                    .all(|(left, right)| universe_definitionally_equal(db, left, right))
+                && *left.variant == *right.variant
+                && left
+                    .parameters
+                    .iter()
+                    .zip(&right.parameters)
+                    .fold(Ok(true), |acc, (left, right)| {
+                        Ok(acc? && definitionally_equal(db, *left, *right)?)
+                    })?);
+        }
         (ExpressionT::Lambda(lambda), _) => {
             if !matches!(right.value(db), ExpressionT::Lambda(_)) {
                 // Test if the we can eta-expand the right expression into the form of the left lambda.

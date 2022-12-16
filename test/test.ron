@@ -5,76 +5,35 @@
 (contents: (
     items: [
         Inductive(contents: (
-            name: "Prod",
-            universe_params: ["u", "v"],
+            name: "Nat",
+            universe_params: [],
             ty: (
-                structures: [
-                    (
-                        bound: (
-                            name: "A",
-                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                            ownership: PZero,
-                        ),
-                        binder_annotation: ImplicitEager,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                    (
-                        bound: (
-                            name: "B",
-                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
-                            ownership: PZero,
-                        ),
-                        binder_annotation: ImplicitEager,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                ],
-                result: (contents: Sort((contents: UniverseMax(
-                    left: (contents: UniverseSucc((contents: UniverseVariable("u")))),
-                    right: (contents: UniverseSucc((contents: UniverseVariable("v")))),
-                )))),
+                structures: [],
+                result: (contents: Sort((contents: UniverseSucc((contents: UniverseZero))))),
             ),
-            global_params: 2,
+            global_params: 0,
             variants: [
                 (
-                    name: "Prod",
+                    name: "zero",
+                    intro_rule: (
+                        structures: [],
+                        result: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                        ))
+                    )
+                ),
+                (
+                    name: "succ",
                     intro_rule: (
                         structures: [
                             (
                                 bound: (
-                                    name: "A",
-                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                                    ownership: PZero,
-                                ),
-                                binder_annotation: ImplicitEager,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "B",
-                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
-                                    ownership: PZero,
-                                ),
-                                binder_annotation: ImplicitEager,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "fst",
-                                    ty: (contents: Local(index: 1)),
-                                    ownership: POwned,
-                                ),
-                                binder_annotation: Explicit,
-                                invocation_type: Once,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "snd",
-                                    ty: (contents: Local(index: 1)),
+                                    name: "n",
+                                    ty: (contents: Inst(
+                                        name: (contents: ["test", "test", "Nat"]),
+                                        universes: [],
+                                    )),
                                     ownership: POwned,
                                 ),
                                 binder_annotation: Explicit,
@@ -82,101 +41,123 @@
                                 region: (contents: StaticRegion),
                             ),
                         ],
-                        result: (contents: Apply(
-                            function: (contents: Apply(
-                                function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Prod"]),
-                                    universes: [
-                                        (contents: UniverseVariable("u")),
-                                        (contents: UniverseVariable("v"))
-                                    ],
-                                )),
-                                argument: (contents: Local(index: 3)),
-                            )),
-                            argument: (contents: Local(index: 2)),
+                        result: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
                         ))
                     )
-                )
+                ),
             ],
         )),
         Definition(contents: (
-            name: "diagonal",
-            universe_params: ["u"],
+            name: "add",
+            universe_params: [],
             ty: (contents: Pi(
                 structure: (
                     bound: (
-                        name: "A",
-                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                        ownership: PZero,
+                        name: "a",
+                        ty: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                        )),
+                        ownership: POwned,
                     ),
-                    binder_annotation: ImplicitEager,
+                    binder_annotation: Explicit,
                     invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Pi(
                     structure: (
                         bound: (
-                            name: "x",
-                            ty: (contents: Local(index: 0)),
+                            name: "b",
+                            ty: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                            )),
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
                         invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: Apply(
-                        function: (contents: Apply(
-                            function: (contents: Inst(
-                                name: (contents: ["test", "test", "Prod"]),
-                                universes: [
-                                    (contents: UniverseVariable("u")),
-                                    (contents: UniverseVariable("u"))
-                                ],
-                            )),
-                            argument: (contents: Local(index: 1)),
-                        )),
-                        argument: (contents: Local(index: 1)),
-                    ))
-                ))
+                    result: (contents: Inst(
+                        name: (contents: ["test", "test", "Nat"]),
+                        universes: [],
+                    )),
+                )),
             )),
             expr: (contents: Lambda(
                 structure: (
                     bound: (
-                        name: "A",
-                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                        ownership: PZero,
+                        name: "a",
+                        ty: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                        )),
+                        ownership: POwned,
                     ),
-                    binder_annotation: ImplicitEager,
+                    binder_annotation: Explicit,
                     invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Lambda(
                     structure: (
                         bound: (
-                            name: "x",
-                            ty: (contents: Local(index: 0)),
+                            name: "b",
+                            ty: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                            )),
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
                         invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: Intro(
-                        inductive: (contents: ["test", "test", "Prod"]),
-                        universes: [
-                            (contents: UniverseVariable("u")),
-                            (contents: UniverseVariable("u"))
-                        ],
-                        variant: "Prod",
-                        parameters: [
-                            (contents: Local(index: 1)),
-                            (contents: Local(index: 1)),
-                            (contents: Local(index: 0)),
-                            (contents: Local(index: 0)),
-                        ],
-                    ))
-                ))
-            ))
+                    result: (contents: Fix(
+                        argument: (contents: Local(index: 0)),
+                        argument_name: "x",
+                        fixpoint: (
+                            name: "f",
+                            ty: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                            )),
+                            ownership: POwned,
+                        ),
+                        body: (contents: Match(
+                            major_premise: (contents: Local(index: 0)),
+                            index_params: 0,
+                            motive: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                            )),
+                            minor_premises: [
+                                (
+                                    variant: "zero",
+                                    fields: 0,
+                                    result: (contents: Local(index: 3)),
+                                ),
+                                (
+                                    variant: "succ",
+                                    fields: 1,
+                                    result: (contents: Intro(
+                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        universes: [],
+                                        variant: "succ",
+                                        parameters: [
+                                            (contents: Apply(
+                                                function: (contents: Local(index: 2)),
+                                                argument: (contents: Local(index: 0)),
+                                            ))
+                                        ],
+                                    )),
+                                ),
+                            ],
+                        )),
+                    )),
+                )),
+            )),
         )),
         Inductive(contents: (
             name: "Eq",
@@ -261,98 +242,163 @@
             ]
         )),
         Definition(contents: (
-            name: "match_diagonal_eq",
-            universe_params: ["u"],
-            ty: (contents: Pi(
-                structure: (
-                    bound: (
-                        name: "A",
-                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                        ownership: PZero,
-                    ),
-                    binder_annotation: ImplicitEager,
-                    invocation_type: Once,
-                    region: (contents: StaticRegion),
-                ),
-                result: (contents: Pi(
-                    structure: (
-                        bound: (
-                            name: "x",
-                            ty: (contents: Local(index: 0)),
-                            ownership: POwned,
-                        ),
-                        binder_annotation: Explicit,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                    result: (contents: Apply(
-                        function: (contents: Apply(
-                            function: (contents: Apply(
-                                function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Eq"]),
-                                    universes: [(contents: UniverseSucc((contents: UniverseVariable("u"))))],
-                                )),
-                                argument: (contents: Local(index: 1)),
-                            )),
-                            argument: (contents: Local(index: 0)),
+            name: "two_plus_two_eq_four",
+            universe_params: [],
+            ty: (contents: Apply(
+                function: (contents: Apply(
+                    function: (contents: Apply(
+                        function: (contents: Inst(
+                            name: (contents: ["test", "test", "Eq"]),
+                            universes: [(contents: UniverseSucc((contents: UniverseZero)))],
                         )),
-                        argument: (contents: Match(
-                            major_premise: (contents: Apply(
-                                function: (contents: Apply(
-                                    function: (contents: Inst(
-                                        name: (contents: ["test", "test", "diagonal"]),
-                                        universes: [(contents: UniverseVariable("u"))],
-                                    )),
-                                    argument: (contents: Local(index: 1)),
-                                )),
-                                argument: (contents: Local(index: 0)),
+                        argument: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                        )),
+                    )),
+                    argument: (contents: Apply(
+                        function: (contents: Apply(
+                            function: (contents: Inst(
+                                name: (contents: ["test", "test", "add"]),
+                                universes: [],
                             )),
-                            index_params: 0,
-                            motive: (contents: Local(index: 2)),
-                            minor_premises: [
-                                (
-                                    variant: "Prod",
-                                    fields: 2,
-                                    result: (contents: Local(index: 1)),
-                                )
+                            argument: (contents: Intro(
+                                inductive: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                                variant: "succ",
+                                parameters: [
+                                    (contents: Intro(
+                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        universes: [],
+                                        variant: "succ",
+                                        parameters: [
+                                            (contents: Intro(
+                                                inductive: (contents: ["test", "test", "Nat"]),
+                                                universes: [],
+                                                variant: "zero",
+                                                parameters: []
+                                            ))
+                                        ]
+                                    ))
+                                ]
+                            )),
+                        )),
+                        argument: (contents: Intro(
+                            inductive: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                            variant: "succ",
+                            parameters: [
+                                (contents: Intro(
+                                    inductive: (contents: ["test", "test", "Nat"]),
+                                    universes: [],
+                                    variant: "succ",
+                                    parameters: [
+                                        (contents: Intro(
+                                            inductive: (contents: ["test", "test", "Nat"]),
+                                            universes: [],
+                                            variant: "zero",
+                                            parameters: []
+                                        ))
+                                    ]
+                                ))
+                            ]
+                        )),
+                    )),
+                )),
+                argument: (contents: Intro(
+                    inductive: (contents: ["test", "test", "Nat"]),
+                    universes: [],
+                    variant: "succ",
+                    parameters: [
+                        (contents: Intro(
+                            inductive: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                            variant: "succ",
+                            parameters: [
+                                (contents: Intro(
+                                    inductive: (contents: ["test", "test", "Nat"]),
+                                    universes: [],
+                                    variant: "succ",
+                                    parameters: [
+                                        (contents: Intro(
+                                            inductive: (contents: ["test", "test", "Nat"]),
+                                            universes: [],
+                                            variant: "succ",
+                                            parameters: [
+                                                (contents: Intro(
+                                                    inductive: (contents: ["test", "test", "Nat"]),
+                                                    universes: [],
+                                                    variant: "zero",
+                                                    parameters: []
+                                                ))
+                                            ]
+                                        ))
+                                    ]
+                                ))
+                            ]
+                        ))
+                    ]
+                ))
+            )),
+            expr: (contents: Intro(
+                inductive: (contents: ["test", "test", "Eq"]),
+                universes: [(contents: UniverseSucc((contents: UniverseZero)))],
+                variant: "refl",
+                parameters: [
+                    (contents: Inst(
+                        name: (contents: ["test", "test", "Nat"]),
+                        universes: [],
+                    )),
+                    (contents: Apply(
+                        function: (contents: Apply(
+                            function: (contents: Inst(
+                                name: (contents: ["test", "test", "add"]),
+                                universes: [],
+                            )),
+                            argument: (contents: Intro(
+                                inductive: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                                variant: "succ",
+                                parameters: [
+                                    (contents: Intro(
+                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        universes: [],
+                                        variant: "succ",
+                                        parameters: [
+                                            (contents: Intro(
+                                                inductive: (contents: ["test", "test", "Nat"]),
+                                                universes: [],
+                                                variant: "zero",
+                                                parameters: []
+                                            ))
+                                        ]
+                                    ))
+                                ]
+                            )),
+                        )),
+                        argument: (contents: Intro(
+                            inductive: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                            variant: "succ",
+                            parameters: [
+                                (contents: Intro(
+                                    inductive: (contents: ["test", "test", "Nat"]),
+                                    universes: [],
+                                    variant: "succ",
+                                    parameters: [
+                                        (contents: Intro(
+                                            inductive: (contents: ["test", "test", "Nat"]),
+                                            universes: [],
+                                            variant: "zero",
+                                            parameters: []
+                                        ))
+                                    ]
+                                ))
                             ]
                         )),
                     ))
-                ))
-            )),
-            expr: (contents: Lambda(
-                structure: (
-                    bound: (
-                        name: "A",
-                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                        ownership: PZero,
-                    ),
-                    binder_annotation: ImplicitEager,
-                    invocation_type: Once,
-                    region: (contents: StaticRegion),
-                ),
-                result: (contents: Lambda(
-                    structure: (
-                        bound: (
-                            name: "x",
-                            ty: (contents: Local(index: 0)),
-                            ownership: POwned,
-                        ),
-                        binder_annotation: Explicit,
-                        invocation_type: Once,
-                        region: (contents: StaticRegion),
-                    ),
-                    result: (contents: Intro(
-                        inductive: (contents: ["test", "test", "Eq"]),
-                        universes: [(contents: UniverseSucc((contents: UniverseVariable("u"))))],
-                        variant: "refl",
-                        parameters: [
-                            (contents: Local(index: 1)),
-                            (contents: Local(index: 0)),
-                        ],
-                    ))
-                ))
-            )),
-        )),
+                ],
+            ))
+        ))
     ]
 ))
