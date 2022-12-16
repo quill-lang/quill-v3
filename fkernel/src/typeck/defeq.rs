@@ -2,7 +2,11 @@ use std::cmp::Ordering;
 
 use fexpr::{basic::DeBruijnIndex, expr::*, universe::Universe};
 
-use crate::{term::instantiate, universe::normalise_universe, Db};
+use crate::{
+    term::{apply_args, instantiate},
+    universe::normalise_universe,
+    Db,
+};
 
 use super::{
     infer::infer_type_core,
@@ -105,10 +109,8 @@ fn quick_definitionally_equal(db: &dyn Db, left: Term, right: Term) -> Option<Ir
         (ExpressionT::Borrow(left), ExpressionT::Borrow(right)) => {
             Some(borrow_definitionally_equal(db, left, right))
         }
-        (ExpressionT::Lambda(left), ExpressionT::Lambda(right)) => {
-            Some(binder_definitionally_equal(db, left, right))
-        }
-        (ExpressionT::Pi(left), ExpressionT::Pi(right)) => {
+        (ExpressionT::Lambda(left), ExpressionT::Lambda(right))
+        | (ExpressionT::Pi(left), ExpressionT::Pi(right)) => {
             Some(binder_definitionally_equal(db, left, right))
         }
         (ExpressionT::Delta(left), ExpressionT::Delta(right)) => {
@@ -201,10 +203,21 @@ fn lazy_delta_reduction(db: &dyn Db, left: &mut Term, right: &mut Term) -> Optio
             Ordering::Equal => {
                 // Both had the same height (and are reducible).
                 // Since we can't prioritise one over the other, we will just unfold both definitions.
-                // TODO: If the definitions to be unfolded match, we can optimise this path by
-                // comparing arguments. This would short-circuit the delta reduction. Even if the
+                // First, we can optimise this path by comparing arguments.
+                // This would short-circuit the delta reduction. Even if the
                 // arguments are not definitionally equal, the function could still return the same
                 // value in theory, so we can't always completely bypass the check.
+                let left_args = apply_args(db, *left);
+                let right_args = apply_args(db, *right);
+                if left_args.len() == right_args.len()
+                    && left_args
+                        .iter()
+                        .zip(&right_args)
+                        .all(|(l, r)| definitionally_equal(db, *l, *r) == Ok(true))
+                {
+                    return Some(Ok(true));
+                }
+                // The arguments didn't match, so continue as usual.
                 *right = to_weak_head_normal_form(db, unfold_definition(db, *right).unwrap());
                 *left = to_weak_head_normal_form(db, unfold_definition(db, *left).unwrap());
             }

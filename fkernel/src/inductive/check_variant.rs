@@ -110,13 +110,16 @@ pub(in crate::inductive) fn check_variant<'db>(
                     })
                 }
             }
-            Err(err) => Dr::fail(
-                intro_rule_ty
-                    .value
-                    .provenance
-                    .report(ReportKind::Error)
-                    .with_message("this introduction rule was not type correct"),
-            ),
+            Err(err) => {
+                tracing::error!("{:?} checking {}", err, info.inductive.name.0.text(db));
+                Dr::fail(
+                    intro_rule_ty
+                        .value
+                        .provenance
+                        .report(ReportKind::Error)
+                        .with_message("this introduction rule was not type correct"),
+                )
+            }
         }
     })
 }
