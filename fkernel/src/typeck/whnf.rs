@@ -10,7 +10,7 @@ use fexpr::{
         Apply, Binder, BinderAnnotation, BinderStructure, BoundVariable, ExpressionT, Fix, Local,
         Match, Term,
     },
-    multiplicity::{InvocationType, ParameterOwnership},
+    multiplicity::ParameterOwnership,
 };
 
 use crate::{

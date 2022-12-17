@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     basic::*,
-    multiplicity::{InvocationType, ParameterOwnership},
+    multiplicity::ParameterOwnership,
     universe::{Universe, UniverseContents, UniverseSucc},
     Db,
 };
@@ -146,8 +146,6 @@ where
     pub bound: BoundVariable<P, E>,
     /// How the parameter should be filled when calling the function.
     pub binder_annotation: BinderAnnotation,
-    /// The style by which the function is invoked.
-    pub invocation_type: InvocationType,
     /// The region for which the function may be owned.
     pub region: E,
 }
@@ -157,7 +155,6 @@ impl BinderStructure<Provenance, Box<Expression>> {
         BinderStructure {
             bound: self.bound.without_provenance(db),
             binder_annotation: self.binder_annotation,
-            invocation_type: self.invocation_type,
             region: self.region.to_term(db),
         }
     }
@@ -168,7 +165,6 @@ impl BinderStructure<(), Term> {
         BinderStructure {
             bound: self.bound.synthetic(db),
             binder_annotation: self.binder_annotation,
-            invocation_type: self.invocation_type,
             region: Box::new(self.region.to_expression(db)),
         }
     }

@@ -6,7 +6,7 @@ use fcommon::{Path, Str};
 use fexpr::{
     basic::{DeBruijnIndex, Name, Provenance, WithProvenance},
     expr::*,
-    multiplicity::{InvocationType, ParameterOwnership},
+    multiplicity::ParameterOwnership,
     universe::*,
 };
 
@@ -384,7 +384,6 @@ fn infer_type_match(db: &dyn Db, match_expr: &Match<(), Term>) -> Ir<Term> {
                                 ownership: ParameterOwnership::POwned,
                             },
                             binder_annotation: BinderAnnotation::Explicit,
-                            invocation_type: InvocationType::Once,
                             region: Term::new(db, ExpressionT::StaticRegion),
                         }))
                         .collect();
@@ -660,7 +659,6 @@ fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {
                             ownership: ParameterOwnership::POwned,
                         },
                         binder_annotation: BinderAnnotation::Explicit,
-                        invocation_type: InvocationType::Once,
                         region: Term::new(db, ExpressionT::StaticRegion),
                     };
                     let argument_local = LocalConstant {
@@ -689,7 +687,6 @@ fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {
                                 ownership: ParameterOwnership::POwned,
                             },
                             binder_annotation: BinderAnnotation::Explicit,
-                            invocation_type: InvocationType::Once,
                             region: Term::new(db, ExpressionT::StaticRegion),
                         },
                     };

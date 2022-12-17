@@ -18,7 +18,7 @@
                     intro_rule: (
                         structures: [],
                         result: (contents: Inst(
-                            name: (contents: ["test", "test", "Nat"]),
+                            name: (contents: ["basic_fix", "Nat"]),
                             universes: [],
                         ))
                     )
@@ -31,7 +31,7 @@
                                 bound: (
                                     name: "n",
                                     ty: (contents: Inst(
-                                        name: (contents: ["test", "test", "Nat"]),
+                                        name: (contents: ["basic_fix", "Nat"]),
                                         universes: [],
                                     )),
                                     ownership: POwned,
@@ -41,7 +41,7 @@
                             ),
                         ],
                         result: (contents: Inst(
-                            name: (contents: ["test", "test", "Nat"]),
+                            name: (contents: ["basic_fix", "Nat"]),
                             universes: [],
                         ))
                     )
@@ -56,7 +56,7 @@
                     bound: (
                         name: "a",
                         ty: (contents: Inst(
-                            name: (contents: ["test", "test", "Nat"]),
+                            name: (contents: ["basic_fix", "Nat"]),
                             universes: [],
                         )),
                         ownership: POwned,
@@ -69,7 +69,7 @@
                         bound: (
                             name: "b",
                             ty: (contents: Inst(
-                                name: (contents: ["test", "test", "Nat"]),
+                                name: (contents: ["basic_fix", "Nat"]),
                                 universes: [],
                             )),
                             ownership: POwned,
@@ -78,7 +78,7 @@
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Inst(
-                        name: (contents: ["test", "test", "Nat"]),
+                        name: (contents: ["basic_fix", "Nat"]),
                         universes: [],
                     )),
                 )),
@@ -88,7 +88,7 @@
                     bound: (
                         name: "a",
                         ty: (contents: Inst(
-                            name: (contents: ["test", "test", "Nat"]),
+                            name: (contents: ["basic_fix", "Nat"]),
                             universes: [],
                         )),
                         ownership: POwned,
@@ -101,7 +101,7 @@
                         bound: (
                             name: "b",
                             ty: (contents: Inst(
-                                name: (contents: ["test", "test", "Nat"]),
+                                name: (contents: ["basic_fix", "Nat"]),
                                 universes: [],
                             )),
                             ownership: POwned,
@@ -115,7 +115,7 @@
                         fixpoint: (
                             name: "f",
                             ty: (contents: Inst(
-                                name: (contents: ["test", "test", "Nat"]),
+                                name: (contents: ["basic_fix", "Nat"]),
                                 universes: [],
                             )),
                             ownership: POwned,
@@ -124,7 +124,7 @@
                             major_premise: (contents: Local(index: 0)),
                             index_params: 0,
                             motive: (contents: Inst(
-                                name: (contents: ["test", "test", "Nat"]),
+                                name: (contents: ["basic_fix", "Nat"]),
                                 universes: [],
                             )),
                             minor_premises: [
@@ -137,7 +137,7 @@
                                     variant: "succ",
                                     fields: 1,
                                     result: (contents: Intro(
-                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        inductive: (contents: ["basic_fix", "Nat"]),
                                         universes: [],
                                         variant: "succ",
                                         parameters: [
@@ -218,7 +218,7 @@
                             function: (contents: Apply(
                                 function: (contents: Apply(
                                     function: (contents: Inst(
-                                        name: (contents: ["test", "test", "Eq"]),
+                                        name: (contents: ["basic_fix", "Eq"]),
                                         universes: [(contents: UniverseVariable("u"))],
                                     )),
                                     argument: (contents: Local(index: 1)),
@@ -238,32 +238,32 @@
                 function: (contents: Apply(
                     function: (contents: Apply(
                         function: (contents: Inst(
-                            name: (contents: ["test", "test", "Eq"]),
+                            name: (contents: ["basic_fix", "Eq"]),
                             universes: [(contents: UniverseSucc((contents: UniverseZero)))],
                         )),
                         argument: (contents: Inst(
-                            name: (contents: ["test", "test", "Nat"]),
+                            name: (contents: ["basic_fix", "Nat"]),
                             universes: [],
                         )),
                     )),
                     argument: (contents: Apply(
                         function: (contents: Apply(
                             function: (contents: Inst(
-                                name: (contents: ["test", "test", "add"]),
+                                name: (contents: ["basic_fix", "add"]),
                                 universes: [],
                             )),
                             argument: (contents: Intro(
-                                inductive: (contents: ["test", "test", "Nat"]),
+                                inductive: (contents: ["basic_fix", "Nat"]),
                                 universes: [],
                                 variant: "succ",
                                 parameters: [
                                     (contents: Intro(
-                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        inductive: (contents: ["basic_fix", "Nat"]),
                                         universes: [],
                                         variant: "succ",
                                         parameters: [
                                             (contents: Intro(
-                                                inductive: (contents: ["test", "test", "Nat"]),
+                                                inductive: (contents: ["basic_fix", "Nat"]),
                                                 universes: [],
                                                 variant: "zero",
                                                 parameters: []
@@ -274,17 +274,17 @@
                             )),
                         )),
                         argument: (contents: Intro(
-                            inductive: (contents: ["test", "test", "Nat"]),
+                            inductive: (contents: ["basic_fix", "Nat"]),
                             universes: [],
                             variant: "succ",
                             parameters: [
                                 (contents: Intro(
-                                    inductive: (contents: ["test", "test", "Nat"]),
+                                    inductive: (contents: ["basic_fix", "Nat"]),
                                     universes: [],
                                     variant: "succ",
                                     parameters: [
                                         (contents: Intro(
-                                            inductive: (contents: ["test", "test", "Nat"]),
+                                            inductive: (contents: ["basic_fix", "Nat"]),
                                             universes: [],
                                             variant: "zero",
                                             parameters: []
@@ -296,27 +296,27 @@
                     )),
                 )),
                 argument: (contents: Intro(
-                    inductive: (contents: ["test", "test", "Nat"]),
+                    inductive: (contents: ["basic_fix", "Nat"]),
                     universes: [],
                     variant: "succ",
                     parameters: [
                         (contents: Intro(
-                            inductive: (contents: ["test", "test", "Nat"]),
+                            inductive: (contents: ["basic_fix", "Nat"]),
                             universes: [],
                             variant: "succ",
                             parameters: [
                                 (contents: Intro(
-                                    inductive: (contents: ["test", "test", "Nat"]),
+                                    inductive: (contents: ["basic_fix", "Nat"]),
                                     universes: [],
                                     variant: "succ",
                                     parameters: [
                                         (contents: Intro(
-                                            inductive: (contents: ["test", "test", "Nat"]),
+                                            inductive: (contents: ["basic_fix", "Nat"]),
                                             universes: [],
                                             variant: "succ",
                                             parameters: [
                                                 (contents: Intro(
-                                                    inductive: (contents: ["test", "test", "Nat"]),
+                                                    inductive: (contents: ["basic_fix", "Nat"]),
                                                     universes: [],
                                                     variant: "zero",
                                                     parameters: []
@@ -331,32 +331,32 @@
                 ))
             )),
             expr: (contents: Intro(
-                inductive: (contents: ["test", "test", "Eq"]),
+                inductive: (contents: ["basic_fix", "Eq"]),
                 universes: [(contents: UniverseSucc((contents: UniverseZero)))],
                 variant: "refl",
                 parameters: [
                     (contents: Inst(
-                        name: (contents: ["test", "test", "Nat"]),
+                        name: (contents: ["basic_fix", "Nat"]),
                         universes: [],
                     )),
                     (contents: Apply(
                         function: (contents: Apply(
                             function: (contents: Inst(
-                                name: (contents: ["test", "test", "add"]),
+                                name: (contents: ["basic_fix", "add"]),
                                 universes: [],
                             )),
                             argument: (contents: Intro(
-                                inductive: (contents: ["test", "test", "Nat"]),
+                                inductive: (contents: ["basic_fix", "Nat"]),
                                 universes: [],
                                 variant: "succ",
                                 parameters: [
                                     (contents: Intro(
-                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        inductive: (contents: ["basic_fix", "Nat"]),
                                         universes: [],
                                         variant: "succ",
                                         parameters: [
                                             (contents: Intro(
-                                                inductive: (contents: ["test", "test", "Nat"]),
+                                                inductive: (contents: ["basic_fix", "Nat"]),
                                                 universes: [],
                                                 variant: "zero",
                                                 parameters: []
@@ -367,17 +367,17 @@
                             )),
                         )),
                         argument: (contents: Intro(
-                            inductive: (contents: ["test", "test", "Nat"]),
+                            inductive: (contents: ["basic_fix", "Nat"]),
                             universes: [],
                             variant: "succ",
                             parameters: [
                                 (contents: Intro(
-                                    inductive: (contents: ["test", "test", "Nat"]),
+                                    inductive: (contents: ["basic_fix", "Nat"]),
                                     universes: [],
                                     variant: "succ",
                                     parameters: [
                                         (contents: Intro(
-                                            inductive: (contents: ["test", "test", "Nat"]),
+                                            inductive: (contents: ["basic_fix", "Nat"]),
                                             universes: [],
                                             variant: "zero",
                                             parameters: []

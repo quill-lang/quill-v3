@@ -16,7 +16,6 @@
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
-                        invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
                     (
@@ -26,7 +25,6 @@
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
-                        invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
                 ],
@@ -48,7 +46,6 @@
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
-                                invocation_type: Once,
                                 region: (contents: StaticRegion),
                             ),
                             (
@@ -58,7 +55,6 @@
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
-                                invocation_type: Once,
                                 region: (contents: StaticRegion),
                             ),
                             (
@@ -68,7 +64,6 @@
                                     ownership: POwned,
                                 ),
                                 binder_annotation: Explicit,
-                                invocation_type: Once,
                                 region: (contents: StaticRegion),
                             ),
                             (
@@ -78,7 +73,6 @@
                                     ownership: POwned,
                                 ),
                                 binder_annotation: Explicit,
-                                invocation_type: Once,
                                 region: (contents: StaticRegion),
                             ),
                         ],
@@ -110,7 +104,6 @@
                         ownership: PZero,
                     ),
                     binder_annotation: ImplicitEager,
-                    invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Pi(
@@ -121,7 +114,6 @@
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
-                        invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Apply(
@@ -147,7 +139,6 @@
                         ownership: PZero,
                     ),
                     binder_annotation: ImplicitEager,
-                    invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Lambda(
@@ -158,7 +149,6 @@
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
-                        invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Intro(
@@ -190,7 +180,6 @@
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
-                        invocation_type: Once,
                         region: (contents: StaticRegion)
                     ),
                     (
@@ -200,7 +189,6 @@
                             ownership: PZero,
                         ),
                         binder_annotation: Explicit,
-                        invocation_type: Once,
                         region: (contents: StaticRegion)
                     ),
                     (
@@ -210,7 +198,6 @@
                             ownership: PZero,
                         ),
                         binder_annotation: Explicit,
-                        invocation_type: Once,
                         region: (contents: StaticRegion)
                     ),
                 ],
@@ -229,7 +216,6 @@
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
-                                invocation_type: Once,
                                 region: (contents: StaticRegion)
                             ),
                             (
@@ -239,7 +225,6 @@
                                     ownership: PZero,
                                 ),
                                 binder_annotation: Explicit,
-                                invocation_type: Once,
                                 region: (contents: StaticRegion)
                             ),
                         ],
@@ -271,7 +256,6 @@
                         ownership: PZero,
                     ),
                     binder_annotation: ImplicitEager,
-                    invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Pi(
@@ -282,7 +266,6 @@
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
-                        invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Apply(
@@ -328,7 +311,6 @@
                         ownership: PZero,
                     ),
                     binder_annotation: ImplicitEager,
-                    invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Lambda(
@@ -339,7 +321,6 @@
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
-                        invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Intro(

@@ -114,16 +114,3 @@ pub enum ParameterOwnership {
     /// See [`Copyable`].
     PCopyable,
 }
-
-/// Can this function be invoked exactly once (linearly) or many times (from behind a borrow)?
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum InvocationType {
-    /// The function must be executed exactly once, because such functions have no destructors and may own linear resources.
-    /// Corresponds roughly to Rust's [`FnOnce`] without [`Drop`].
-    Once,
-    /// The function may be executed arbitrarily many times (including zero).
-    /// Such functions are invoked from behind borrows.
-    /// They may capture no linear resources, and hence they have destructors and a cloning function.
-    /// Corresponds roughly to Rust's [`Fn`] + [`Clone`].
-    Many,
-}

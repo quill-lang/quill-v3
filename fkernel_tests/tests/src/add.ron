@@ -37,7 +37,6 @@
                                     ownership: POwned,
                                 ),
                                 binder_annotation: Explicit,
-                                invocation_type: Once,
                                 region: (contents: StaticRegion),
                             ),
                         ],
@@ -63,7 +62,6 @@
                         ownership: POwned,
                     ),
                     binder_annotation: Explicit,
-                    invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Pi(
@@ -77,7 +75,6 @@
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
-                        invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Inst(
@@ -97,7 +94,6 @@
                         ownership: POwned,
                     ),
                     binder_annotation: Explicit,
-                    invocation_type: Once,
                     region: (contents: StaticRegion),
                 ),
                 result: (contents: Lambda(
@@ -111,7 +107,6 @@
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
-                        invocation_type: Once,
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Fix(

@@ -1,10 +1,7 @@
 use fcommon::{Dr, LabelType, ReportKind};
 use fexpr::{
     basic::{DeBruijnIndex, DeBruijnOffset, Provenance},
-    expr::{
-        largest_unusable_metavariable, Expression, ExpressionT, LocalConstant,
-        MetavariableGenerator, Term,
-    },
+    expr::{largest_unusable_metavariable, Expression, ExpressionT, MetavariableGenerator, Term},
     inductive::Variant,
 };
 
@@ -65,12 +62,7 @@ pub(in crate::inductive) fn check_variant<'db>(
                                         from_intro_rule.bound.ty.to_term(db),
                                         from_ty.bound.ty.to_term(db),
                                     )
-                                    .map(|types| {
-                                        regions
-                                            && types
-                                            && from_intro_rule.invocation_type
-                                                == from_ty.invocation_type
-                                    })
+                                    .map(|types| regions && types)
                                 });
                                 match result {
                                     Ok(_) => Dr::ok(()),
