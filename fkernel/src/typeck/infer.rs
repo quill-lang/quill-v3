@@ -354,7 +354,12 @@ fn infer_type_intro(db: &dyn Db, intro: &Intro<(), Term>) -> Ir<Term> {
                             infer_type(db, param_instantiated)?,
                             expected_type,
                         )? {
-                            todo!();
+                            tracing::error!(
+                                "{} != {}",
+                                infer_type(db, param_instantiated).unwrap().display(db),
+                                expected_type.display(db)
+                            );
+                            todo!()
                         }
                     }
 
@@ -768,8 +773,13 @@ fn check_decreasing(
     }
 }
 
-fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {
-    let argument_type = infer_type(db, fix.argument)?;
+/// If `borrowed` is `Some(t)`, then `t` is the region for which the major premise is borrowed.
+fn process_fix(
+    db: &dyn Db,
+    argument_type: Term,
+    fix: &Fix<(), Term>,
+    borrowed: Option<Term>,
+) -> Result<Term, InferenceError> {
     let inductive_term = leftmost_function(db, argument_type);
     match inductive_term.value(db) {
         ExpressionT::Inst(inst) => {
@@ -781,18 +791,30 @@ fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {
                     Term::new(db, ExpressionT::Fix(fix.clone())),
                 ));
 
+                let argument_type_or_delta = if let Some(region) = borrowed {
+                    Term::new(
+                        db,
+                        ExpressionT::Delta(Delta {
+                            region,
+                            ty: argument_type,
+                        }),
+                    )
+                } else {
+                    argument_type
+                };
+
                 let argument_structure = BinderStructure {
                     // The structure here isn't really relevant.
                     bound: BoundVariable {
                         name: Name(WithProvenance::new(Str::new(db, "_parameter".to_owned()))),
-                        ty: argument_type,
+                        ty: argument_type_or_delta,
                         ownership: ParameterOwnership::POwned,
                     },
                     binder_annotation: BinderAnnotation::Explicit,
                     region: Term::new(db, ExpressionT::StaticRegion),
                 };
                 let argument_local = LocalConstant {
-                    metavariable: meta_gen.gen(argument_type),
+                    metavariable: meta_gen.gen(argument_type_or_delta),
                     structure: argument_structure,
                 };
                 let argument_local_term = Term::new(db, ExpressionT::LocalConstant(argument_local));
@@ -852,6 +874,14 @@ fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {
             }
         }
         _ => todo!(),
+    }
+}
+
+fn infer_type_fix(db: &dyn Db, fix: &Fix<(), Term>) -> Ir<Term> {
+    let argument_type = infer_type(db, fix.argument)?;
+    match argument_type.value(db) {
+        ExpressionT::Delta(delta) => process_fix(db, delta.ty, fix, Some(delta.region)),
+        _ => process_fix(db, argument_type, fix, None),
     }
 }
 

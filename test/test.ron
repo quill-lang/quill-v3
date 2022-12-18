@@ -5,252 +5,141 @@
 (contents: (
     items: [
         Inductive(contents: (
-            name: "Prod",
-            universe_params: ["u", "v"],
+            name: "Nat",
+            universe_params: [],
             ty: (
-                structures: [
-                    (
-                        bound: (
-                            name: "A",
-                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                            ownership: PZero,
-                        ),
-                        binder_annotation: ImplicitEager,
-                        region: (contents: StaticRegion),
-                    ),
-                    (
-                        bound: (
-                            name: "B",
-                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
-                            ownership: PZero,
-                        ),
-                        binder_annotation: ImplicitEager,
-                        region: (contents: StaticRegion),
-                    ),
-                ],
-                result: (contents: Sort((contents: UniverseMax(
-                    left: (contents: UniverseSucc((contents: UniverseVariable("u")))),
-                    right: (contents: UniverseSucc((contents: UniverseVariable("v")))),
-                )))),
+                structures: [],
+                result: (contents: Sort((contents: UniverseSucc((contents: UniverseZero))))),
             ),
-            global_params: 2,
+            global_params: 0,
             variants: [
                 (
-                    name: "Prod",
+                    name: "zero",
+                    intro_rule: (
+                        structures: [],
+                        result: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
+                        ))
+                    )
+                ),
+                (
+                    name: "succ",
                     intro_rule: (
                         structures: [
                             (
                                 bound: (
-                                    name: "A",
-                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                                    ownership: PZero,
-                                ),
-                                binder_annotation: ImplicitEager,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "B",
-                                    ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
-                                    ownership: PZero,
-                                ),
-                                binder_annotation: ImplicitEager,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "fst",
-                                    ty: (contents: Local(index: 1)),
-                                    ownership: POwned,
-                                ),
-                                binder_annotation: Explicit,
-                                region: (contents: StaticRegion),
-                            ),
-                            (
-                                bound: (
-                                    name: "snd",
-                                    ty: (contents: Local(index: 1)),
+                                    name: "n",
+                                    ty: (contents: Inst(
+                                        name: (contents: ["test", "test", "Nat"]),
+                                        universes: [],
+                                    )),
                                     ownership: POwned,
                                 ),
                                 binder_annotation: Explicit,
                                 region: (contents: StaticRegion),
                             ),
                         ],
-                        result: (contents: Apply(
-                            function: (contents: Apply(
-                                function: (contents: Inst(
-                                    name: (contents: ["test", "test", "Prod"]),
-                                    universes: [
-                                        (contents: UniverseVariable("u")),
-                                        (contents: UniverseVariable("v"))
-                                    ],
-                                )),
-                                argument: (contents: Local(index: 3)),
-                            )),
-                            argument: (contents: Local(index: 2)),
+                        result: (contents: Inst(
+                            name: (contents: ["test", "test", "Nat"]),
+                            universes: [],
                         ))
                     )
-                )
+                ),
             ],
         )),
         Definition(contents: (
-            name: "prod_squash",
-            universe_params: ["u", "v"],
-            ty: (contents: Pi(
-                structure: (
-                    bound: (
-                        name: "A",
-                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                        ownership: PZero,
-                    ),
-                    binder_annotation: ImplicitEager,
-                    region: (contents: StaticRegion),
-                ),
-                result: (contents: Pi(
+            name: "nat_clone",
+            universe_params: [],
+            ty: (contents: RegionPi(
+                region_name: "a",
+                body: (contents: Pi(
                     structure: (
                         bound: (
-                            name: "B",
-                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
-                            ownership: PZero,
+                            name: "n",
+                            ty: (contents: Delta(
+                                region: (contents: Local(index: 0)),
+                                ty: (contents: Inst(
+                                    name: (contents: ["test", "test", "Nat"]),
+                                    universes: [],
+                                ))
+                            )),
+                            ownership: POwned,
                         ),
-                        binder_annotation: ImplicitEager,
+                        binder_annotation: Explicit,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: RegionPi(
-                        region_name: "a",
-                        body: (contents: Pi(
-                            structure: (
-                                bound: (
-                                    name: "x",
-                                    ty: (contents: Delta(
-                                        ty: (contents: Apply(
-                                            function: (contents: Apply(
-                                                function: (contents: Inst(
-                                                    name: (contents: ["test", "test", "Prod"]),
-                                                    universes: [(contents: UniverseVariable("u")), (contents: UniverseVariable("v"))],
-                                                )),
-                                                argument: (contents: Local(index: 2)),
-                                            )),
-                                            argument: (contents: Local(index: 1)),
-                                        )),
-                                        region: (contents: Local(index: 0)),
-                                    )),
-                                    ownership: POwned,
-                                ),
-                                binder_annotation: Explicit,
-                                region: (contents: Local(index: 0)),
-                            ),
-                            result: (contents: Apply(
-                                function: (contents: Apply(
-                                    function: (contents: Inst(
-                                        name: (contents: ["test", "test", "Prod"]),
-                                        universes: [(contents: UniverseVariable("u")), (contents: UniverseVariable("v"))],
-                                    )),
-                                    argument: (contents: Delta(
-                                        ty: (contents: Local(index: 3)),
-                                        region: (contents: Local(index: 1)),
-                                    )),
-                                )),
-                                argument: (contents: Delta(
-                                    ty: (contents: Local(index: 2)),
-                                    region: (contents: Local(index: 1)),
-                                )),
-                            )),
-                        ))
+                    result: (contents: Inst(
+                        name: (contents: ["test", "test", "Nat"]),
+                        universes: [],
                     )),
                 )),
             )),
-            expr: (contents: Lambda(
-                structure: (
-                    bound: (
-                        name: "A",
-                        ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("u")))))),
-                        ownership: PZero,
-                    ),
-                    binder_annotation: ImplicitEager,
-                    region: (contents: StaticRegion),
-                ),
-                result: (contents: Lambda(
+            expr: (contents: RegionLambda(
+                region_name: "a",
+                body: (contents: Lambda(
                     structure: (
                         bound: (
-                            name: "B",
-                            ty: (contents: Sort((contents: UniverseSucc((contents: UniverseVariable("v")))))),
-                            ownership: PZero,
+                            name: "n",
+                            ty: (contents: Delta(
+                                region: (contents: Local(index: 0)),
+                                ty: (contents: Inst(
+                                    name: (contents: ["test", "test", "Nat"]),
+                                    universes: [],
+                                ))
+                            )),
+                            ownership: POwned,
                         ),
-                        binder_annotation: ImplicitEager,
+                        binder_annotation: Explicit,
                         region: (contents: StaticRegion),
                     ),
-                    result: (contents: RegionLambda(
-                        region_name: "a",
-                        body: (contents: Lambda(
-                            structure: (
-                                bound: (
-                                    name: "x",
-                                    ty: (contents: Delta(
-                                        ty: (contents: Apply(
-                                            function: (contents: Apply(
-                                                function: (contents: Inst(
-                                                    name: (contents: ["test", "test", "Prod"]),
-                                                    universes: [(contents: UniverseVariable("u")), (contents: UniverseVariable("v"))],
-                                                )),
-                                                argument: (contents: Local(index: 2)),
-                                            )),
-                                            argument: (contents: Local(index: 1)),
-                                        )),
-                                        region: (contents: Local(index: 0)),
-                                    )),
-                                    ownership: POwned,
-                                ),
-                                binder_annotation: Explicit,
-                                region: (contents: Local(index: 0)),
-                            ),
-                            result: (contents: Match(
-                                major_premise: (contents: Local(index: 0)),
-                                index_params: 0,
-                                motive: (contents: Apply(
-                                    function: (contents: Apply(
-                                        function: (contents: Inst(
-                                            name: (contents: ["test", "test", "Prod"]),
-                                            universes: [(contents: UniverseVariable("u")), (contents: UniverseVariable("v"))],
-                                        )),
-                                        argument: (contents: Delta(
-                                            ty: (contents: Local(index: 4)),
-                                            region: (contents: Local(index: 2)),
-                                        )),
-                                    )),
-                                    argument: (contents: Delta(
-                                        ty: (contents: Local(index: 3)),
-                                        region: (contents: Local(index: 2)),
-                                    )),
-                                )),
-                                minor_premises: [
-                                    (
-                                        variant: "Prod",
-                                        fields: 2,
-                                        result: (contents: Intro(
-                                            inductive: (contents: ["test", "test", "Prod"]),
-                                            universes: [(contents: UniverseVariable("u")), (contents: UniverseVariable("v"))],
-                                            variant: "Prod",
-                                            parameters: [
-                                                (contents: Delta(
-                                                    ty: (contents: Local(index: 5)),
-                                                    region: (contents: Local(index: 3)),
-                                                )),
-                                                (contents: Delta(
-                                                    ty: (contents: Local(index: 4)),
-                                                    region: (contents: Local(index: 3)),
-                                                )),
-                                                (contents: Local(index: 1)),
-                                                (contents: Local(index: 0)),
-                                            ],
-                                        ))
-                                    )
-                                ],
+                    result: (contents: Fix(
+                        argument: (contents: Local(index: 0)),
+                        argument_name: "m",
+                        fixpoint: (
+                            name: "k",
+                            ty: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
                             )),
-                        ))
+                            ownership: POwned,
+                        ),
+                        body: (contents: Match(
+                            major_premise: (contents: Local(index: 0)),
+                            index_params: 0,
+                            motive: (contents: Inst(
+                                name: (contents: ["test", "test", "Nat"]),
+                                universes: [],
+                            )),
+                            minor_premises: [
+                                (
+                                    variant: "zero",
+                                    fields: 0,
+                                    result: (contents: Intro(
+                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        universes: [],
+                                        variant: "zero",
+                                        parameters: [],
+                                    ))
+                                ),
+                                (
+                                    variant: "succ",
+                                    fields: 1,
+                                    result: (contents: Intro(
+                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        universes: [],
+                                        variant: "succ",
+                                        parameters: [(contents: Apply(
+                                            function: (contents: Local(index: 2)),
+                                            argument: (contents: Local(index: 0)),
+                                        ))],
+                                    ))
+                                )
+                            ]
+                        )),
                     )),
                 )),
             )),
-        ))
+        )),
     ]
 ))
