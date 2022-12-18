@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 
 use fexpr::{
     basic::{DeBruijnIndex, DeBruijnOffset},
-    expr::{Apply, BoundVariable, Dereference, ExpressionT, Fix, Local, Match, Term},
+    expr::{Apply, Borrow, BoundVariable, Dereference, ExpressionT, Fix, Local, Match, Term},
 };
 
 use crate::{
@@ -85,6 +85,25 @@ fn whnf_core(db: &dyn Db, t: Term) -> Term {
                         .rev()
                         .take(premise.fields as usize)
                         .fold(premise.result, |t, sub| instantiate(db, t, *sub)),
+                )
+            } else if let ExpressionT::Borrow(borrow) = major_premise.value(db) && let ExpressionT::Intro(intro) = borrow.value.value(db) {
+                // We can unfold this match expression operating on a borrowed value.
+                let premise = match_expr
+                    .minor_premises
+                    .iter()
+                    .find(|premise| *premise.variant == *intro.variant)
+                    .unwrap();
+                whnf_core(
+                    db,
+                    intro
+                        .parameters
+                        .iter()
+                        .rev()
+                        .take(premise.fields as usize)
+                        .fold(premise.result, |t, sub| instantiate(db, t, Term::new(db, ExpressionT::Borrow(Borrow {
+                            region: borrow.region,
+                            value: *sub,
+                        })))),
                 )
             } else {
                 Term::new(

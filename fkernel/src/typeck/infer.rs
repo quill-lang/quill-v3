@@ -297,19 +297,37 @@ fn infer_type_region_pi(db: &dyn Db, pi: &RegionBinder<(), Term>) -> Ir<Term> {
 
 fn infer_type_apply(db: &dyn Db, apply: &Apply<Term>) -> Ir<Term> {
     let function_type = infer_type_core(db, apply.function)?;
-    let function_type_binder = as_pi(db, function_type)?;
-    let argument_type = infer_type_core(db, apply.argument)?;
+    match as_pi(db, function_type) {
+        Ok(function_type_binder) => {
+            let argument_type = infer_type_core(db, apply.argument)?;
 
-    if !definitionally_equal(db, argument_type, function_type_binder.structure.bound.ty)? {
-        return Err(InferenceError::ApplyTypeMismatch {
-            function: apply.function,
-            function_type,
-            argument: apply.argument,
-            argument_type,
-        });
+            if !definitionally_equal(db, argument_type, function_type_binder.structure.bound.ty)? {
+                return Err(InferenceError::ApplyTypeMismatch {
+                    function: apply.function,
+                    function_type,
+                    argument: apply.argument,
+                    argument_type,
+                });
+            }
+
+            Ok(instantiate(db, function_type_binder.result, apply.argument))
+        }
+        Err(_) => {
+            let function_type_binder = as_region_pi(db, function_type)?;
+            let argument_type = infer_type_core(db, apply.argument)?;
+
+            if !definitionally_equal(db, argument_type, Term::new(db, ExpressionT::Region))? {
+                return Err(InferenceError::ApplyTypeMismatch {
+                    function: apply.function,
+                    function_type,
+                    argument: apply.argument,
+                    argument_type,
+                });
+            }
+
+            Ok(instantiate(db, function_type_binder.body, apply.argument))
+        }
     }
-
-    Ok(instantiate(db, function_type_binder.result, apply.argument))
 }
 
 fn infer_type_intro(db: &dyn Db, intro: &Intro<(), Term>) -> Ir<Term> {
@@ -914,6 +932,20 @@ fn as_pi(db: &dyn Db, t: Term) -> Ir<Binder<(), Term>> {
     if let ExpressionT::Pi(pi) = t.value(db) {
         Ok(*pi)
     } else if let ExpressionT::Pi(pi) = to_weak_head_normal_form(db, t).value(db) {
+        Ok(*pi)
+    } else {
+        Err(InferenceError::ExpectedPi)
+    }
+}
+
+/// Expands the given term until it is a [`ExpressionT::RegionPi`].
+/// If the term was not a function type, returns [`Err`].
+/// The error this returns is [`InferenceError::ExpectedPi`] because
+/// this function is called when we expect either a region pi or a normal pi.
+fn as_region_pi(db: &dyn Db, t: Term) -> Ir<RegionBinder<(), Term>> {
+    if let ExpressionT::RegionPi(pi) = t.value(db) {
+        Ok(*pi)
+    } else if let ExpressionT::RegionPi(pi) = to_weak_head_normal_form(db, t).value(db) {
         Ok(*pi)
     } else {
         Err(InferenceError::ExpectedPi)

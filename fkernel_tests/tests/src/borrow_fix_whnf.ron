@@ -18,7 +18,7 @@
                     intro_rule: (
                         structures: [],
                         result: (contents: Inst(
-                            name: (contents: ["test", "test", "Nat"]),
+                            name: (contents: ["borrow_fix_whnf", "Nat"]),
                             universes: [],
                         ))
                     )
@@ -31,7 +31,7 @@
                                 bound: (
                                     name: "n",
                                     ty: (contents: Inst(
-                                        name: (contents: ["test", "test", "Nat"]),
+                                        name: (contents: ["borrow_fix_whnf", "Nat"]),
                                         universes: [],
                                     )),
                                     ownership: POwned,
@@ -41,7 +41,7 @@
                             ),
                         ],
                         result: (contents: Inst(
-                            name: (contents: ["test", "test", "Nat"]),
+                            name: (contents: ["borrow_fix_whnf", "Nat"]),
                             universes: [],
                         ))
                     )
@@ -60,7 +60,7 @@
                             ty: (contents: Delta(
                                 region: (contents: Local(index: 0)),
                                 ty: (contents: Inst(
-                                    name: (contents: ["test", "test", "Nat"]),
+                                    name: (contents: ["borrow_fix_whnf", "Nat"]),
                                     universes: [],
                                 ))
                             )),
@@ -70,7 +70,7 @@
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Inst(
-                        name: (contents: ["test", "test", "Nat"]),
+                        name: (contents: ["borrow_fix_whnf", "Nat"]),
                         universes: [],
                     )),
                 )),
@@ -84,7 +84,7 @@
                             ty: (contents: Delta(
                                 region: (contents: Local(index: 0)),
                                 ty: (contents: Inst(
-                                    name: (contents: ["test", "test", "Nat"]),
+                                    name: (contents: ["borrow_fix_whnf", "Nat"]),
                                     universes: [],
                                 ))
                             )),
@@ -99,7 +99,7 @@
                         fixpoint: (
                             name: "k",
                             ty: (contents: Inst(
-                                name: (contents: ["test", "test", "Nat"]),
+                                name: (contents: ["borrow_fix_whnf", "Nat"]),
                                 universes: [],
                             )),
                             ownership: POwned,
@@ -108,7 +108,7 @@
                             major_premise: (contents: Local(index: 0)),
                             index_params: 0,
                             motive: (contents: Inst(
-                                name: (contents: ["test", "test", "Nat"]),
+                                name: (contents: ["borrow_fix_whnf", "Nat"]),
                                 universes: [],
                             )),
                             minor_premises: [
@@ -116,7 +116,7 @@
                                     variant: "zero",
                                     fields: 0,
                                     result: (contents: Intro(
-                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        inductive: (contents: ["borrow_fix_whnf", "Nat"]),
                                         universes: [],
                                         variant: "zero",
                                         parameters: [],
@@ -126,7 +126,7 @@
                                     variant: "succ",
                                     fields: 1,
                                     result: (contents: Intro(
-                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        inductive: (contents: ["borrow_fix_whnf", "Nat"]),
                                         universes: [],
                                         variant: "succ",
                                         parameters: [(contents: Apply(
@@ -205,7 +205,7 @@
                             function: (contents: Apply(
                                 function: (contents: Apply(
                                     function: (contents: Inst(
-                                        name: (contents: ["test", "test", "Eq"]),
+                                        name: (contents: ["borrow_fix_whnf", "Eq"]),
                                         universes: [(contents: UniverseVariable("u"))],
                                     )),
                                     argument: (contents: Local(index: 1)),
@@ -227,18 +227,18 @@
                     function: (contents: Apply(
                         function: (contents: Apply(
                             function: (contents: Inst(
-                                name: (contents: ["test", "test", "Eq"]),
+                                name: (contents: ["borrow_fix_whnf", "Eq"]),
                                 universes: [(contents: UniverseSucc((contents: UniverseZero)))]
                             )),
                             argument: (contents: Inst(
-                                name: (contents: ["test", "test", "Nat"]),
+                                name: (contents: ["borrow_fix_whnf", "Nat"]),
                                 universes: [],
                             )),
                         )),
                         argument: (contents: Apply(
                             function: (contents: Apply(
                                 function: (contents: Inst(
-                                    name: (contents: ["test", "test", "nat_clone"]),
+                                    name: (contents: ["borrow_fix_whnf", "nat_clone"]),
                                     universes: [],
                                 )),
                                 argument: (contents: Local(index: 0)),
@@ -246,17 +246,17 @@
                             argument: (contents: Borrow(
                                 region: (contents: Local(index: 0)),
                                 value: (contents: Intro(
-                                    inductive: (contents: ["test", "test", "Nat"]),
+                                    inductive: (contents: ["borrow_fix_whnf", "Nat"]),
                                     universes: [],
                                     variant: "succ",
                                     parameters: [
                                         (contents: Intro(
-                                            inductive: (contents: ["test", "test", "Nat"]),
+                                            inductive: (contents: ["borrow_fix_whnf", "Nat"]),
                                             universes: [],
                                             variant: "succ",
                                             parameters: [
                                                 (contents: Intro(
-                                                    inductive: (contents: ["test", "test", "Nat"]),
+                                                    inductive: (contents: ["borrow_fix_whnf", "Nat"]),
                                                     universes: [],
                                                     variant: "zero",
                                                     parameters: []
@@ -269,17 +269,17 @@
                         )),
                     )),
                     argument: (contents: Intro(
-                        inductive: (contents: ["test", "test", "Nat"]),
+                        inductive: (contents: ["borrow_fix_whnf", "Nat"]),
                         universes: [],
                         variant: "succ",
                         parameters: [
                             (contents: Intro(
-                                inductive: (contents: ["test", "test", "Nat"]),
+                                inductive: (contents: ["borrow_fix_whnf", "Nat"]),
                                 universes: [],
                                 variant: "succ",
                                 parameters: [
                                     (contents: Intro(
-                                        inductive: (contents: ["test", "test", "Nat"]),
+                                        inductive: (contents: ["borrow_fix_whnf", "Nat"]),
                                         universes: [],
                                         variant: "zero",
                                         parameters: []
