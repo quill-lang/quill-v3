@@ -1,11 +1,13 @@
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-use fcommon::Str;
+use fcommon::{Str, Source, Dr, with_local_database, Report, ReportKind};
 use serde::{Deserialize, Serialize};
 
-use crate::basic::WithProvenance;
+use crate::Db;
+use crate::basic::{WithProvenance, Provenance};
 use crate::definition::Definition;
+use crate::expr::Expression;
 use crate::inductive::Inductive;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -91,4 +93,20 @@ where
             }
         })
     }
+}
+
+#[tracing::instrument(level = "debug")]
+#[salsa::tracked(return_ref)]
+pub fn module_from_feather_source(
+    db: &dyn Db,
+    source: Source,
+) -> Dr<Module<Provenance, Box<Expression>>> {
+    fcommon::source(db, source).bind(|file_contents| {
+        with_local_database(db, || match ron::from_str(file_contents.contents(db)) {
+            Ok(module) => Dr::ok(module),
+            Err(err) => Dr::fail(
+                Report::new_in_file(ReportKind::Error, source).with_message(err.to_string()),
+            ),
+        })
+    })
 }

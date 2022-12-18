@@ -3,7 +3,7 @@ use fexpr::{
     basic::Provenance,
     expr::{largest_unusable_metavariable, Expression, ExpressionT, MetavariableGenerator, Term},
     inductive::Inductive,
-    queries::module_from_feather_source,
+    module::module_from_feather_source,
 };
 
 use crate::{

@@ -6,14 +6,13 @@ pub mod expr;
 pub mod inductive;
 pub mod module;
 pub mod multiplicity;
-pub mod queries;
 pub mod universe;
 
 #[salsa::jar(db = Db)]
 pub struct Jar(
     expr::largest_unusable_metavariable,
     expr::Term,
-    queries::module_from_feather_source,
+    module::module_from_feather_source,
 );
 
 pub trait Db: fcommon::Db + salsa::DbWithJar<Jar> {}

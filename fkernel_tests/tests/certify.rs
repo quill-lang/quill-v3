@@ -24,7 +24,7 @@ fn run_test(file: &str) {
 
     println!("source file is {}", source.path(&db).display(&db));
 
-    let result = fexpr::queries::module_from_feather_source(&db, source);
+    let result = fexpr::module::module_from_feather_source(&db, source);
     for report in result.reports() {
         report.render(&db, std::io::stdout());
     }

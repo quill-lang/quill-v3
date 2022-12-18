@@ -1,0 +1,2 @@
+def id::{u} : forall (A : Sort u), forall (a : A), A =
+fn (A : Sort u), fn (a : A), a

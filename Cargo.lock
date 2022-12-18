@@ -199,20 +199,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "feather"
-version = "0.0.0"
-dependencies = [
- "fcommon",
- "fexpr",
- "fkernel",
- "qdb",
- "ron",
- "salsa-2022",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "fexpr"
 version = "0.0.0"
 dependencies = [
@@ -512,7 +498,33 @@ dependencies = [
  "fexpr",
  "fkernel",
  "notify-debouncer-mini",
+ "qparse",
  "salsa-2022",
+]
+
+[[package]]
+name = "qparse"
+version = "0.0.0"
+dependencies = [
+ "fcommon",
+ "fexpr",
+ "salsa-2022",
+ "tracing",
+]
+
+[[package]]
+name = "quill"
+version = "0.0.0"
+dependencies = [
+ "fcommon",
+ "fexpr",
+ "fkernel",
+ "qdb",
+ "qparse",
+ "ron",
+ "salsa-2022",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

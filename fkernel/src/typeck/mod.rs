@@ -3,7 +3,7 @@ use fexpr::{
     basic::Provenance,
     definition::Definition,
     expr::{Expression, Sort},
-    queries::module_from_feather_source,
+    module::module_from_feather_source,
 };
 
 use crate::{

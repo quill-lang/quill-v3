@@ -92,13 +92,15 @@ pub(in crate::inductive) fn check_variant<'db>(
                             variant.intro_rule.result.to_term(db),
                             variant.intro_rule.structures.len(),
                         )
-                        .bind(|result| {
-                            if result {
-                                Dr::ok(())
-                            } else {
-                                Dr::fail(todo!())
-                            }
-                        })
+                        .bind(
+                            |result| {
+                                if result {
+                                    Dr::ok(())
+                                } else {
+                                    todo!()
+                                }
+                            },
+                        )
                     })
                 }
             }
@@ -213,9 +215,9 @@ fn check_positivity<'db>(
             .ty
             .to_term(db);
         while let ExpressionT::Pi(pi) = t.value(db) {
-            if let Some(value) = find_inst(db, pi.structure.bound.ty, &info.inst.name) {
+            if find_inst(db, pi.structure.bound.ty, &info.inst.name).is_some() {
                 // This is a non-positive occurence of the inductive type being declared.
-                return Dr::fail(todo!());
+                todo!()
             } else {
                 t = pi.result;
             }
@@ -236,7 +238,7 @@ fn check_positivity<'db>(
                 Dr::ok(())
             } else {
                 // This is an invalid inductive application.
-                Dr::fail(todo!())
+                todo!()
             }
         })
     } else {
