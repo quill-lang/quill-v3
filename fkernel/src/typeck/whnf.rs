@@ -6,11 +6,7 @@ use std::cmp::Ordering;
 
 use fexpr::{
     basic::{DeBruijnIndex, DeBruijnOffset},
-    expr::{
-        Apply, Binder, BinderAnnotation, BinderStructure, BoundVariable, ExpressionT, Fix, Local,
-        Match, Term,
-    },
-    multiplicity::ParameterOwnership,
+    expr::{Apply, BoundVariable, Dereference, ExpressionT, Fix, Local, Match, Term},
 };
 
 use crate::{
@@ -18,7 +14,7 @@ use crate::{
     Db,
 };
 
-use super::{infer_type, unfold::unfold_definition};
+use super::unfold::unfold_definition;
 
 /// Reduces an expression to weak head normal form.
 #[salsa::tracked]
@@ -39,13 +35,22 @@ pub fn to_weak_head_normal_form(db: &dyn Db, t: Term) -> Term {
 /// Does not perform delta reduction.
 fn whnf_core(db: &dyn Db, t: Term) -> Term {
     match t.value(db) {
+        ExpressionT::Dereference(deref) => {
+            // Reduce the argument of the dereference to weak head normal form first.
+            let value = to_weak_head_normal_form(db, deref.value);
+            if let ExpressionT::Borrow(borrow) = value.value(db) {
+                whnf_core(db, borrow.value)
+            } else {
+                Term::new(db, ExpressionT::Dereference(Dereference { value }))
+            }
+        }
         ExpressionT::Let(let_expr) => {
             // We substitute the value into the body of the let expression, then continue to evaluate the expression.
             // This is called zeta-reduction.
             whnf_core(db, instantiate(db, let_expr.body, let_expr.to_assign))
         }
         ExpressionT::Apply(ap) => {
-            // Try to reduce the function to weak head normal form first.
+            // Reduce the function to weak head normal form first.
             let function = whnf_core(db, ap.function);
             if let ExpressionT::Lambda(lam) = function.value(db) {
                 // If the function is a lambda, we can apply a beta-reduction to expand the lambda.
@@ -61,7 +66,7 @@ fn whnf_core(db: &dyn Db, t: Term) -> Term {
             }
         }
         ExpressionT::Match(match_expr) => {
-            // Try to reduce the major premise to weak head normal form first.
+            // Reduce the major premise to weak head normal form first.
             let major_premise = to_weak_head_normal_form(db, match_expr.major_premise);
             if let ExpressionT::Intro(intro) = major_premise.value(db) {
                 // We can unfold this match expression.

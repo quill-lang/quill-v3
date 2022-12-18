@@ -19,7 +19,11 @@ use crate::Db;
 pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
     match t.value(db) {
         ExpressionT::Local(Local { index }) => index.succ(),
-        ExpressionT::Borrow(borrow) => first_free_variable_index(db, borrow.value),
+        ExpressionT::Borrow(borrow) => max(
+            first_free_variable_index(db, borrow.region),
+            first_free_variable_index(db, borrow.value),
+        ),
+        ExpressionT::Dereference(deref) => first_free_variable_index(db, deref.value),
         ExpressionT::Delta(delta) => max(
             first_free_variable_index(db, delta.region),
             first_free_variable_index(db, delta.ty),
@@ -37,7 +41,7 @@ pub fn first_free_variable_index(db: &dyn Db, t: Term) -> DeBruijnIndex {
             ),
         ),
         ExpressionT::RegionLambda(reg) | ExpressionT::RegionPi(reg) => {
-            first_free_variable_index(db, reg.body)
+            first_free_variable_index(db, reg.body).pred()
         }
         ExpressionT::Apply(apply) => max(
             first_free_variable_index(db, apply.function),

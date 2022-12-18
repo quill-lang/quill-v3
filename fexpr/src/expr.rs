@@ -50,6 +50,16 @@ pub struct Borrow<E> {
     pub value: E,
 }
 
+/// Dereference a borrowed value.
+/// In valid programs, the type of the borrowed value must be dereferencable.
+/// However, we don't make this restriction yet.
+/// This allows us to (for example) make `*&a` definitionally equal to `a` for all `a`.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Dereference<E> {
+    /// The value to be dereferenced.
+    pub value: E,
+}
+
 /// A Delta-type (Δ-type) is the type of borrowed values of another type.
 /// For instance, if `x : T`, `&x : ΔT`.
 /// Note that `&T` is a value which is borrowed, and the value behind the borrow is a type;
@@ -249,6 +259,37 @@ where
     pub body: E,
 }
 
+impl RegionBinder<(), Term> {
+    /// Generates a local constant that represents the argument to this dependent function type.
+    pub fn generate_local_with_gen(
+        &self,
+        db: &dyn Db,
+        meta_gen: &mut MetavariableGenerator<Term>,
+    ) -> LocalConstant<(), Term> {
+        LocalConstant {
+            metavariable: meta_gen.gen(Term::new(db, ExpressionT::Region)),
+            structure: BinderStructure {
+                bound: BoundVariable {
+                    name: self.region_name,
+                    ty: Term::new(db, ExpressionT::Region),
+                    ownership: ParameterOwnership::PCopyable,
+                },
+                binder_annotation: BinderAnnotation::Explicit,
+                region: Term::new(db, ExpressionT::StaticRegion),
+            },
+        }
+    }
+
+    /// Generates a local constant that represents the argument to this dependent function type.
+    /// The index of the metavariable is guaranteed not to collide with the metavariables in `t`.
+    pub fn generate_local(&self, db: &dyn Db, t: Term) -> LocalConstant<(), Term> {
+        self.generate_local_with_gen(
+            db,
+            &mut MetavariableGenerator::new(largest_unusable_metavariable(db, t)),
+        )
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Apply<E> {
     /// The function to be invoked.
@@ -408,6 +449,7 @@ where
 {
     Local(Local),
     Borrow(Borrow<E>),
+    Dereference(Dereference<E>),
     Delta(Delta<E>),
     Inst(Inst<P>),
     Let(Let<P, E>),
@@ -506,6 +548,7 @@ pub fn largest_unusable_metavariable(db: &dyn Db, t: Term) -> Option<u32> {
             largest_unusable_metavariable(db, t.region),
             largest_unusable_metavariable(db, t.value),
         ),
+        ExpressionT::Dereference(t) => largest_unusable_metavariable(db, t.value),
         ExpressionT::Delta(t) => max(
             largest_unusable_metavariable(db, t.region),
             largest_unusable_metavariable(db, t.ty),
@@ -575,6 +618,11 @@ impl Term {
                 region: Box::new(e.region.to_expression(db)),
                 value: Box::new(e.value.to_expression(db)),
             })),
+            ExpressionT::Dereference(e) => {
+                Expression::new_synthetic(ExpressionT::Dereference(Dereference {
+                    value: Box::new(e.value.to_expression(db)),
+                }))
+            }
             ExpressionT::Delta(e) => Expression::new_synthetic(ExpressionT::Delta(Delta {
                 region: Box::new(e.region.to_expression(db)),
                 ty: Box::new(e.ty.to_expression(db)),
@@ -688,6 +736,12 @@ impl Expression {
                 db,
                 ExpressionT::Borrow(Borrow {
                     region: e.region.to_term(db),
+                    value: e.value.to_term(db),
+                }),
+            ),
+            ExpressionT::Dereference(e) => Term::new(
+                db,
+                ExpressionT::Dereference(Dereference {
                     value: e.value.to_term(db),
                 }),
             ),

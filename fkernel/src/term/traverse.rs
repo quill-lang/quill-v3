@@ -25,6 +25,7 @@ pub fn subterms(db: &dyn Db, t: Term) -> Vec<Term> {
     match t.value(db) {
         ExpressionT::Local(_) => Vec::new(),
         ExpressionT::Borrow(t) => vec![t.region, t.value],
+        ExpressionT::Dereference(t) => vec![t.value],
         ExpressionT::Delta(t) => vec![t.region, t.ty],
         ExpressionT::Inst(_) => Vec::new(),
         ExpressionT::Let(t) => vec![t.bound.ty, t.to_assign, t.body],
@@ -80,6 +81,12 @@ fn replace_in_term_offset(
                     db,
                     ExpressionT::Borrow(Borrow {
                         region: replace_in_term_offset(db, t.region, replace_fn.clone(), offset),
+                        value: replace_in_term_offset(db, t.value, replace_fn, offset),
+                    }),
+                ),
+                ExpressionT::Dereference(t) => Term::new(
+                    db,
+                    ExpressionT::Dereference(Dereference {
                         value: replace_in_term_offset(db, t.value, replace_fn, offset),
                     }),
                 ),
@@ -243,6 +250,7 @@ fn find_in_term_offset(
             ExpressionT::Local(_) | ExpressionT::Inst(_) => None,
             ExpressionT::Borrow(t) => find_in_term_offset(db, t.region, predicate.clone(), offset)
                 .or_else(|| find_in_term_offset(db, t.value, predicate.clone(), offset)),
+            ExpressionT::Dereference(t) => find_in_term_offset(db, t.value, predicate, offset),
             ExpressionT::Delta(t) => find_in_term_offset(db, t.region, predicate.clone(), offset)
                 .or_else(|| find_in_term_offset(db, t.ty, predicate.clone(), offset)),
             ExpressionT::Let(t) => find_in_term_offset(db, t.to_assign, predicate.clone(), offset)
@@ -509,6 +517,35 @@ pub fn abstract_binder(
     Binder {
         structure: local.structure,
         result: return_type,
+    }
+}
+
+/// Create a region binder where the parameter is the given local constant.
+#[must_use]
+pub fn abstract_region_binder(
+    db: &dyn Db,
+    local: LocalConstant<(), Term>,
+    return_type: Term,
+) -> RegionBinder<(), Term> {
+    let return_type = replace_in_term(db, return_type, |t, offset| match t.value(db) {
+        ExpressionT::LocalConstant(inner_local) => {
+            if *inner_local == local {
+                ReplaceResult::ReplaceWith(Term::new(
+                    db,
+                    ExpressionT::Local(Local {
+                        index: DeBruijnIndex::zero() + offset,
+                    }),
+                ))
+            } else {
+                ReplaceResult::Skip
+            }
+        }
+        _ => ReplaceResult::Skip,
+    });
+
+    RegionBinder {
+        region_name: local.structure.bound.name,
+        body: return_type,
     }
 }
 

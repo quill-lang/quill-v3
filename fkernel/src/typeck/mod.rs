@@ -159,7 +159,26 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
                         ))
                     }
                 }
-                Err(_) => todo!(),
+                Err(err) => {
+                    tracing::error!(
+                        "{}: {}",
+                        err.display(db),
+                        infer_type(db, def.contents.ty.to_term(db))
+                            .map(|x| x.display(db))
+                            .unwrap_or("<could not infer type>".to_owned()),
+                    );
+                    Dr::fail(
+                        Report::new(
+                            ReportKind::Error,
+                            Source::new(db, path.split_last(db).0, SourceType::Feather),
+                            def.provenance.span().start,
+                        )
+                        .with_message(format!(
+                            "type of definition {} was not a type",
+                            def.name.text(db),
+                        )),
+                    )
+                }
             }
         })
     })
