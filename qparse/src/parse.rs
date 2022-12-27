@@ -9,12 +9,12 @@ use fexpr::{
     expr::BinderAnnotation,
 };
 
-use crate::{pre_lex::PreToken, Db};
+use crate::{lex::TokenTree, Db};
 
-/// A token in the source file. One or more of these is created for each pre-token,
+/// A lexical token in the source file. One or more of these is created for each pre-token,
 /// except non-documentation comment pre-tokens, which are removed.
 #[derive(Debug, PartialEq, Eq, Hash)]
-pub enum Token {
+pub enum LexicalToken {
     Lexical {
         text: String,
     },
@@ -22,6 +22,8 @@ pub enum Token {
         text: String,
         info: OperatorInfo,
     },
+    /// `->`
+    Arrow,
     /// `::`
     Scope,
     /// `(`
@@ -42,6 +44,12 @@ pub enum Token {
     Pipe,
     /// `&`
     Borrow,
+    /// `erased`. 0 ownership.
+    Erased,
+    /// `owned`. 1 ownership.
+    Owned,
+    /// `copyable`. omega-ownership.
+    Copyable,
     /// `borrowed`. Represents the type of borrowed values, not the borrowed values themselves.
     Borrowed,
     /// `def`
@@ -50,8 +58,6 @@ pub enum Token {
     Inductive,
     /// `fn`
     Fn,
-    /// `forall`
-    Forall,
     /// `let`
     Let,
     /// `Sort`
@@ -74,57 +80,63 @@ pub enum OperatorInfo {
     },
 }
 
-impl Token {
+impl LexicalToken {
     /// Gets the amount of Unicode characters in the underlying string.
     fn chars_count(&self) -> usize {
         match self {
-            Token::Lexical { text } => text.chars().count(),
-            Token::Operator { text, .. } => text.chars().count(),
-            Token::Scope => 2,
-            Token::LParen => 1,
-            Token::RParen => 1,
-            Token::LBrace => 1,
-            Token::RBrace => 1,
-            Token::Type => 1,
-            Token::Assign => 1,
-            Token::Comma => 1,
-            Token::Pipe => 1,
-            Token::Borrow => 1,
-            Token::Borrowed => "borrowed".chars().count(),
-            Token::Def => "def".chars().count(),
-            Token::Inductive => "inductive".chars().count(),
-            Token::Fn => "fn".chars().count(),
-            Token::Forall => "forall".chars().count(),
-            Token::Let => "let".chars().count(),
-            Token::Sort => "sort".chars().count(),
-            Token::Region => "region".chars().count(),
+            LexicalToken::Lexical { text } => text.chars().count(),
+            LexicalToken::Operator { text, .. } => text.chars().count(),
+            LexicalToken::Arrow => 2,
+            LexicalToken::Scope => 2,
+            LexicalToken::LParen => 1,
+            LexicalToken::RParen => 1,
+            LexicalToken::LBrace => 1,
+            LexicalToken::RBrace => 1,
+            LexicalToken::Type => 1,
+            LexicalToken::Assign => 1,
+            LexicalToken::Comma => 1,
+            LexicalToken::Pipe => 1,
+            LexicalToken::Borrow => 1,
+            LexicalToken::Erased => "erased".chars().count(),
+            LexicalToken::Owned => "owned".chars().count(),
+            LexicalToken::Copyable => "copyable".chars().count(),
+            LexicalToken::Borrowed => "borrowed".chars().count(),
+            LexicalToken::Def => "def".chars().count(),
+            LexicalToken::Inductive => "inductive".chars().count(),
+            LexicalToken::Fn => "fn".chars().count(),
+            LexicalToken::Let => "let".chars().count(),
+            LexicalToken::Sort => "sort".chars().count(),
+            LexicalToken::Region => "region".chars().count(),
         }
     }
 }
 
-impl Display for Token {
+impl Display for LexicalToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Token::Lexical { text } => write!(f, "\"{text}\""),
-            Token::Operator { text, .. } => write!(f, "operator \"{text}\""),
-            Token::Scope => write!(f, "'::'"),
-            Token::LParen => write!(f, "'('"),
-            Token::RParen => write!(f, "')'"),
-            Token::LBrace => write!(f, "'{{'"),
-            Token::RBrace => write!(f, "'}}'"),
-            Token::Type => write!(f, "':'"),
-            Token::Assign => write!(f, "'='"),
-            Token::Comma => write!(f, "','"),
-            Token::Pipe => write!(f, "'|'"),
-            Token::Borrow => write!(f, "'&'"),
-            Token::Borrowed => write!(f, "'borrowed'"),
-            Token::Def => write!(f, "'def'"),
-            Token::Inductive => write!(f, "'inductive'"),
-            Token::Fn => write!(f, "'fn'"),
-            Token::Forall => write!(f, "'forall'"),
-            Token::Let => write!(f, "'let'"),
-            Token::Sort => write!(f, "'Sort'"),
-            Token::Region => write!(f, "'Region'"),
+            LexicalToken::Lexical { text } => write!(f, "\"{text}\""),
+            LexicalToken::Operator { text, .. } => write!(f, "operator \"{text}\""),
+            LexicalToken::Arrow => write!(f, "->"),
+            LexicalToken::Scope => write!(f, "'::'"),
+            LexicalToken::LParen => write!(f, "'('"),
+            LexicalToken::RParen => write!(f, "')'"),
+            LexicalToken::LBrace => write!(f, "'{{'"),
+            LexicalToken::RBrace => write!(f, "'}}'"),
+            LexicalToken::Type => write!(f, "':'"),
+            LexicalToken::Assign => write!(f, "'='"),
+            LexicalToken::Comma => write!(f, "','"),
+            LexicalToken::Pipe => write!(f, "'|'"),
+            LexicalToken::Borrow => write!(f, "'&'"),
+            LexicalToken::Erased => write!(f, "'erased'"),
+            LexicalToken::Owned => write!(f, "'owned'"),
+            LexicalToken::Copyable => write!(f, "'copyable'"),
+            LexicalToken::Borrowed => write!(f, "'borrowed'"),
+            LexicalToken::Def => write!(f, "'def'"),
+            LexicalToken::Inductive => write!(f, "'inductive'"),
+            LexicalToken::Fn => write!(f, "'fn'"),
+            LexicalToken::Let => write!(f, "'let'"),
+            LexicalToken::Sort => write!(f, "'Sort'"),
+            LexicalToken::Region => write!(f, "'Region'"),
         }
     }
 }
@@ -133,13 +145,13 @@ impl Display for Token {
 /// TODO: Add functionality that allows this iterator to be given operators that it can then parse.
 pub struct TokenIterator<I>
 where
-    I: Iterator<Item = (PreToken, Span)>,
+    I: Iterator<Item = TokenTree>,
 {
     pre_tokens: I,
     /// If we just parsed a pre-token, this list is filled up with the tokens that the pre-token
     /// split up into, so that we can return them later with calls to [`Iterator::next()`].
     /// The list is reversed so [`Vec::pop()`] can be used to get the next token.
-    parsed_tokens_rev: Vec<(Token, Span)>,
+    parsed_tokens_rev: Vec<(LexicalToken, Span)>,
     /// The map of known operators to this token iterator.
     /// The innermost map converts operators as strings into their information.
     /// The outermost map tracks the size of each operator; in particular, an operator with string
@@ -154,7 +166,7 @@ where
 
 impl<I> TokenIterator<I>
 where
-    I: Iterator<Item = (PreToken, Span)>,
+    I: Iterator<Item = TokenTree>,
 {
     pub fn new(pre_tokens: impl IntoIterator<IntoIter = I>) -> Self {
         Self {
@@ -167,11 +179,11 @@ where
 
     /// Undoes an invocation to [`Iterator::next`].
     /// This is implemented in place of any kind of "peekable" trait.
-    fn push(&mut self, token: Token, span: Span) {
+    fn push(&mut self, token: LexicalToken, span: Span) {
         self.parsed_tokens_rev.push((token, span))
     }
 
-    fn split_pre_token(&self, text: &str, span: Span) -> Vec<(Token, Span)> {
+    fn split_pre_token(&self, text: &str, span: Span) -> Vec<(LexicalToken, Span)> {
         // Search for known operators, longest first.
         for (_, operators) in self.operators.iter().rev() {
             for (operator, info) in operators {
@@ -180,7 +192,7 @@ where
                     return self.split_pre_token_recursive(
                         before,
                         after,
-                        Token::Operator {
+                        LexicalToken::Operator {
                             text: operator.clone(),
                             info: *info,
                         },
@@ -193,25 +205,25 @@ where
         // We didn't find any operators in this text.
         // Now search for important tokens like left and right parentheses.
         if let Some((before, after)) = text.split_once("::") {
-            self.split_pre_token_recursive(before, after, Token::Scope, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::Scope, span)
         } else if let Some((before, after)) = text.split_once('(') {
-            self.split_pre_token_recursive(before, after, Token::LParen, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::LParen, span)
         } else if let Some((before, after)) = text.split_once(')') {
-            self.split_pre_token_recursive(before, after, Token::RParen, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::RParen, span)
         } else if let Some((before, after)) = text.split_once('{') {
-            self.split_pre_token_recursive(before, after, Token::LBrace, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::LBrace, span)
         } else if let Some((before, after)) = text.split_once('}') {
-            self.split_pre_token_recursive(before, after, Token::RBrace, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::RBrace, span)
         } else if let Some((before, after)) = text.split_once(':') {
-            self.split_pre_token_recursive(before, after, Token::Type, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::Type, span)
         } else if let Some((before, after)) = text.split_once('=') {
-            self.split_pre_token_recursive(before, after, Token::Assign, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::Assign, span)
         } else if let Some((before, after)) = text.split_once(',') {
-            self.split_pre_token_recursive(before, after, Token::Comma, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::Comma, span)
         } else if let Some((before, after)) = text.split_once('|') {
-            self.split_pre_token_recursive(before, after, Token::Pipe, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::Pipe, span)
         } else if let Some((before, after)) = text.split_once('&') {
-            self.split_pre_token_recursive(before, after, Token::Borrow, span)
+            self.split_pre_token_recursive(before, after, LexicalToken::Borrow, span)
         } else {
             // We didn't find any other tokens in this text.
             if text.is_empty() {
@@ -221,15 +233,17 @@ where
                 // TODO: Warn the user if this doesn't look like a single token.
                 vec![(
                     match text {
-                        "borrowed" => Token::Borrowed,
-                        "def" => Token::Def,
-                        "inductive" => Token::Inductive,
-                        "fn" => Token::Fn,
-                        "forall" => Token::Forall,
-                        "let" => Token::Let,
-                        "Sort" => Token::Sort,
-                        "Region" => Token::Region,
-                        _ => Token::Lexical {
+                        "erased" => LexicalToken::Erased,
+                        "owned" => LexicalToken::Owned,
+                        "copyable" => LexicalToken::Copyable,
+                        "borrowed" => LexicalToken::Borrowed,
+                        "def" => LexicalToken::Def,
+                        "inductive" => LexicalToken::Inductive,
+                        "fn" => LexicalToken::Fn,
+                        "let" => LexicalToken::Let,
+                        "Sort" => LexicalToken::Sort,
+                        "Region" => LexicalToken::Region,
+                        _ => LexicalToken::Lexical {
                             text: text.to_owned(),
                         },
                     },
@@ -244,9 +258,9 @@ where
         &self,
         before: &str,
         after: &str,
-        token: Token,
+        token: LexicalToken,
         span: Span,
-    ) -> Vec<(Token, Span)> {
+    ) -> Vec<(LexicalToken, Span)> {
         let before_len = before.chars().count();
         let token_len = token.chars_count();
         let mut result = self.split_pre_token(
@@ -276,9 +290,9 @@ where
 
 impl<I> Iterator for TokenIterator<I>
 where
-    I: Iterator<Item = (PreToken, Span)>,
+    I: Iterator<Item = TokenTree>,
 {
-    type Item = (Token, Span);
+    type Item = (LexicalToken, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(token) = self.parsed_tokens_rev.pop() {
@@ -458,8 +472,8 @@ where
     /// If the stream was empty, return [`None`].
     fn parse_item(&mut self) -> Dr<Option<(PItem, Span)>> {
         match self.stream.next() {
-            Some((Token::Def, span)) => self.parse_definition(span).map(Some),
-            Some((Token::Inductive, span)) => self.parse_inductive(span).map(Some),
+            Some((LexicalToken::Def, span)) => self.parse_definition(span).map(Some),
+            Some((LexicalToken::Inductive, span)) => self.parse_inductive(span).map(Some),
             Some((token, span)) => Dr::fail(
                 Report::new(ReportKind::Error, self.source, span.start)
                     .with_message(format!("expected item, got {token}"))
@@ -478,8 +492,8 @@ where
         self.parse_name().bind(|name| {
             // We might have a sequence of universe parameters `::{...}` here.
             let universe_parameters = match self.stream.next() {
-                Some((Token::Scope, _)) => self
-                    .parse_exact(Token::LBrace)
+                Some((LexicalToken::Scope, _)) => self
+                    .parse_exact(LexicalToken::LBrace)
                     .bind(|_| self.parse_universe_parameters()),
                 Some((token, span)) => {
                     self.stream.push(token, span);
@@ -488,9 +502,9 @@ where
                 None => Dr::ok(Vec::new()),
             };
             universe_parameters.bind(|universe_params| {
-                self.parse_exact(Token::Type).bind(|_type_span| {
+                self.parse_exact(LexicalToken::Type).bind(|_type_span| {
                     self.parse_expr().bind(|ty| {
-                        self.parse_exact(Token::Assign).bind(|_assign_span| {
+                        self.parse_exact(LexicalToken::Assign).bind(|_assign_span| {
                             self.parse_expr().map(|value| {
                                 let span = name.0.provenance.span();
                                 (
@@ -527,7 +541,7 @@ where
     /// If any operator with higher precedence is met, that is not considered part of this parsed expression.
     fn parse_expr_with_precedence(&mut self, min_precedence: i32) -> Dr<PExpr> {
         let mut lhs = match self.stream.next() {
-            Some((Token::Lexical { text }, span)) => self
+            Some((LexicalToken::Lexical { text }, span)) => self
                 .parse_qualified_name(Name(WithProvenance {
                     provenance: Provenance::Quill(SourceSpan {
                         source: self.source,
@@ -542,22 +556,23 @@ where
                         universes,
                     },
                 }),
-            Some((Token::LParen, lparen_span)) => self.parse_expr().bind(|expr| {
-                self.parse_exact(Token::RParen).map(|rparen_span| PExpr {
-                    provenance: Provenance::Quill(SourceSpan {
-                        source: self.source,
-                        span: Span {
-                            start: lparen_span.start,
-                            end: rparen_span.end,
-                        },
-                    }),
-                    contents: expr.contents,
-                })
+            Some((LexicalToken::LParen, lparen_span)) => self.parse_expr().bind(|expr| {
+                self.parse_exact(LexicalToken::RParen)
+                    .map(|rparen_span| PExpr {
+                        provenance: Provenance::Quill(SourceSpan {
+                            source: self.source,
+                            span: Span {
+                                start: lparen_span.start,
+                                end: rparen_span.end,
+                            },
+                        }),
+                        contents: expr.contents,
+                    })
             }),
-            Some((Token::Fn, fn_span)) => {
+            Some((LexicalToken::Fn, fn_span)) => {
                 // Parse a binder, then parse the resulting expression.
                 self.parse_binder(fn_span).bind(|binder| {
-                    self.parse_exact(Token::Comma).bind(|_comma_span| {
+                    self.parse_exact(LexicalToken::Comma).bind(|_comma_span| {
                         self.parse_expr_with_precedence(min_precedence)
                             .map(|inner_expr| PExpr {
                                 provenance: Provenance::Quill(SourceSpan {
@@ -575,10 +590,10 @@ where
                     })
                 })
             }
-            Some((Token::Forall, forall_span)) => {
+            Some((LexicalToken::Forall, forall_span)) => {
                 // Parse a binder, then parse the resulting expression.
                 self.parse_binder(forall_span).bind(|binder| {
-                    self.parse_exact(Token::Comma).bind(|_comma_span| {
+                    self.parse_exact(LexicalToken::Comma).bind(|_comma_span| {
                         self.parse_expr_with_precedence(min_precedence)
                             .map(|inner_expr| PExpr {
                                 provenance: Provenance::Quill(SourceSpan {
@@ -596,15 +611,15 @@ where
                     })
                 })
             }
-            Some((Token::Let, let_span)) => {
+            Some((LexicalToken::Let, let_span)) => {
                 // Parse the name, then parse the value we're assigning, then parse the resulting expression.
                 // The structure is `let a : b = c, d`.
                 self.parse_name().bind(|name_to_assign| {
-                    self.parse_exact(Token::Type).bind(|_| {
+                    self.parse_exact(LexicalToken::Type).bind(|_| {
                         self.parse_expr().bind(|to_assign_ty| {
-                            self.parse_exact(Token::Assign).bind(|_| {
+                            self.parse_exact(LexicalToken::Assign).bind(|_| {
                                 self.parse_expr().bind(|to_assign| {
-                                    self.parse_exact(Token::Comma).bind(|_| {
+                                    self.parse_exact(LexicalToken::Comma).bind(|_| {
                                         self.parse_expr().map(|body| PExpr {
                                             provenance: Provenance::Quill(SourceSpan {
                                                 source: self.source,
@@ -627,10 +642,10 @@ where
                     })
                 })
             }
-            Some((Token::Borrow, borrow_span)) => {
+            Some((LexicalToken::Borrow, borrow_span)) => {
                 // Parse a region, then parse the value to borrow.
                 self.parse_expr().bind(|region| {
-                    self.parse_exact(Token::Comma).bind(|_comma_span| {
+                    self.parse_exact(LexicalToken::Comma).bind(|_comma_span| {
                         self.parse_expr_with_precedence(min_precedence)
                             .map(|value| PExpr {
                                 provenance: Provenance::Quill(SourceSpan {
@@ -648,10 +663,10 @@ where
                     })
                 })
             }
-            Some((Token::Borrowed, borrow_span)) => {
+            Some((LexicalToken::Borrowed, borrow_span)) => {
                 // Parse a region, then parse the type that is to be borrowed.
                 self.parse_expr().bind(|region| {
-                    self.parse_exact(Token::Comma).bind(|_comma_span| {
+                    self.parse_exact(LexicalToken::Comma).bind(|_comma_span| {
                         self.parse_expr_with_precedence(min_precedence)
                             .map(|ty| PExpr {
                                 provenance: Provenance::Quill(SourceSpan {
@@ -669,7 +684,7 @@ where
                     })
                 })
             }
-            Some((Token::Sort, span)) => self.parse_universe(false).map(|universe| PExpr {
+            Some((LexicalToken::Sort, span)) => self.parse_universe(false).map(|universe| PExpr {
                 provenance: Provenance::Quill(SourceSpan {
                     source: self.source,
                     span: Span {
@@ -679,7 +694,7 @@ where
                 }),
                 contents: PExprContents::Sort { universe },
             }),
-            Some((Token::Region, span)) => Dr::ok(PExpr {
+            Some((LexicalToken::Region, span)) => Dr::ok(PExpr {
                 provenance: Provenance::Quill(SourceSpan {
                     source: self.source,
                     span,
@@ -687,7 +702,7 @@ where
                 contents: PExprContents::Region,
             }),
             Some((
-                Token::Operator {
+                LexicalToken::Operator {
                     text,
                     info: OperatorInfo::Prefix { precedence },
                 },
@@ -728,7 +743,7 @@ where
 
         loop {
             match self.stream.next() {
-                Some((Token::Lexical { text }, span)) => {
+                Some((LexicalToken::Lexical { text }, span)) => {
                     lhs = lhs.bind(|lhs| {
                         self.parse_qualified_name(Name(WithProvenance {
                             provenance: Provenance::Quill(SourceSpan {
@@ -758,36 +773,37 @@ where
                         })
                     });
                 }
-                Some((Token::LParen, lparen_span)) => {
+                Some((LexicalToken::LParen, lparen_span)) => {
                     lhs = lhs.bind(|lhs| {
                         self.parse_expr().bind(|rhs| {
-                            self.parse_exact(Token::RParen).map(|rparen_span| PExpr {
-                                provenance: Provenance::Quill(SourceSpan {
-                                    source: self.source,
-                                    span: Span {
-                                        start: lhs.provenance.span().start,
-                                        end: rparen_span.end,
-                                    },
-                                }),
-                                contents: PExprContents::Apply {
-                                    left: Box::new(lhs),
-                                    right: Box::new(PExpr {
-                                        provenance: Provenance::Quill(SourceSpan {
-                                            source: self.source,
-                                            span: Span {
-                                                start: lparen_span.start,
-                                                end: rparen_span.end,
-                                            },
-                                        }),
-                                        contents: rhs.contents,
+                            self.parse_exact(LexicalToken::RParen)
+                                .map(|rparen_span| PExpr {
+                                    provenance: Provenance::Quill(SourceSpan {
+                                        source: self.source,
+                                        span: Span {
+                                            start: lhs.provenance.span().start,
+                                            end: rparen_span.end,
+                                        },
                                     }),
-                                },
-                            })
+                                    contents: PExprContents::Apply {
+                                        left: Box::new(lhs),
+                                        right: Box::new(PExpr {
+                                            provenance: Provenance::Quill(SourceSpan {
+                                                source: self.source,
+                                                span: Span {
+                                                    start: lparen_span.start,
+                                                    end: rparen_span.end,
+                                                },
+                                            }),
+                                            contents: rhs.contents,
+                                        }),
+                                    },
+                                })
                         })
                     });
                 }
                 Some((
-                    Token::Operator {
+                    LexicalToken::Operator {
                         text,
                         info: OperatorInfo::Postfix { precedence },
                     },
@@ -795,7 +811,7 @@ where
                 )) => {
                     if precedence < min_precedence {
                         self.stream.push(
-                            Token::Operator {
+                            LexicalToken::Operator {
                                 text,
                                 info: OperatorInfo::Postfix { precedence },
                             },
@@ -820,7 +836,7 @@ where
                     });
                 }
                 Some((
-                    Token::Operator {
+                    LexicalToken::Operator {
                         text,
                         info:
                             OperatorInfo::Infix {
@@ -832,7 +848,7 @@ where
                 )) => {
                     if left_precedence < min_precedence {
                         self.stream.push(
-                            Token::Operator {
+                            LexicalToken::Operator {
                                 text,
                                 info: OperatorInfo::Infix {
                                     left_precedence,
@@ -874,16 +890,17 @@ where
     }
 
     fn parse_binder(&mut self, keyword: Span) -> Dr<PBinder> {
-        self.parse_exact(Token::LParen).bind(|_lparen_span| {
+        self.parse_exact(LexicalToken::LParen).bind(|_lparen_span| {
             self.parse_name().bind(|name| {
-                self.parse_exact(Token::Type).bind(|_ty_span| {
+                self.parse_exact(LexicalToken::Type).bind(|_ty_span| {
                     self.parse_expr().bind(|ty| {
-                        self.parse_exact(Token::RParen).map(|_rparen_span| PBinder {
-                            keyword,
-                            binder_annotation: BinderAnnotation::Explicit,
-                            name,
-                            ty: Box::new(ty),
-                        })
+                        self.parse_exact(LexicalToken::RParen)
+                            .map(|_rparen_span| PBinder {
+                                keyword,
+                                binder_annotation: BinderAnnotation::Explicit,
+                                name,
+                                ty: Box::new(ty),
+                            })
                     })
                 })
             })
@@ -894,7 +911,7 @@ where
     /// such as `u + k` and `max u v` which can only be parsed when inside a set of parentheses.
     fn parse_universe(&mut self, _parenthesised: bool) -> Dr<PUniverse> {
         match self.stream.next() {
-            Some((Token::Lexical { text }, span)) => match text.as_str() {
+            Some((LexicalToken::Lexical { text }, span)) => match text.as_str() {
                 "max" => todo!(),
                 "imax" => todo!(),
                 _ => Dr::ok(PUniverse {
@@ -905,8 +922,8 @@ where
                     contents: PUniverseContents::Lexical { text },
                 }),
             },
-            Some((Token::LParen, lparen_span)) => self.parse_universe(true).bind(|univ| {
-                self.parse_exact(Token::RParen)
+            Some((LexicalToken::LParen, lparen_span)) => self.parse_universe(true).bind(|univ| {
+                self.parse_exact(LexicalToken::RParen)
                     .map(|rparen_span| PUniverse {
                         provenance: Provenance::Quill(SourceSpan {
                             source: self.source,
@@ -929,10 +946,10 @@ where
         initial: Name<Provenance>,
     ) -> Dr<(QualifiedName<Provenance>, Vec<PUniverse>)> {
         match self.stream.next() {
-            Some((Token::Scope, _)) => {
+            Some((LexicalToken::Scope, _)) => {
                 // What follows should either be more name segments or a `{` to start a sequence of universe parameters.
                 match self.stream.next() {
-                    Some((Token::Lexical { text }, span)) => self
+                    Some((LexicalToken::Lexical { text }, span)) => self
                         .parse_qualified_name(Name(WithProvenance {
                             provenance: Provenance::Quill(SourceSpan {
                                 source: self.source,
@@ -951,7 +968,7 @@ where
                             name.0.contents.insert(0, initial);
                             (name, universes)
                         }),
-                    Some((Token::LBrace, _span)) => {
+                    Some((LexicalToken::LBrace, _span)) => {
                         // This is a sequence of universe parameters.
                         self.parse_universes().map(|(universes, rbrace_span)| {
                             (
@@ -1025,7 +1042,7 @@ where
         let mut universes = Dr::ok(Vec::new());
         loop {
             match self.stream.next() {
-                Some((Token::RBrace, span)) => {
+                Some((LexicalToken::RBrace, span)) => {
                     // This is the end of the list of universe parameters.
                     break universes.map(|universes| (universes, span));
                 }
@@ -1057,7 +1074,7 @@ where
         let mut universe_parameters = Dr::ok(Vec::new());
         loop {
             match self.stream.next() {
-                Some((Token::RBrace, _span)) => {
+                Some((LexicalToken::RBrace, _span)) => {
                     // This is the end of the list of universe parameters.
                     break universe_parameters;
                 }
@@ -1086,7 +1103,7 @@ where
 
     fn parse_name(&mut self) -> Dr<Name<Provenance>> {
         match self.stream.next() {
-            Some((Token::Lexical { text }, span)) => Dr::ok(Name(WithProvenance {
+            Some((LexicalToken::Lexical { text }, span)) => Dr::ok(Name(WithProvenance {
                 provenance: Provenance::Quill(SourceSpan {
                     source: self.source,
                     span,
@@ -1112,7 +1129,7 @@ where
         }
     }
 
-    fn parse_exact(&mut self, token: Token) -> Dr<Span> {
+    fn parse_exact(&mut self, token: LexicalToken) -> Dr<Span> {
         match self.stream.next() {
             Some((other_token, span)) => {
                 if token == other_token {

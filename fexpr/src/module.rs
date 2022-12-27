@@ -1,14 +1,14 @@
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-use fcommon::{Str, Source, Dr, with_local_database, Report, ReportKind};
+use fcommon::{with_local_database, Dr, Report, ReportKind, Source, Str};
 use serde::{Deserialize, Serialize};
 
-use crate::Db;
-use crate::basic::{WithProvenance, Provenance};
+use crate::basic::{Provenance, WithProvenance};
 use crate::definition::Definition;
 use crate::expr::Expression;
 use crate::inductive::Inductive;
+use crate::Db;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct ModuleContents<P, E>
