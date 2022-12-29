@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 fcommon = { path = "../fcommon", features = ["ariadne"] }
-fexpr = { path = "../fexpr" }
+fexpr = { path = "../fexpr", features = ["console"] }
 fkernel = { path = "../fkernel" }
 salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
 

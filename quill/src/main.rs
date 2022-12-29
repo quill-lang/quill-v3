@@ -1,9 +1,18 @@
 use std::path::PathBuf;
 
 use fcommon::{Path, Source, SourceType, Str};
+use fexpr::result::{ConsoleFormatter, Delaborator};
 use qdb::QuillDatabase;
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
+
+struct DebugDelaborator<'a>(&'a QuillDatabase);
+
+impl<'a> Delaborator for DebugDelaborator<'a> {
+    fn delaborate(&self, term: fexpr::expr::Term) -> fexpr::result::Message {
+        term.display(self.0).into()
+    }
+}
 
 fn main() {
     let log_level = tracing::Level::TRACE;
@@ -33,7 +42,14 @@ fn main() {
     // with other things such as tracing messages from other threads.
     let mut stderr = std::io::stderr().lock();
     for report in result.reports() {
-        report.render(&db, &mut stderr);
+        report.render(
+            &db,
+            &ConsoleFormatter {
+                db: &db,
+                delaborator: DebugDelaborator(&db),
+            },
+            &mut stderr,
+        );
     }
 
     if let Some(result) = result.value() {

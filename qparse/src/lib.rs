@@ -11,7 +11,8 @@ mod lex;
 mod parse;
 mod parser;
 
-use fcommon::{Dr, Source};
+use fcommon::Source;
+use fexpr::result::{Dr, Message};
 
 #[salsa::jar(db = Db)]
 pub struct Jar(module_from_quill_source);
@@ -24,6 +25,7 @@ impl<DB> Db for DB where DB: ?Sized + fcommon::Db + salsa::DbWithJar<Jar> {}
 #[salsa::tracked(return_ref)]
 pub fn module_from_quill_source(db: &dyn Db, source: Source) -> Dr<Vec<lex::TokenTree>> {
     fcommon::source(db, source)
+        .map_messages(Message::new)
         .bind(|contents| lex::tokenise(source, contents.contents(db).chars()))
         .bind(|token_trees| {
             let config = parser::ParserConfiguration::new(db, source);

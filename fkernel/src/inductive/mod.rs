@@ -1,9 +1,11 @@
-use fcommon::{Dr, Path, Report, ReportKind, Source, SourceType};
+use fcommon::{Path, Report, ReportKind, Source, SourceType};
 use fexpr::{
     basic::Provenance,
     expr::{largest_unusable_metavariable, Expression, ExpressionT, MetavariableGenerator, Term},
     inductive::Inductive,
+    message,
     module::module_from_feather_source,
+    result::{Dr, Message},
 };
 
 use crate::{
@@ -25,6 +27,7 @@ pub fn get_inductive(db: &dyn Db, path: Path) -> Dr<Inductive<Provenance, Box<Ex
     let (source, name) = path.split_last(db);
     module_from_feather_source(db, Source::new(db, source, SourceType::Feather))
         .as_ref()
+        .map_messages(Message::new)
         .map(|module| {
             module.items.iter().find_map(|item| match item {
                 fexpr::module::Item::Inductive(ind) => {
@@ -44,7 +47,7 @@ pub fn get_inductive(db: &dyn Db, path: Path) -> Dr<Inductive<Provenance, Box<Ex
                     ReportKind::Error,
                     Source::new(db, source, SourceType::Feather),
                 )
-                .with_message(format!("inductive {} could not be found", name.text(db))),
+                .with_message(message!["inductive ", name, " could not be found"]),
             ),
         })
 }

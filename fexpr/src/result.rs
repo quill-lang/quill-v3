@@ -2,18 +2,40 @@
 
 use std::collections::BTreeSet;
 
-use fcommon::{MessageFormatter, ParametricDr};
+use fcommon::{MessageFormatter, ParametricDr, Path, Str};
 
-use crate::expr::Term;
+use crate::{
+    basic::{Name, WithProvenance},
+    expr::Term,
+};
 
 /// A colour associated to a particular concept.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum SemanticColour {}
+pub enum SemanticColour {
+    Name,
+    Scope,
+    TokenTree,
+}
 
 #[cfg(feature = "console")]
 impl From<SemanticColour> for console::Color {
     fn from(value: SemanticColour) -> Self {
-        match value {}
+        match value {
+            SemanticColour::Name => Self::White,
+            SemanticColour::Scope => Self::White,
+            SemanticColour::TokenTree => Self::Cyan,
+        }
+    }
+}
+
+impl SemanticColour {
+    #[cfg(feature = "console")]
+    fn is_bright(self) -> bool {
+        match self {
+            SemanticColour::Name => true,
+            SemanticColour::Scope => false,
+            SemanticColour::TokenTree => false,
+        }
     }
 }
 
@@ -39,9 +61,26 @@ impl From<SemanticAttribute> for console::Attribute {
 pub struct Style {
     fg: Option<SemanticColour>,
     bg: Option<SemanticColour>,
-    fg_bright: bool,
-    bg_bright: bool,
     attrs: BTreeSet<SemanticAttribute>,
+}
+
+impl Style {
+    fn fg(mut self, fg: SemanticColour) -> Self {
+        self.fg = Some(fg);
+        self
+    }
+
+    pub fn name() -> Self {
+        Self::default().fg(SemanticColour::Name)
+    }
+
+    pub fn scope() -> Self {
+        Self::default().fg(SemanticColour::Scope)
+    }
+
+    pub fn token_tree() -> Self {
+        Self::default().fg(SemanticColour::TokenTree)
+    }
 }
 
 #[cfg(feature = "console")]
@@ -50,15 +89,15 @@ impl From<&Style> for console::Style {
         let mut result = Self::new();
         if let Some(fg) = value.fg {
             result = result.fg(fg.into());
+            if fg.is_bright() {
+                result = result.bright();
+            }
         }
         if let Some(bg) = value.bg {
             result = result.bg(bg.into());
-        }
-        if value.fg_bright {
-            result = result.bright();
-        }
-        if value.bg_bright {
-            result = result.on_bright();
+            if bg.is_bright() {
+                result = result.on_bright();
+            }
         }
         for attr in value.attrs.iter().copied() {
             result = result.attr(attr.into())
@@ -68,64 +107,138 @@ impl From<&Style> for console::Style {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MessageSegment {
+pub enum Message {
     String(String),
+    Str(Str),
     Term(Term),
+    Path(Path),
     Styled { style: Style, message: Box<Message> },
+    Sequence(Vec<Message>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Message {
-    pub segments: Vec<MessageSegment>,
+impl From<&str> for Message {
+    fn from(value: &str) -> Self {
+        Message::String(value.to_owned())
+    }
+}
+
+impl From<String> for Message {
+    fn from(value: String) -> Self {
+        Message::String(value)
+    }
+}
+
+impl From<Str> for Message {
+    fn from(value: Str) -> Self {
+        Message::Str(value)
+    }
+}
+
+impl<P, T> From<WithProvenance<P, T>> for Message
+where
+    P: Default + PartialEq,
+    T: Into<Message>,
+{
+    fn from(value: WithProvenance<P, T>) -> Self {
+        value.contents.into()
+    }
+}
+
+impl<P> From<Name<P>> for Message
+where
+    P: Default + PartialEq,
+{
+    fn from(value: Name<P>) -> Self {
+        Message::Styled {
+            style: Style::name(),
+            message: Box::new(value.0.into()),
+        }
+    }
+}
+
+impl From<Path> for Message {
+    fn from(value: Path) -> Self {
+        Self::Path(value)
+    }
+}
+
+impl From<Term> for Message {
+    fn from(value: Term) -> Self {
+        Message::Term(value)
+    }
 }
 
 impl Message {
-    pub fn new(string: String) -> Self {
-        Self {
-            segments: vec![MessageSegment::String(string)],
-        }
+    pub fn new(string: impl ToString) -> Self {
+        Message::String(string.to_string())
     }
+}
+
+/// Creates the syntax `message![...]` for creating a message from
+/// a sequence of things convertible to message segments.
+#[macro_export]
+macro_rules! message {
+    ($($e:expr),*) => {
+        $crate::result::Message::Sequence(
+            vec![$($crate::result::Message::from($e)),*]
+        )
+    };
 }
 
 /// Short for "diagnostic result".
 /// See [`ParametricDr`].
 pub type Dr<T> = ParametricDr<Message, T>;
 
-/// Converts a [`ParametricDr`] over [`String`] to a regular [`Dr`].
-pub fn parametric_dr_to_dr<T>(value: ParametricDr<String, T>) -> Dr<T> {
-    value.map_messages(Message::new)
-}
-
 /// A delaborator can render a term into a message.
-/// The resulting message should not contain any [`MessageSegment::Term`].
+/// The resulting message should not contain any [`Message::Term`].
 pub trait Delaborator {
     fn delaborate(&self, term: Term) -> Message;
 }
 
 /// A message formatter for the console, using a given delaborator of type `T`.
 #[cfg(feature = "console")]
-pub struct ConsoleFormatter<T>(pub T);
+pub struct ConsoleFormatter<'a, T> {
+    pub db: &'a dyn crate::Db,
+    pub delaborator: T,
+}
 
 #[cfg(feature = "console")]
-impl<T> MessageFormatter for ConsoleFormatter<T>
+impl<T> MessageFormatter for ConsoleFormatter<'_, T>
 where
     T: Delaborator,
 {
     type Message = Message;
 
     fn format(&self, message: &Self::Message) -> String {
-        message
-            .segments
-            .iter()
-            .map(|segment| match segment {
-                MessageSegment::String(string) => string.to_owned(),
-                MessageSegment::Term(term) => self.format(&self.0.delaborate(*term)),
-                MessageSegment::Styled { style, message } => console::Style::from(style)
-                    .apply_to(self.format(message))
-                    .for_stderr()
-                    .to_string(),
-            })
-            .collect::<Vec<_>>()
-            .join("")
+        match &message {
+            Message::String(string) => string.to_owned(),
+            Message::Str(str) => str.text(self.db).to_owned(),
+            Message::Term(term) => self.format(&self.delaborator.delaborate(*term)),
+            Message::Path(path) => path
+                .segments(self.db)
+                .iter()
+                .map(|s| {
+                    console::Style::from(&Style::name())
+                        .apply_to(s.text(self.db))
+                        .for_stderr()
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(
+                    &console::Style::from(&Style::scope())
+                        .apply_to("::")
+                        .for_stderr()
+                        .to_string(),
+                ),
+            Message::Styled { style, message } => console::Style::from(style)
+                .apply_to(self.format(message))
+                .for_stderr()
+                .to_string(),
+            Message::Sequence(sequence) => sequence
+                .iter()
+                .map(|x| self.format(x))
+                .collect::<Vec<_>>()
+                .join(""),
+        }
     }
 }

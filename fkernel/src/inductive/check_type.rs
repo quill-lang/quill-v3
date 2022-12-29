@@ -1,8 +1,9 @@
-use fcommon::{Dr, LabelType, Path, ReportKind};
+use fcommon::{LabelType, Path, ReportKind};
 use fexpr::{
     basic::{Name, Provenance, QualifiedName, WithProvenance},
     expr::{Expression, Inst, Sort},
     inductive::Inductive,
+    result::Dr,
     universe::{Universe, UniverseContents, UniverseVariable},
 };
 
@@ -34,12 +35,12 @@ pub(super) fn check_inductive_type(db: &dyn Db, path: Path) -> Dr<InductiveTypeI
                     if (ind.ty.structures.len() as u32) < ind.global_params {
                         Dr::fail(ind.ty.result.value.provenance
                             .report(ReportKind::Error)
-                            .with_message("the amount of declared global parameters is greater than the amount of parameters to the inductive type")
+                            .with_message("the amount of declared global parameters is greater than the amount of parameters to the inductive type".into())
                             .with_label(ind.ty.result.value.provenance.label(LabelType::Error)
                                 .with_message(format!(
                                     "the type requires {} global parameters but only {} were supplied",
                                     ind.global_params, ind.ty.structures.len()
-                                ))))
+                                ).into())))
                     } else {
                         match as_sort(db, ind.contents.ty.result.to_term(db)) {
                             Ok(sort) => {

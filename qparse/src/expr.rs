@@ -3,11 +3,13 @@
 //! and use a Pratt parser for the "Pratt expressions", a specific kind of sub-expression
 //! that deals only with prefix, infix, and postfix operators, as well as function application.
 
-use fcommon::{Dr, Label, LabelType, Report, ReportKind, Span, Spanned, Str};
+use fcommon::{Label, LabelType, Report, ReportKind, Span, Spanned, Str};
 use fexpr::{
     basic::{Name, Provenance, QualifiedName, WithProvenance},
     expr::BinderAnnotation,
+    message,
     multiplicity::ParameterOwnership,
+    result::Dr,
 };
 
 use crate::{
@@ -122,22 +124,22 @@ where
             None => match self.peek() {
                 Some(tt) => Dr::fail(
                     Report::new(ReportKind::Error, source, tt.span().start)
-                        .with_message("expected an expression")
+                        .with_message("expected an expression".into())
                         .with_label(
                             Label::new(source, tt.span(), LabelType::Error)
-                                .with_message(format!("expected an expression but found {tt}")),
+                                .with_message(message!["expected an expression but found ", tt]),
                         ),
                 ),
                 None => match self.block_brackets() {
                     Some((open, close)) => Dr::fail(
                         Report::new(ReportKind::Error, source, close.start)
-                            .with_message("expected an expression")
+                            .with_message("expected an expression".into())
                             .with_label(Label::new(source, close, LabelType::Error).with_message(
-                                "expected an expression before the end of this block",
+                                "expected an expression before the end of this block".into(),
                             ))
                             .with_label(
                                 Label::new(source, open, LabelType::Note)
-                                    .with_message("the block started here"),
+                                    .with_message("the block started here".into()),
                             ),
                     ),
                     None => todo!(),
@@ -245,17 +247,18 @@ where
             }
             Some(tt) => Dr::fail(
                 Report::new(ReportKind::Error, self.config().source, tt.span().start)
-                    .with_message(format!("expected a parameter name, but found {tt}"))
+                    .with_message(message!["expected a parameter name, but found ", &tt])
                     .with_label(
                         Label::new(self.config().source, tt.span(), LabelType::Error)
-                            .with_message("expected a parameter name"),
+                            .with_message("expected a parameter name".into()),
                     )
                     .with_label(
                         Label::new(self.config().source, fn_token, LabelType::Note)
-                            .with_message("while parsing this function"),
+                            .with_message("while parsing this function".into()),
                     )
                     .with_note(
-                        "use '=>' to end the sequence of parameters and begin the function body",
+                        "use '=>' to end the sequence of parameters and begin the function body"
+                            .into(),
                     ),
             ),
             None => todo!(),

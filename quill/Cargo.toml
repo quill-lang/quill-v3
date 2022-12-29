@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 fcommon = { path = "../fcommon", features = ["ariadne"] }
 fkernel = { path = "../fkernel" }
-fexpr = { path = "../fexpr" }
+fexpr = { path = "../fexpr", features = ["console"] }
 qdb = { path = "../qdb" }
 qparse = { path = "../qparse" }
 ron = "0.8"

@@ -6,7 +6,9 @@ use fcommon::{Path, Str};
 use fexpr::{
     basic::{DeBruijnIndex, Name, Provenance, WithProvenance},
     expr::*,
+    message,
     multiplicity::ParameterOwnership,
+    result::Message,
     universe::*,
 };
 
@@ -44,15 +46,15 @@ pub enum InferenceError {
     MinorPremiseCountMismatch,
 }
 
-impl InferenceError {
-    pub fn display(&self, db: &dyn Db) -> String {
-        match self {
+impl From<&InferenceError> for Message {
+    fn from(value: &InferenceError) -> Message {
+        match value {
             InferenceError::TermNotClosed(term) => {
-                format!("term\n{}\nhad free variables", term.display(db))
+                message!["term ", *term, " had free variables"]
             }
             InferenceError::IncorrectUniverseArity => todo!(),
             InferenceError::DefinitionNotFound(path) => {
-                format!("definition {} not found", path.to_string(db))
+                message!["definition ", *path, " not found"]
             }
             InferenceError::LetTypeMismatch => todo!(),
             InferenceError::ApplyTypeMismatch {
@@ -60,20 +62,23 @@ impl InferenceError {
                 function_type,
                 argument,
                 argument_type,
-            } => format!(
-                "cannot apply function\n{}\nof type\n{}\nto term\n{}\nof type\n{}",
-                function.display(db),
-                function_type.display(db),
-                argument.display(db),
-                argument_type.display(db),
-            ),
-            InferenceError::ExpectedSort(t) => format!("term {} was not a sort", t.display(db)),
+            } => message![
+                "cannot apply function ",
+                *function,
+                " of type ",
+                *function_type,
+                " to term ",
+                *argument,
+                " of type ",
+                *argument_type
+            ],
+            InferenceError::ExpectedSort(t) => message!["term ", *t, " was not a sort"],
             InferenceError::ExpectedPi => todo!(),
             InferenceError::ExpectedDelta => todo!(),
             InferenceError::UnexpectedMetauniverse => todo!(),
             InferenceError::IncorrectIntroParameters => todo!(),
             InferenceError::MinorPremiseCountMismatch => {
-                "wrong number of minor premises for a given variant".to_owned()
+                "wrong number of minor premises for a given variant".into()
             }
         }
     }

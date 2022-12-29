@@ -1,9 +1,11 @@
-use fcommon::{Dr, LabelType, Path, Report, ReportKind, Source, SourceType, Spanned};
+use fcommon::{LabelType, Path, Report, ReportKind, Source, SourceType, Spanned};
 use fexpr::{
     basic::Provenance,
     definition::Definition,
     expr::{Expression, Sort},
+    message,
     module::module_from_feather_source,
+    result::{Dr, Message},
 };
 
 use crate::{
@@ -31,6 +33,7 @@ pub fn get_definition(db: &dyn Db, path: Path) -> Dr<Definition<Provenance, Box<
     let (source, name) = path.split_last(db);
     module_from_feather_source(db, Source::new(db, source, SourceType::Feather))
         .as_ref()
+        .map_messages(Message::new)
         .map(|module| {
             module.items.iter().find_map(|item| match item {
                 fexpr::module::Item::Definition(def) => {
@@ -50,20 +53,18 @@ pub fn get_definition(db: &dyn Db, path: Path) -> Dr<Definition<Provenance, Box<
                     ReportKind::Error,
                     Source::new(db, source, SourceType::Feather),
                 )
-                .with_message(format!("definition {} could not be found", name.text(db))),
+                .with_message(message!["definition ", name, " could not be found"]),
             ),
         })
 }
 
 pub fn check_no_local_or_metavariable(db: &dyn Db, e: &Expression) -> Dr<()> {
     if first_local_or_metavariable(db, e.to_term(db)).is_some() {
-        Dr::fail(
-            e.value.provenance.report(ReportKind::Error).with_label(
-                e.value.provenance.label(LabelType::Error).with_message(
-                    "could not certify definition as it contained an invalid expression",
-                ),
+        Dr::fail(e.value.provenance.report(ReportKind::Error).with_label(
+            e.value.provenance.label(LabelType::Error).with_message(
+                "could not certify definition as it contained an invalid expression".into(),
             ),
-        )
+        ))
     } else {
         Dr::ok(())
     }
@@ -129,10 +130,11 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
                                             def.provenance.span().start,
                                         )
                                         .with_message(
-                                            format!(
-                                                "body of definition {} had incorrect type",
-                                                def.name.text(db),
-                                            ),
+                                            message![
+                                                "body of definition ",
+                                                def.name,
+                                                " had incorrect type"
+                                            ],
                                         ),
                                     )
                                 }
@@ -142,11 +144,12 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
                                         Source::new(db, path.split_last(db).0, SourceType::Feather),
                                         def.provenance.span().start,
                                     )
-                                    .with_message(format!(
-                                        "while checking definition {}, kernel raised error: {}",
-                                        def.name.text(db),
-                                        e.display(db),
-                                    )),
+                                    .with_message(message![
+                                        "while checking definition ",
+                                        def.name,
+                                        ", kernel raised error: ",
+                                        &e
+                                    ]),
                                 ),
                             }
                         })
@@ -159,26 +162,18 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
                         ))
                     }
                 }
-                Err(err) => {
-                    tracing::error!(
-                        "{}: {}",
-                        err.display(db),
-                        infer_type(db, def.contents.ty.to_term(db))
-                            .map(|x| x.display(db))
-                            .unwrap_or("<could not infer type>".to_owned()),
-                    );
-                    Dr::fail(
-                        Report::new(
-                            ReportKind::Error,
-                            Source::new(db, path.split_last(db).0, SourceType::Feather),
-                            def.provenance.span().start,
-                        )
-                        .with_message(format!(
-                            "type of definition {} was not a type",
-                            def.name.text(db),
-                        )),
+                Err(err) => Dr::fail(
+                    Report::new(
+                        ReportKind::Error,
+                        Source::new(db, path.split_last(db).0, SourceType::Feather),
+                        def.provenance.span().start,
                     )
-                }
+                    .with_message(message![
+                        "type of definition ",
+                        def.name,
+                        " was not a type"
+                    ]),
+                ),
             }
         })
     })

@@ -1,8 +1,9 @@
-use fcommon::{Dr, LabelType, ReportKind};
+use fcommon::{LabelType, ReportKind};
 use fexpr::{
     basic::{DeBruijnIndex, DeBruijnOffset, Provenance},
     expr::{largest_unusable_metavariable, Expression, ExpressionT, MetavariableGenerator, Term},
     inductive::Variant,
+    result::Dr,
 };
 
 use crate::{
@@ -111,7 +112,7 @@ pub(in crate::inductive) fn check_variant<'db>(
                         .value
                         .provenance
                         .report(ReportKind::Error)
-                        .with_message("this introduction rule was not type correct"),
+                        .with_message("this introduction rule was not type correct".into()),
                 )
             }
         }
@@ -164,17 +165,17 @@ fn check_field<'db>(
                                 // because later fields depend on it.
                                 if local_is_bound(db, field.bound.ty.to_term(db), DeBruijnIndex::zero() + DeBruijnOffset::new((index - field_index) as u32)) {
                                         return Dr::fail(field.bound.ty.value.provenance.report(ReportKind::Error)
-                                            .with_message("this is an invalid occurrence of a recursive argument, because a later field depends on it")
+                                            .with_message("this is an invalid occurrence of a recursive argument, because a later field depends on it".into())
                                             .with_label(field.bound.ty.value.provenance.label(LabelType::Error)
-                                                .with_message("this type referenced the field".to_string())),
+                                                .with_message("this type referenced the field".into())),
                                     );
                                 }
                             }
                             if local_is_bound(db, variant.intro_rule.result.to_term(db), DeBruijnIndex::zero() + DeBruijnOffset::new((variant.intro_rule.structures.len() - field_index) as u32)) {
                                 Dr::fail(variant.intro_rule.result.value.provenance.report(ReportKind::Error)
-                                    .with_message("this is an invalid occurrence of a recursive argument, because the inductive type itself depends on it")
+                                    .with_message("this is an invalid occurrence of a recursive argument, because the inductive type itself depends on it".into())
                                     .with_label(variant.intro_rule.result.value.provenance.label(LabelType::Error)
-                                        .with_message("this type referenced the field".to_string())),
+                                        .with_message("this type referenced the field".into())),
                                 )
                             } else {
                                 Dr::ok(())

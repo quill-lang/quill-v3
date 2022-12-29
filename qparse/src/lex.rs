@@ -1,7 +1,10 @@
 use std::{cmp::Ordering, fmt::Display, iter::Peekable};
 
-use fcommon::{Dr, Label, LabelType, Report, ReportKind, Source, Span, Spanned};
-use fexpr::expr::BinderAnnotation;
+use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
+use fexpr::{
+    expr::BinderAnnotation,
+    result::{Dr, Message, Style},
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Bracket {
@@ -106,6 +109,12 @@ impl Display for ReservedSymbol {
     }
 }
 
+impl From<ReservedSymbol> for Message {
+    fn from(value: ReservedSymbol) -> Self {
+        todo!()
+    }
+}
+
 /// A lexical token tree is string of input text, not enclosed in a comment or string literal, which
 /// is not directly adjacent to any other non-space characters. Many of these are tokens, but some
 /// token tree will need to be further split up into actual tokens. For instance, `<1>` is a
@@ -151,6 +160,15 @@ impl Display for TokenTree {
             TokenTree::Block { .. } => write!(f, "block"),
             TokenTree::Indented { .. } => write!(f, "indented block"),
             TokenTree::Newline { .. } => write!(f, "newline"),
+        }
+    }
+}
+
+impl From<&TokenTree> for Message {
+    fn from(value: &TokenTree) -> Self {
+        Message::Styled {
+            style: Style::token_tree(),
+            message: Box::new(value.to_string().into()),
         }
     }
 }
@@ -204,7 +222,7 @@ fn tokenise_line(
             if c == '\t' {
                 return Dr::fail(
                     Report::new(ReportKind::Error, source, index)
-                        .with_message("tabs should be converted into spaces")
+                        .with_message("tabs should be converted into spaces".into())
                         .with_label(Label::new(
                             source,
                             Span {
@@ -212,8 +230,8 @@ fn tokenise_line(
                                 end: index + 1,
                             },
                             LabelType::Error,
-                        ).with_message("tab character was found here"))
-                        .with_note("explicit spaces are preferred to tab characters because the parser is whitespace-sensitive, and inconsistent use of tabs and spaces can cause ambiguity"),
+                        ).with_message("tab character was found here".into()))
+                        .with_note("explicit spaces are preferred to tab characters because the parser is whitespace-sensitive, and inconsistent use of tabs and spaces can cause ambiguity".into()),
                 );
             }
             // The current token is finished, if indeed we just parsed one.
@@ -311,12 +329,12 @@ impl Stack {
         match self.pop() {
             Some((StackEntry::OpenBracket { bracket: _, span }, _)) => Dr::fail(
                 Report::new(ReportKind::Error, self.source, new_indent_span.start)
-                    .with_message("decrease in indentation level was unexpected inside block")
+                    .with_message("decrease in indentation level was unexpected inside block".into())
                     .with_label(
                         Label::new(self.source, new_indent_span, LabelType::Error)
-                            .with_message("decrease in indentation level found here"),
+                            .with_message("decrease in indentation level found here".into()),
                     ).with_label(Label::new(self.source, span, LabelType::Note)
-                        .with_message("opening bracket found here, this bracket must be closed before the indent level can be reduced")),
+                        .with_message("opening bracket found here, this bracket must be closed before the indent level can be reduced".into())),
             ),
             Some((StackEntry::Indent { level, .. }, contents)) => {
                 // Check if the new indentation level matches the given one.
@@ -339,10 +357,10 @@ impl Stack {
             }
             None => Dr::fail(
                 Report::new(ReportKind::Error, self.source, new_indent_span.start)
-                    .with_message("decrease in indentation level was unexpected, because there was no increase before")
+                    .with_message("decrease in indentation level was unexpected, because there was no increase before".into())
                     .with_label(
                         Label::new(self.source, new_indent_span, LabelType::Error)
-                            .with_message("decrease in indentation level found here"),
+                            .with_message("decrease in indentation level found here".into()),
                     ),
             ),
         }
@@ -515,10 +533,10 @@ pub fn tokenise(source: Source, stream: impl Iterator<Item = char>) -> Dr<Vec<To
                 StackEntry::Indent { .. } => unreachable!("just popped all indents"),
                 StackEntry::OpenBracket { span, .. } => reports.push(
                     Report::new(ReportKind::Error, source, span.start)
-                        .with_message("this bracket was not closed")
+                        .with_message("this bracket was not closed".into())
                         .with_label(
                             Label::new(source, *span, LabelType::Error)
-                                .with_message("opening bracket found here"),
+                                .with_message("opening bracket found here".into()),
                         ),
                 ),
             }

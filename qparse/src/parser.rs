@@ -1,7 +1,11 @@
 use std::collections::BTreeMap;
 
 use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
-use fexpr::{basic::Provenance, result::Dr};
+use fexpr::{
+    basic::Provenance,
+    message,
+    result::{Dr, Message},
+};
 
 use crate::{
     lex::{OperatorInfo, ReservedSymbol, TokenTree},
@@ -277,10 +281,10 @@ where
             }
             Some(tt) => Dr::fail(
                 Report::new(ReportKind::Error, self.config().source, tt.span().start)
-                    .with_message(format!("expected '{symbol}', found {tt}"))
+                    .with_message(message!["expected ", symbol, ", found ", &tt])
                     .with_label(
                         Label::new(self.config().source, tt.span(), LabelType::Error)
-                            .with_message(format!("unexpected {tt} found here")),
+                            .with_message(message!["unexpected ", &tt, " found here"]),
                     ),
             ),
             None => todo!(),
@@ -291,34 +295,36 @@ where
         let source = self.config().source;
         let block_brackets = self.block_brackets;
         match self.peek() {
-            Some(tt) => Dr::ok_with(
-                (),
-                if let Some((open, close)) = block_brackets {
-                    Report::new(ReportKind::Error, source, tt.span().start)
-                        .with_message("unexpected extra tokens")
-                        .with_label(
-                            Label::new(source, tt.span(), LabelType::Error).with_message(format!(
-                                "did not expect {tt} while parsing this block"
-                            )),
-                        )
-                        .with_label(
-                            Label::new(source, open, LabelType::Note)
-                                .with_message("block started here"),
-                        )
-                        .with_label(
-                            Label::new(source, close, LabelType::Note)
-                                .with_message("block ended here"),
-                        )
-                } else {
-                    Report::new(ReportKind::Error, source, tt.span().start)
-                        .with_message("unexpected extra tokens")
-                        .with_label(
-                            Label::new(source, tt.span(), LabelType::Error).with_message(format!(
-                                "did not expect {tt} while parsing the file"
-                            )),
-                        )
-                },
-            ),
+            Some(tt) => {
+                Dr::ok_with(
+                    (),
+                    if let Some((open, close)) = block_brackets {
+                        Report::<Message>::new(ReportKind::Error, source, tt.span().start)
+                            .with_message("unexpected extra tokens".into())
+                            .with_label(
+                                Label::new(source, tt.span(), LabelType::Error).with_message(
+                                    message!["did not expect ", tt, " while parsing this block"],
+                                ),
+                            )
+                            .with_label(
+                                Label::new(source, open, LabelType::Note)
+                                    .with_message("block started here".into()),
+                            )
+                            .with_label(
+                                Label::new(source, close, LabelType::Note)
+                                    .with_message("block ended here".into()),
+                            )
+                    } else {
+                        Report::new(ReportKind::Error, source, tt.span().start)
+                            .with_message("unexpected extra tokens".into())
+                            .with_label(
+                                Label::new(source, tt.span(), LabelType::Error).with_message(
+                                    message!["did not expect ", tt, " while parsing the file"],
+                                ),
+                            )
+                    },
+                )
+            }
             None => Dr::ok(()),
         }
     }
