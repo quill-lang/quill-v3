@@ -1,4 +1,4 @@
-use fcommon::{Dr, LabelType, Path, Report, ReportKind, Source, SourceType};
+use fcommon::{Dr, LabelType, Path, Report, ReportKind, Source, SourceType, Spanned};
 use fexpr::{
     basic::Provenance,
     definition::Definition,

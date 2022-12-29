@@ -1,3 +1,5 @@
+fn a {f: {erased A: Type} -> B -> (owned C) -> D a b -> [E] -> F} [b] => b
+
 def id::{u} : forall (A : Sort u), forall (a : A), A =
     fn (A : Sort u), fn (a : A), a
 

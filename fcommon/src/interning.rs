@@ -46,6 +46,10 @@ impl From<Span> for std::ops::Range<usize> {
     }
 }
 
+pub trait Spanned {
+    fn span(&self) -> Span;
+}
+
 /// An interned string type.
 /// Can be safely copied and compared cheaply.
 #[salsa::interned]

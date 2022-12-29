@@ -5,7 +5,7 @@ use std::{
     ops::{Add, Deref, DerefMut, Sub},
 };
 
-use fcommon::{Label, LabelType, Path, Report, ReportKind, Source, SourceSpan, Span, Str};
+use fcommon::{Label, LabelType, Path, Report, ReportKind, Source, SourceSpan, Span, Spanned, Str};
 use serde::{de::Visitor, ser::SerializeTuple, Deserialize, Serialize};
 
 use crate::Db;
@@ -177,9 +177,11 @@ impl Provenance {
             Provenance::Synthetic => None,
         }
     }
+}
 
+impl Spanned for Provenance {
     /// Returns the span, or `0..0` if it was synthetic.
-    pub fn span(&self) -> Span {
+    fn span(&self) -> Span {
         match self {
             Provenance::Quill(source_span) => source_span.span,
             Provenance::Feather(source_span) => source_span.span,

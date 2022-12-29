@@ -1,8 +1,9 @@
-use std::{cmp::Ordering, iter::Peekable};
+use std::{cmp::Ordering, fmt::Display, iter::Peekable};
 
-use fcommon::{Dr, Label, LabelType, Report, ReportKind, Source, Span};
+use fcommon::{Dr, Label, LabelType, Report, ReportKind, Source, Span, Spanned};
+use fexpr::expr::BinderAnnotation;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Bracket {
     /// `(` and `)`.
     Paren,
@@ -12,6 +13,97 @@ pub enum Bracket {
     Brace,
     /// `{{` and `}}`.
     DoubleBrace,
+}
+
+impl From<Bracket> for BinderAnnotation {
+    fn from(value: Bracket) -> Self {
+        match value {
+            Bracket::Paren => BinderAnnotation::Explicit,
+            Bracket::Square => BinderAnnotation::ImplicitTypeclass,
+            Bracket::Brace => BinderAnnotation::ImplicitEager,
+            Bracket::DoubleBrace => BinderAnnotation::ImplicitWeak,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum OperatorInfo {
+    Prefix {
+        precedence: i32,
+    },
+    Infix {
+        left_precedence: i32,
+        right_precedence: i32,
+    },
+    Postfix {
+        precedence: i32,
+    },
+}
+
+/// The reserved operators and keywords.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum ReservedSymbol {
+    /// `->`
+    Arrow,
+    /// `=>`
+    DoubleArrow,
+    /// `::`
+    Scope,
+    /// `:`
+    Colon,
+    /// `=`
+    Assign,
+    /// `,`
+    Comma,
+    /// `|`
+    Pipe,
+    /// `&`
+    Borrow,
+    /// `erased`. 0 ownership.
+    Erased,
+    /// `owned`. 1 ownership.
+    Owned,
+    /// `copyable`. omega-ownership.
+    Copyable,
+    /// `borrowed`. Represents the type of borrowed values, not the borrowed values themselves.
+    Borrowed,
+    /// `def`
+    Def,
+    /// `inductive`
+    Inductive,
+    /// `fn`
+    Fn,
+    /// `let`
+    Let,
+    /// `Sort`
+    Sort,
+    /// `Region`
+    Region,
+}
+
+impl Display for ReservedSymbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReservedSymbol::Arrow => write!(f, "->"),
+            ReservedSymbol::DoubleArrow => write!(f, "=>"),
+            ReservedSymbol::Scope => write!(f, "::"),
+            ReservedSymbol::Colon => write!(f, ":"),
+            ReservedSymbol::Assign => write!(f, "="),
+            ReservedSymbol::Comma => write!(f, ","),
+            ReservedSymbol::Pipe => write!(f, "|"),
+            ReservedSymbol::Borrow => write!(f, "&"),
+            ReservedSymbol::Erased => write!(f, "erased"),
+            ReservedSymbol::Owned => write!(f, "owned"),
+            ReservedSymbol::Copyable => write!(f, "copyable"),
+            ReservedSymbol::Borrowed => write!(f, "borrowed"),
+            ReservedSymbol::Def => write!(f, "def"),
+            ReservedSymbol::Inductive => write!(f, "inductive"),
+            ReservedSymbol::Fn => write!(f, "fn"),
+            ReservedSymbol::Let => write!(f, "let"),
+            ReservedSymbol::Sort => write!(f, "Sort"),
+            ReservedSymbol::Region => write!(f, "Region"),
+        }
+    }
 }
 
 /// A lexical token tree is string of input text, not enclosed in a comment or string literal, which
@@ -24,15 +116,18 @@ pub enum Bracket {
 /// Later, we may add string and char literals as extra variants to this enum.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum TokenTree {
-    /// A token such as a keyword, operator, or value.
-    Lexical {
+    /// A token such as a variable name.
+    Lexical { text: String, span: Span },
+    /// A token used as an operator.
+    Operator {
         text: String,
+        info: OperatorInfo,
         span: Span,
     },
-    Comment {
-        text: String,
-        span: Span,
-    },
+    /// A reserved symbol such as a language operator or a keyword.
+    Reserved { symbol: ReservedSymbol, span: Span },
+    /// A comment string.
+    Comment { text: String, span: Span },
     /// A block enclosed in a matching pair of brackets.
     Block {
         bracket: Bracket,
@@ -41,13 +136,49 @@ pub enum TokenTree {
         contents: Vec<TokenTree>,
     },
     /// An indented block of tokens.
-    Indented {
-        contents: Vec<TokenTree>,
-    },
+    Indented { contents: Vec<TokenTree> },
     /// A line terminator.
-    Newline {
-        span: Span,
-    },
+    Newline { span: Span },
+}
+
+impl Display for TokenTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenTree::Lexical { text, .. } => write!(f, "'{text}'"),
+            TokenTree::Operator { text, .. } => write!(f, "'{text}'"),
+            TokenTree::Reserved { symbol, .. } => write!(f, "'{symbol}'"),
+            TokenTree::Comment { .. } => write!(f, "comment"),
+            TokenTree::Block { .. } => write!(f, "block"),
+            TokenTree::Indented { .. } => write!(f, "indented block"),
+            TokenTree::Newline { .. } => write!(f, "newline"),
+        }
+    }
+}
+
+impl Spanned for TokenTree {
+    fn span(&self) -> Span {
+        match self {
+            TokenTree::Lexical { span, .. } => *span,
+            TokenTree::Operator { span, .. } => *span,
+            TokenTree::Reserved { span, .. } => *span,
+            TokenTree::Comment { span, .. } => *span,
+            TokenTree::Block { open, close, .. } => Span {
+                start: open.start,
+                end: close.end,
+            },
+            TokenTree::Indented { contents } => {
+                if let Some(first) = contents.first() {
+                    Span {
+                        start: first.span().start,
+                        end: contents.last().unwrap().span().end,
+                    }
+                } else {
+                    unreachable!("indented token trees should be nonempty")
+                }
+            }
+            TokenTree::Newline { span } => *span,
+        }
+    }
 }
 
 /// Tokenises the input stream until the next character is `\r`, `\n`, or absent.
@@ -187,7 +318,7 @@ impl Stack {
                     ).with_label(Label::new(self.source, span, LabelType::Note)
                         .with_message("opening bracket found here, this bracket must be closed before the indent level can be reduced")),
             ),
-            Some((StackEntry::Indent { level, span }, contents)) => {
+            Some((StackEntry::Indent { level, .. }, contents)) => {
                 // Check if the new indentation level matches the given one.
                 match (new_indent + 4).cmp(&level) {
                     Ordering::Less => {
@@ -241,20 +372,14 @@ impl Stack {
                 if bracket == found_bracket {
                     // We combine the tokens in the stack into a single token tree.
                     self.push_top(TokenTree::Block {
-                        bracket: Bracket::Paren,
+                        bracket,
                         open: found_span,
                         close: span,
                         contents,
                     });
                 }
             }
-            Some((
-                StackEntry::Indent {
-                    level,
-                    span: found_span,
-                },
-                contents,
-            )) => {
+            Some((StackEntry::Indent { .. }, _)) => {
                 // We're allowed to resolve indents *after* closing brackets.
                 todo!()
             }
@@ -264,6 +389,8 @@ impl Stack {
 }
 
 /// Splits the input stream up into token trees.
+/// The [`TokenTree::Operator`] and [`TokenTree::Reserved`] variants do not appear in the returned token trees;
+/// the `Parser` manages splitting up the [`TokenTree::Lexical`] tokens into these.
 pub fn tokenise(source: Source, stream: impl Iterator<Item = char>) -> Dr<Vec<TokenTree>> {
     let mut stream = stream.enumerate().peekable();
     let mut reports = Vec::new();
