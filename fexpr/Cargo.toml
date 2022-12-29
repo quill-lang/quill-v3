@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 chumsky = "0.8"
+console = { version = "0.15", optional = true }
 fcommon = { path = "../fcommon" }
 salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
 serde = { version = "1.0", features = ["derive"] }

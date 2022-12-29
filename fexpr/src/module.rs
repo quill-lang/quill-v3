@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 
-use fcommon::{with_local_database, Dr, Report, ReportKind, Source, Str};
+use fcommon::{with_local_database, ParametricDr, Report, ReportKind, Source, Str};
 use serde::{Deserialize, Serialize};
 
 use crate::basic::{Provenance, WithProvenance};
@@ -100,11 +100,11 @@ where
 pub fn module_from_feather_source(
     db: &dyn Db,
     source: Source,
-) -> Dr<Module<Provenance, Box<Expression>>> {
+) -> ParametricDr<String, Module<Provenance, Box<Expression>>> {
     fcommon::source(db, source).bind(|file_contents| {
         with_local_database(db, || match ron::from_str(file_contents.contents(db)) {
-            Ok(module) => Dr::ok(module),
-            Err(err) => Dr::fail(
+            Ok(module) => ParametricDr::ok(module),
+            Err(err) => ParametricDr::fail(
                 Report::new_in_file(ReportKind::Error, source).with_message(err.to_string()),
             ),
         })

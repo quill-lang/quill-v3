@@ -1,6 +1,6 @@
 use std::{fmt::Debug, path::PathBuf};
 
-use crate::{Db, Dr, Report, ReportKind, Source};
+use crate::{Db, ParametricDr, Report, ReportKind, Source};
 
 /// An input file.
 #[salsa::input]
@@ -12,14 +12,14 @@ pub struct InputFile {
 
 #[tracing::instrument(level = "debug")]
 #[salsa::tracked]
-pub fn source(db: &dyn Db, source: Source) -> Dr<InputFile> {
+pub fn source(db: &dyn Db, source: Source) -> ParametricDr<String, InputFile> {
     let path_buf = source
         .path(db)
         .to_path_buf(db)
         .with_extension(source.ty(db).extension());
     match db.input_file(path_buf.clone()) {
-        Ok(value) => Dr::ok(value),
-        Err(err) => Dr::fail(
+        Ok(value) => ParametricDr::ok(value),
+        Err(err) => ParametricDr::fail(
             Report::new_in_file(ReportKind::Error, source).with_message(format!(
                 "could not read file '{}': {}",
                 path_buf.to_string_lossy(),

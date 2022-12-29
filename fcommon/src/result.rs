@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{fmt::Debug, ops::Deref};
 
 use crate::{Source, SourceSpan, Span};
 
@@ -10,8 +10,12 @@ use crate::{Source, SourceSpan, Span};
 /// but its fields are accessible, and more closely tied to feather's internals.
 /// This allows us to render a report to several different backends, including
 /// `ariadne` itself, of course.
+///
+/// The fields are parametrised by a message type `M`, meant to represent a
+/// formattable message, used for things like colouring and highlighting.
+/// The formatter can be defined later.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Report {
+pub struct Report<M> {
     /// The severity of the report.
     /// Used to determine colouring of output if rendered using `ariadne`.
     pub kind: ReportKind,
@@ -21,14 +25,14 @@ pub struct Report {
     /// If the span is not specified, then the diagnostic refers to the entire file.
     pub offset: Option<usize>,
     /// The message to display to the user, if present.
-    pub message: Option<String>,
+    pub message: Option<M>,
     /// A final note to display to the user, if present.
-    pub note: Option<String>,
+    pub note: Option<M>,
     /// A list of labels with additional information to display to the user.
-    pub labels: Vec<Label>,
+    pub labels: Vec<Label<M>>,
 }
 
-impl Report {
+impl<M> Report<M> {
     pub fn new_in_file(kind: ReportKind, source: Source) -> Self {
         Self {
             kind,
@@ -51,26 +55,31 @@ impl Report {
         }
     }
 
-    pub fn with_message(mut self, message: impl ToString) -> Self {
-        self.message = Some(message.to_string());
+    pub fn with_message(mut self, message: M) -> Self {
+        self.message = Some(message);
         self
     }
 
-    pub fn with_label(mut self, label: Label) -> Self {
+    pub fn with_label(mut self, label: Label<M>) -> Self {
         self.labels.push(label);
         self
     }
 
-    pub fn with_note(mut self, note: impl ToString) -> Self {
-        self.note = Some(note.to_string());
+    pub fn with_note(mut self, note: M) -> Self {
+        self.note = Some(note);
         self
     }
 
     /// Convert this report into an [`ariadne::Report`] and then
     /// display it to the user.
     #[cfg(feature = "ariadne")]
-    pub fn render(&self, db: &impl crate::Db, stream: impl std::io::Write) {
-        ariadne::Report::from(self)
+    pub fn render(
+        &self,
+        db: &impl crate::Db,
+        formatter: &impl MessageFormatter<Message = M>,
+        stream: impl std::io::Write,
+    ) {
+        self.format(formatter)
             .write(
                 DbCache {
                     db,
@@ -123,25 +132,34 @@ where
     }
 }
 
+/// A formatter, used for converting formattable diagnostic messages into raw strings to be
+/// displayed in a terminal. Different formatters can be used for printing messages in a terminal,
+/// writing to HTML output, or printing to a machine readable format, for example.
+pub trait MessageFormatter {
+    type Message;
+
+    fn format(&self, message: &Self::Message) -> String;
+}
+
 /// Convert this report into an [`ariadne::Report`] in order
 /// to display it to the user.
 /// Enabled only when the `ariadne` feature flag is set.
 #[cfg(feature = "ariadne")]
-impl From<&Report> for ariadne::Report<SourceSpan> {
-    fn from(report: &Report) -> Self {
-        let mut result = ariadne::Report::build(
-            report.kind.into(),
-            report.source,
-            report.offset.unwrap_or(0),
-        );
-        if let Some(message) = &report.message {
-            result = result.with_message(message);
+impl<M> Report<M> {
+    fn format<F>(&self, formatter: &F) -> ariadne::Report<SourceSpan>
+    where
+        F: MessageFormatter<Message = M>,
+    {
+        let mut result =
+            ariadne::Report::build(self.kind.into(), self.source, self.offset.unwrap_or(0));
+        if let Some(message) = &self.message {
+            result = result.with_message(formatter.format(message));
         }
-        if let Some(note) = &report.note {
-            result = result.with_note(note);
+        if let Some(note) = &self.note {
+            result = result.with_note(formatter.format(note));
         }
-        for label in &report.labels {
-            result = result.with_label(label.into());
+        for label in &self.labels {
+            result = result.with_label(label.format(formatter));
         }
         result.finish()
     }
@@ -167,24 +185,27 @@ impl From<ReportKind> for ariadne::ReportKind {
 /// A localised message in a report.
 /// See the `ariadne` crate for more information.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Label {
+pub struct Label<M> {
     /// The source file and span at which to render this label.
     pub source_span: SourceSpan,
     pub ty: LabelType,
-    pub message: Option<String>,
+    pub message: Option<M>,
     pub order: i32,
     pub priority: i32,
 }
 
 #[cfg(feature = "ariadne")]
-impl From<&Label> for ariadne::Label<SourceSpan> {
-    fn from(label: &Label) -> Self {
-        let mut result = Self::new(label.source_span)
-            .with_color(label.ty.into())
-            .with_order(label.order)
-            .with_priority(label.priority);
-        if let Some(message) = &label.message {
-            result = result.with_message(message);
+impl<M> Label<M> {
+    fn format<F>(&self, formatter: &F) -> ariadne::Label<SourceSpan>
+    where
+        F: MessageFormatter<Message = M>,
+    {
+        let mut result = ariadne::Label::new(self.source_span)
+            .with_color(self.ty.into())
+            .with_order(self.order)
+            .with_priority(self.priority);
+        if let Some(message) = &self.message {
+            result = result.with_message(formatter.format(message));
         }
         result
     }
@@ -210,7 +231,7 @@ impl From<LabelType> for ariadne::Color {
     }
 }
 
-impl Label {
+impl<M> Label<M> {
     pub fn new(source: Source, span: Span, ty: LabelType) -> Self {
         Self {
             source_span: SourceSpan { source, span },
@@ -222,8 +243,8 @@ impl Label {
     }
 
     /// See [`ariadne::Label::with_message`].
-    pub fn with_message(mut self, message: impl ToString) -> Self {
-        self.message = Some(message.to_string());
+    pub fn with_message(mut self, message: M) -> Self {
+        self.message = Some(message);
         self
     }
 
@@ -256,22 +277,22 @@ impl Label {
 /// access to all of [`Dr`]'s methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use = "errors must be processed by an ErrorEmitter"]
-pub struct Dr<T> {
+pub struct ParametricDr<M, T> {
     /// If this is `None`, then the computation failed. Error messages will be contained inside `reports`.
     /// If this is `Some`, then the computation succeeded, but there may still be some messages (e.g. warnings
     /// or errors) inside `messages`.
     value: Option<T>,
-    reports: Vec<Report>,
+    reports: Vec<Report<M>>,
 }
 
-impl<T> From<T> for Dr<T> {
+impl<M, T> From<T> for ParametricDr<M, T> {
     fn from(value: T) -> Self {
         Self::ok(value)
     }
 }
 
-impl<T> From<Result<T, Report>> for Dr<T> {
-    fn from(result: Result<T, Report>) -> Self {
+impl<M, T> From<Result<T, Report<M>>> for ParametricDr<M, T> {
+    fn from(result: Result<T, Report<M>>) -> Self {
         match result {
             Ok(value) => Self::ok(value),
             Err(error) => Self::fail(error),
@@ -279,8 +300,8 @@ impl<T> From<Result<T, Report>> for Dr<T> {
     }
 }
 
-impl<T> From<Result<T, Vec<Report>>> for Dr<T> {
-    fn from(result: Result<T, Vec<Report>>) -> Self {
+impl<M, T> From<Result<T, Vec<Report<M>>>> for ParametricDr<M, T> {
+    fn from(result: Result<T, Vec<Report<M>>>) -> Self {
         match result {
             Ok(value) => Self::ok(value),
             Err(errors) => Self::fail_many(errors),
@@ -288,7 +309,7 @@ impl<T> From<Result<T, Vec<Report>>> for Dr<T> {
     }
 }
 
-impl<T> Dr<T> {
+impl<M, T> ParametricDr<M, T> {
     /// The computation succeeded with no messages.
     /// This is the monadic `return` operation.
     pub fn ok(value: T) -> Self {
@@ -299,14 +320,14 @@ impl<T> Dr<T> {
     }
 
     /// The computation succeeded, but there was some error or warning message.
-    pub fn ok_with(value: T, report: Report) -> Self {
+    pub fn ok_with(value: T, report: Report<M>) -> Self {
         Self {
             value: Some(value),
             reports: vec![report],
         }
     }
 
-    pub fn ok_with_many(value: T, reports: Vec<Report>) -> Self {
+    pub fn ok_with_many(value: T, reports: Vec<Report<M>>) -> Self {
         Self {
             value: Some(value),
             reports,
@@ -314,7 +335,7 @@ impl<T> Dr<T> {
     }
 
     /// The computation failed. An error message is mandatory if the computation failed.
-    pub fn fail(report: Report) -> Self {
+    pub fn fail(report: Report<M>) -> Self {
         assert!(report.kind == ReportKind::Error);
         Self {
             value: None,
@@ -322,7 +343,7 @@ impl<T> Dr<T> {
         }
     }
 
-    pub fn fail_many(reports: Vec<Report>) -> Self {
+    pub fn fail_many(reports: Vec<Report<M>>) -> Self {
         assert!(reports.iter().any(|m| m.kind == ReportKind::Error));
         Self {
             value: None,
@@ -331,16 +352,16 @@ impl<T> Dr<T> {
     }
 
     /// Apply an infallible operation to the value inside this result. If the operation could fail, use [`Dr::bind`] instead.
-    pub fn map<F, U>(self, f: F) -> Dr<U>
+    pub fn map<F, U>(self, f: F) -> ParametricDr<M, U>
     where
         F: FnOnce(T) -> U,
     {
         match self.value {
-            Some(value) => Dr {
+            Some(value) => ParametricDr {
                 value: Some(f(value)),
                 reports: self.reports,
             },
-            None => Dr {
+            None => ParametricDr {
                 value: None,
                 reports: self.reports,
             },
@@ -349,20 +370,20 @@ impl<T> Dr<T> {
 
     /// A monadic bind operation that consumes this diagnostic result and uses the value it contains, if it exists,
     /// to produce a new diagnostic result.
-    pub fn bind<F, U>(mut self, f: F) -> Dr<U>
+    pub fn bind<F, U>(mut self, f: F) -> ParametricDr<M, U>
     where
-        F: FnOnce(T) -> Dr<U>,
+        F: FnOnce(T) -> ParametricDr<M, U>,
     {
         match self.value {
             Some(value) => {
                 let mut result = f(value);
                 self.reports.append(&mut result.reports);
-                Dr {
+                ParametricDr {
                     value: result.value,
                     reports: self.reports,
                 }
             }
-            None => Dr {
+            None => ParametricDr {
                 value: None,
                 reports: self.reports,
             },
@@ -370,15 +391,15 @@ impl<T> Dr<T> {
     }
 
     /// Appends a report to this diagnostic result, regardless of whether the result succeeded or failed.
-    pub fn with(mut self, report: Report) -> Self {
+    pub fn with(mut self, report: Report<M>) -> Self {
         self.reports.push(report);
         self
     }
 
     /// Converts a failed diagnostic into a successful diagnostic by wrapping
     /// the contained value in an `Option`.
-    pub fn unfail(self) -> Dr<Option<T>> {
-        Dr {
+    pub fn unfail(self) -> ParametricDr<M, Option<T>> {
+        ParametricDr {
             value: Some(self.value),
             reports: self.reports,
         }
@@ -398,31 +419,39 @@ impl<T> Dr<T> {
     }
 
     /// Combines a list of diagnostic results into a single result by binding them all together.
-    pub fn sequence(results: impl IntoIterator<Item = Dr<T>>) -> Dr<Vec<T>> {
-        results.into_iter().fold(Dr::ok(Vec::new()), |acc, i| {
-            acc.bind(|mut list| {
-                i.bind(|i| {
-                    list.push(i);
-                    Dr::ok(list)
+    pub fn sequence(
+        results: impl IntoIterator<Item = ParametricDr<M, T>>,
+    ) -> ParametricDr<M, Vec<T>> {
+        results
+            .into_iter()
+            .fold(ParametricDr::ok(Vec::new()), |acc, i| {
+                acc.bind(|mut list| {
+                    i.bind(|i| {
+                        list.push(i);
+                        ParametricDr::ok(list)
+                    })
                 })
             })
-        })
     }
 
     /// Combines a list of diagnostic results into a single result by binding them all together.
     /// Any failed diagnostics will be excluded from the output, but their error messages will remain.
     /// Therefore, this function will never fail - it might just produce an empty list as its output.
-    pub fn sequence_unfail(results: impl IntoIterator<Item = Dr<T>>) -> Dr<Vec<T>> {
-        results.into_iter().fold(Dr::ok(Vec::new()), |acc, i| {
-            acc.bind(|mut list| {
-                i.unfail().bind(|i| {
-                    if let Some(i) = i {
-                        list.push(i);
-                    }
-                    Dr::ok(list)
+    pub fn sequence_unfail(
+        results: impl IntoIterator<Item = ParametricDr<M, T>>,
+    ) -> ParametricDr<M, Vec<T>> {
+        results
+            .into_iter()
+            .fold(ParametricDr::ok(Vec::new()), |acc, i| {
+                acc.bind(|mut list| {
+                    i.unfail().bind(|i| {
+                        if let Some(i) = i {
+                            list.push(i);
+                        }
+                        ParametricDr::ok(list)
+                    })
                 })
             })
-        })
     }
 
     /// Returns true if the computation succeeded.
@@ -447,7 +476,7 @@ impl<T> Dr<T> {
     /// It is your responsibility to put these error messages back inside another diagnostic result.
     /// Failure to do so will result in errors not being displayed, or invalid programs erroneously
     /// being considered correct.
-    pub fn destructure(self) -> (Option<T>, Vec<Report>) {
+    pub fn destructure(self) -> (Option<T>, Vec<Report<M>>) {
         (self.value, self.reports)
     }
 
@@ -457,24 +486,28 @@ impl<T> Dr<T> {
     }
 
     /// Retrieves the list of reports.
-    pub fn reports(&self) -> &[Report] {
+    pub fn reports(&self) -> &[Report<M>] {
         &self.reports
     }
 
     /// Returns a diagnostic result with the same reports, but where the value is borrowed.
-    pub fn as_ref(&self) -> Dr<&T> {
-        Dr {
+    pub fn as_ref(&self) -> ParametricDr<M, &T>
+    where
+        M: Clone,
+    {
+        ParametricDr {
             value: self.value.as_ref(),
             reports: self.reports.clone(),
         }
     }
 
     /// Returns a diagnostic result with the same reports, but where the value is dereferenced.
-    pub fn as_deref(&self) -> Dr<&T::Target>
+    pub fn as_deref(&self) -> ParametricDr<M, &T::Target>
     where
+        M: Clone,
         T: Deref,
     {
-        Dr {
+        ParametricDr {
             value: self.value.as_deref(),
             reports: self.reports.clone(),
         }
@@ -482,7 +515,10 @@ impl<T> Dr<T> {
 
     /// If there were any errors, panic.
     /// Useful for tests.
-    pub fn assert_ok(&self) {
+    pub fn assert_ok(&self)
+    where
+        M: Debug,
+    {
         if self.errored() {
             panic!("diagnostic result contained errors: {:#?}", self.reports);
         }
@@ -490,14 +526,20 @@ impl<T> Dr<T> {
 
     /// If there were no errors, return the underlying value.
     /// Useful for tests.
-    pub fn unwrap(self) -> T {
+    pub fn unwrap(self) -> T
+    where
+        M: Debug,
+    {
         self.assert_ok();
         self.value.unwrap()
     }
 
     /// If there were no errors, panic.
     /// Useful for tests.
-    pub fn assert_errored(&self) {
+    pub fn assert_errored(&self)
+    where
+        M: Debug,
+    {
         if !self.errored() {
             panic!(
                 "diagnostic result was supposed to contain errors, reports were: {:#?}",
@@ -507,18 +549,42 @@ impl<T> Dr<T> {
     }
 
     /// Applies the given function to all reports in this diagnostic result.
-    pub fn map_reports(mut self, f: impl Fn(Report) -> Report) -> Self {
-        for report in &mut self.reports {
-            *report = f(report.clone());
+    /// This can change the message type.
+    pub fn map_reports<N>(self, f: impl Fn(Report<M>) -> Report<N>) -> ParametricDr<N, T> {
+        ParametricDr {
+            value: self.value,
+            reports: self.reports.into_iter().map(f).collect(),
         }
-        self
+    }
+
+    /// Applies the given function to all messages inside all reports in this diagnostic result.
+    /// This can change the message type.
+    pub fn map_messages<N>(self, f: impl Clone + Fn(M) -> N) -> ParametricDr<N, T> {
+        self.map_reports(|report| Report {
+            kind: report.kind,
+            source: report.source,
+            offset: report.offset,
+            message: report.message.map(f.clone()),
+            note: report.note.map(f.clone()),
+            labels: report
+                .labels
+                .into_iter()
+                .map(|label| Label {
+                    source_span: label.source_span,
+                    ty: label.ty,
+                    message: label.message.map(f.clone()),
+                    order: label.order,
+                    priority: label.priority,
+                })
+                .collect(),
+        })
     }
 }
 
-impl<T> FromIterator<Dr<T>> for Dr<Vec<T>> {
+impl<M, T> FromIterator<ParametricDr<M, T>> for ParametricDr<M, Vec<T>> {
     /// Any failed diagnostics will be excluded from the output, but their error messages will remain.
     /// Therefore, this function will never fail - it might just produce an empty list as its output.
-    fn from_iter<U: IntoIterator<Item = Dr<T>>>(iter: U) -> Self {
-        Dr::sequence_unfail(iter)
+    fn from_iter<U: IntoIterator<Item = ParametricDr<M, T>>>(iter: U) -> Self {
+        ParametricDr::sequence_unfail(iter)
     }
 }

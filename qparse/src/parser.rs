@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use fcommon::{Dr, Label, LabelType, Report, ReportKind, Source, Span, Spanned};
-use fexpr::basic::Provenance;
+use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
+use fexpr::{basic::Provenance, result::Dr};
 
 use crate::{
     lex::{OperatorInfo, ReservedSymbol, TokenTree},

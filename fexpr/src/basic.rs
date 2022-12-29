@@ -26,7 +26,7 @@ impl Default for Provenance {
 }
 
 impl Provenance {
-    pub fn report(&self, report_kind: ReportKind) -> Report {
+    pub fn report<M>(&self, report_kind: ReportKind) -> Report<M> {
         Report::new(
             report_kind,
             self.source()
@@ -35,7 +35,7 @@ impl Provenance {
         )
     }
 
-    pub fn label(&self, ty: LabelType) -> Label {
+    pub fn label<M>(&self, ty: LabelType) -> Label<M> {
         Label::new(
             self.source()
                 .expect("cannot create a label from synthetic provenance"),
