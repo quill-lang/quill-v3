@@ -6,8 +6,8 @@ pub mod expr;
 pub mod inductive;
 pub mod module;
 pub mod multiplicity;
-pub mod universe;
 pub mod result;
+pub mod universe;
 
 #[salsa::jar(db = Db)]
 pub struct Jar(

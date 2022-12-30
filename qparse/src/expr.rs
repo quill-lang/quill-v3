@@ -13,12 +13,19 @@ use fexpr::{
 };
 
 use crate::{
-    lex::{ReservedSymbol, TokenTree},
+    lex::{Bracket, OperatorInfo, ReservedSymbol, TokenTree},
     parser::Parser,
 };
 
+/// A parsed universe.
+#[derive(Debug, PartialEq, Eq)]
+pub enum PUniverse {
+    /// A universe variable.
+    Variable(Name<Provenance>),
+}
+
 /// A parsed lambda binder.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PLambdaBinder {
     /// The name given to the bound variable.
     pub name: Name<Provenance>,
@@ -35,7 +42,7 @@ pub struct PLambdaBinder {
 }
 
 /// A parsed function type.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PFunctionBinder {
     /// The name given to the bound variable, if present.
     pub name: Option<Name<Provenance>>,
@@ -51,10 +58,17 @@ pub struct PFunctionBinder {
 }
 
 /// A parsed expression.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PExpression {
     /// A local variable or an instantiated constant.
-    Variable(QualifiedName<Provenance>),
+    Variable {
+        name: QualifiedName<Provenance>,
+        /// If present, the spans are the opening and closing brackets,
+        /// and the universes are the universe parameters.
+        /// This is somewhat like Rust's turbofish syntax,
+        /// but this is used for universes, not type parameters.
+        universe_ascription: Option<(Span, Vec<PUniverse>, Span)>,
+    },
     Apply {
         function: Box<PExpression>,
         argument: Box<PExpression>,
@@ -69,6 +83,17 @@ pub enum PExpression {
         arrow_token: Span,
         result: Box<PExpression>,
     },
+    Sort {
+        span: Span,
+        universe: PUniverse,
+    },
+    Type {
+        span: Span,
+        /// If this was present, the expression was `Type::{u}` for some `u`.
+        /// The spans are the opening and closing brackets.
+        /// Otherwise, the expression was just `Type`.
+        universe: Option<(Span, PUniverse, Span)>,
+    },
 }
 
 impl Spanned for PExpression {
@@ -77,75 +102,328 @@ impl Spanned for PExpression {
     }
 }
 
+/// A piece of syntax in an expression constructed from (relatively) few tokens.
+/// Easily parsable.
+enum SmallExpression {
+    QualifiedName {
+        /// A list of name segments, their spans, and the spans of the following `::` token.
+        segments: Vec<(String, Span, Span)>,
+        final_segment: String,
+        final_span: Span,
+        /// If present, the spans are the opening and closing brackets,
+        /// and the universes are the universe parameters.
+        /// This is somewhat like Rust's turbofish syntax,
+        /// but this is used for universes, not type parameters.
+        universe_ascription: Option<(Span, Vec<PUniverse>, Span)>,
+    },
+    Operator {
+        text: String,
+        info: OperatorInfo,
+        span: Span,
+    },
+    PExpression(PExpression),
+}
+
 impl<'db, 'a, I> Parser<'db, 'a, I>
 where
     I: Iterator<Item = TokenTree>,
 {
+    /// Parse a universe, and then the end of the stream.
+    fn parse_universe_end(&mut self) -> Dr<PUniverse> {
+        self.require_lexical().bind(|(name, span)| {
+            self.assert_end().map(|()| {
+                PUniverse::Variable(Name(WithProvenance::new_with_provenance(
+                    self.provenance(span),
+                    Str::new(self.config().db, name),
+                )))
+            })
+        })
+    }
+
+    /// Parse a sequence of comma-separated universes, and then the end of the stream.
+    fn parse_universes_end(&mut self) -> Dr<Vec<PUniverse>> {
+        todo!()
+    }
+
+    fn parse_qualified_name(&mut self) -> Dr<SmallExpression> {
+        if let Some(TokenTree::Lexical { text, span }) = self.next() {
+            if let Some(TokenTree::Reserved {
+                symbol: ReservedSymbol::Scope,
+                span: scope_span,
+            }) = self.peek()
+            {
+                let scope_span = *scope_span;
+                // Consume the `::` token.
+                self.next();
+                if let Some(TokenTree::Block {
+                    bracket: Bracket::Brace,
+                    ..
+                }) = self.peek()
+                {
+                    // This is the end of the qualified name, with a universe ascription.
+                    // Consume the block.
+                    if let Some(TokenTree::Block {
+                        bracket: Bracket::Brace,
+                        open,
+                        close,
+                        contents,
+                    }) = self.next()
+                    {
+                        self.with_vec(open, close, contents)
+                            .parse_universes_end()
+                            .map(|universe_ascription| SmallExpression::QualifiedName {
+                                segments: Vec::new(),
+                                final_segment: text,
+                                final_span: span,
+                                universe_ascription: Some((open, universe_ascription, close)),
+                            })
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    // Consume the tail qualified name.
+                    self.parse_qualified_name().map(|mut tail| {
+                        if let SmallExpression::QualifiedName { segments, .. } = &mut tail {
+                            segments.insert(0, (text, span, scope_span));
+                            tail
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                }
+            } else {
+                // This name has only one segment.
+                Dr::ok(SmallExpression::QualifiedName {
+                    segments: Vec::new(),
+                    final_segment: text,
+                    final_span: span,
+                    universe_ascription: None,
+                })
+            }
+        } else {
+            todo!()
+        }
+    }
+
     /// Parse all token trees that could be part of a Pratt expression.
-    fn parse_pratt_expr_terms(&mut self) -> Vec<TokenTree> {
+    fn parse_pratt_expr_terms(&mut self, multiple_lines: bool) -> Dr<Vec<SmallExpression>> {
         let mut result = Vec::new();
         loop {
             match self.peek() {
-                Some(TokenTree::Lexical { .. }) | Some(TokenTree::Operator { .. }) => {
-                    result.push(self.next().unwrap())
+                Some(TokenTree::Lexical { .. }) => result.push(self.parse_qualified_name()),
+                Some(TokenTree::Operator { .. }) => {
+                    if let Some(TokenTree::Operator { text, info, span }) = self.next() {
+                        result.push(Dr::ok(SmallExpression::Operator { text, info, span }));
+                    } else {
+                        unreachable!()
+                    }
                 }
-                _ => return result,
+                Some(TokenTree::Reserved {
+                    symbol: ReservedSymbol::Sort,
+                    span,
+                }) => {
+                    let span = *span;
+                    self.next();
+                    let required = self.require_reserved(ReservedSymbol::Scope);
+                    if let Some(TokenTree::Block {
+                        bracket: Bracket::Brace,
+                        open,
+                        close,
+                        contents,
+                    }) = self.next()
+                    {
+                        result.push(required.bind(|_| {
+                            self.with_vec(open, close, contents)
+                                .parse_universe_end()
+                                .map(|universe| {
+                                    SmallExpression::PExpression(PExpression::Sort {
+                                        span,
+                                        universe,
+                                    })
+                                })
+                        }));
+                    } else {
+                        todo!()
+                    }
+                }
+                Some(TokenTree::Reserved {
+                    symbol: ReservedSymbol::Type,
+                    span,
+                }) => {
+                    let span = *span;
+                    self.next();
+                    if let Some(TokenTree::Block {
+                        bracket: Bracket::Brace,
+                        ..
+                    }) = self.peek()
+                    {
+                        if let Some(TokenTree::Block {
+                            open,
+                            close,
+                            contents,
+                            ..
+                        }) = self.next()
+                        {
+                            result.push(
+                                self.with_vec(open, close, contents)
+                                    .parse_universe_end()
+                                    .map(|universe| {
+                                        SmallExpression::PExpression(PExpression::Type {
+                                            span,
+                                            universe: Some((open, universe, close)),
+                                        })
+                                    }),
+                            );
+                        } else {
+                            unreachable!()
+                        }
+                    } else {
+                        result.push(Dr::ok(SmallExpression::PExpression(PExpression::Type {
+                            span,
+                            universe: None,
+                        })));
+                    }
+                }
+                Some(TokenTree::Block {
+                    bracket: Bracket::Paren,
+                    ..
+                }) => {
+                    if let Some(TokenTree::Block {
+                        open,
+                        close,
+                        contents,
+                        ..
+                    }) = self.next()
+                    {
+                        let mut inner = self.with_vec(open, close, contents);
+                        result.push(inner.parse_expr(true).bind(|expr| {
+                            inner
+                                .assert_end()
+                                .map(|()| SmallExpression::PExpression(expr))
+                        }));
+                    } else {
+                        unreachable!()
+                    }
+                }
+                Some(indented @ TokenTree::Indented { .. }) => {
+                    let span = indented.span();
+                    if multiple_lines {
+                        if let Some(TokenTree::Indented { contents, .. }) = self.next() {
+                            let mut inner = self.with_vec(
+                                (span.start..span.start + 1).into(),
+                                (span.end..span.end + 1).into(),
+                                contents,
+                            );
+                            let (terms, mut reports) =
+                                inner.parse_pratt_expr_terms(true).destructure();
+                            match terms {
+                                Some(terms) => {
+                                    for term in terms {
+                                        result.push(Dr::ok_with_many(
+                                            term,
+                                            std::mem::take(&mut reports),
+                                        ));
+                                    }
+                                }
+                                None => result.push(Dr::fail_many(reports)),
+                            }
+                        } else {
+                            unreachable!()
+                        }
+                    } else {
+                        return Dr::sequence(result);
+                    }
+                }
+                Some(TokenTree::Newline { .. }) => {
+                    if multiple_lines {
+                        self.next();
+                    } else {
+                        return Dr::sequence(result);
+                    }
+                }
+                _ => return Dr::sequence(result),
             }
         }
     }
 
     /// Parses a Pratt expression.
     /// TODO: Write this complete function. For now, we just parse function applications.
-    pub fn parse_pratt_expr(&mut self) -> Dr<PExpression> {
-        let terms = self.parse_pratt_expr_terms();
-        let result = terms
-            .into_iter()
-            .map(|token_tree| match token_tree {
-                TokenTree::Lexical { text, span } => {
-                    let provenance = self.provenance(span);
-                    PExpression::Variable(QualifiedName(WithProvenance::new_with_provenance(
-                        provenance,
-                        vec![Name(WithProvenance::new_with_provenance(
-                            provenance,
-                            Str::new(self.config().db, text),
-                        ))],
-                    )))
-                }
-                _ => todo!(),
-            })
-            .reduce(|acc, expr| PExpression::Apply {
-                function: Box::new(acc),
-                argument: Box::new(expr),
-            });
+    pub fn parse_pratt_expr(&mut self, multiple_lines: bool) -> Dr<PExpression> {
+        self.parse_pratt_expr_terms(multiple_lines).bind(|terms| {
+            let result = terms
+                .into_iter()
+                .map(|small_expr| match small_expr {
+                    SmallExpression::QualifiedName {
+                        segments,
+                        final_segment,
+                        final_span,
+                        universe_ascription,
+                    } => PExpression::Variable {
+                        name: QualifiedName(WithProvenance::new_with_provenance(
+                            self.provenance(match segments.first() {
+                                Some((_, first_span, _)) => Span {
+                                    start: first_span.start,
+                                    end: final_span.end,
+                                },
+                                None => final_span,
+                            }),
+                            segments
+                                .into_iter()
+                                .map(|(name, name_span, _)| {
+                                    Name(WithProvenance::new_with_provenance(
+                                        self.provenance(name_span),
+                                        Str::new(self.config().db, name),
+                                    ))
+                                })
+                                .chain(std::iter::once(Name(WithProvenance::new_with_provenance(
+                                    self.provenance(final_span),
+                                    Str::new(self.config().db, final_segment),
+                                ))))
+                                .collect(),
+                        )),
+                        universe_ascription,
+                    },
+                    SmallExpression::Operator { .. } => todo!(),
+                    SmallExpression::PExpression(pexpr) => pexpr,
+                })
+                .reduce(|acc, expr| PExpression::Apply {
+                    function: Box::new(acc),
+                    argument: Box::new(expr),
+                });
 
-        let source = self.config().source;
-        match result {
-            Some(result) => Dr::ok(result),
-            None => match self.peek() {
-                Some(tt) => Dr::fail(
-                    Report::new(ReportKind::Error, source, tt.span().start)
-                        .with_message("expected an expression".into())
-                        .with_label(
-                            Label::new(source, tt.span(), LabelType::Error)
-                                .with_message(message!["expected an expression but found ", tt]),
-                        ),
-                ),
-                None => match self.block_brackets() {
-                    Some((open, close)) => Dr::fail(
-                        Report::new(ReportKind::Error, source, close.start)
+            let source = self.config().source;
+            match result {
+                Some(result) => Dr::ok(result),
+                None => match self.peek() {
+                    Some(tt) => Dr::fail(
+                        Report::new(ReportKind::Error, source, tt.span().start)
                             .with_message("expected an expression".into())
-                            .with_label(Label::new(source, close, LabelType::Error).with_message(
-                                "expected an expression before the end of this block".into(),
-                            ))
                             .with_label(
-                                Label::new(source, open, LabelType::Note)
-                                    .with_message("the block started here".into()),
+                                Label::new(source, tt.span(), LabelType::Error).with_message(
+                                    message!["expected an expression but found ", tt],
+                                ),
                             ),
                     ),
-                    None => todo!(),
+                    None => match self.block_brackets() {
+                        Some((open, close)) => Dr::fail(
+                            Report::new(ReportKind::Error, source, close.start)
+                                .with_message("expected an expression".into())
+                                .with_label(
+                                    Label::new(source, close, LabelType::Error).with_message(
+                                        "expected an expression before the end of this block"
+                                            .into(),
+                                    ),
+                                )
+                                .with_label(
+                                    Label::new(source, open, LabelType::Note)
+                                        .with_message("the block started here".into()),
+                                ),
+                        ),
+                        None => todo!(),
+                    },
                 },
-            },
-        }
+            }
+        })
     }
 
     /// If the next token was an ownership label (`erased`, `owned`, `copyable`), consume and return it.
@@ -233,7 +511,7 @@ where
                     };
                     inner
                         .require_reserved(ReservedSymbol::Colon)
-                        .bind(|_| inner.parse_expr())
+                        .bind(|_| inner.parse_expr(true))
                         .bind(|ty| {
                             inner.assert_end().map(|()| PLambdaBinder {
                                 name,
@@ -266,7 +544,7 @@ where
     }
 
     /// Assuming that the next token is a `fn`, parse a `fn <binders> => e` expression.
-    fn parse_fn_expr(&mut self) -> Dr<PExpression> {
+    fn parse_fn_expr(&mut self, multiple_lines: bool) -> Dr<PExpression> {
         let fn_token = self.next().unwrap().span();
 
         // Parse one or more binders.
@@ -293,11 +571,12 @@ where
 
         Dr::sequence(binders).bind(|binders| {
             // TODO: Check that there is at least one binder?
-            self.parse_expr().map(|result| PExpression::Lambda {
-                fn_token,
-                binders,
-                result: Box::new(result),
-            })
+            self.parse_expr(multiple_lines)
+                .map(|result| PExpression::Lambda {
+                    fn_token,
+                    binders,
+                    result: Box::new(result),
+                })
         })
     }
 
@@ -328,7 +607,7 @@ where
             self.next();
             if let TokenTree::Lexical { text, span } = tt {
                 // Parse the type of the parameter.
-                self.parse_expr().bind(|ty| {
+                self.parse_expr(true).bind(|ty| {
                     self.assert_end().map(|()| PFunctionBinder {
                         name: Some(Name(WithProvenance::new_with_provenance(
                             self.provenance(span),
@@ -346,7 +625,7 @@ where
         } else {
             // This is syntax of the form `type`.
             self.push(tt);
-            self.parse_expr().bind(|ty| {
+            self.parse_expr(true).bind(|ty| {
                 self.assert_end().map(|()| PFunctionBinder {
                     name: None,
                     annotation,
@@ -362,12 +641,12 @@ where
     /// - a lambda, written `fn <binders> => e`;
     /// - a function type, written `<binder> -> e`; or
     /// - a Pratt expression.
-    pub fn parse_expr(&mut self) -> Dr<PExpression> {
+    pub fn parse_expr(&mut self, multiple_lines: bool) -> Dr<PExpression> {
         let result = match self.peek() {
             Some(TokenTree::Reserved {
                 symbol: ReservedSymbol::Fn,
                 ..
-            }) => self.parse_fn_expr(),
+            }) => self.parse_fn_expr(multiple_lines),
             Some(TokenTree::Block { .. }) => {
                 // We can check if this is a function type by peeking at the token tree after this block.
                 let block = self.next().unwrap();
@@ -392,10 +671,12 @@ where
                         inner
                             .parse_function_binder(bracket.into(), Some((open, close)))
                             .bind(|binder| {
-                                self.parse_expr().map(|result| PExpression::FunctionType {
-                                    binder,
-                                    arrow_token,
-                                    result: Box::new(result),
+                                self.parse_expr(multiple_lines).map(|result| {
+                                    PExpression::FunctionType {
+                                        binder,
+                                        arrow_token,
+                                        result: Box::new(result),
+                                    }
                                 })
                             })
                     } else {
@@ -405,10 +686,10 @@ where
                     // This wasn't a function type.
                     // Push the block back, and fall back to the Pratt expression parser.
                     self.push(block);
-                    self.parse_pratt_expr()
+                    self.parse_pratt_expr(multiple_lines)
                 }
             }
-            _ => self.parse_pratt_expr(),
+            _ => self.parse_pratt_expr(multiple_lines),
         };
 
         // After we parse the initial expression, it's possible that we have an arrow token `->`
@@ -421,17 +702,18 @@ where
             {
                 let arrow_token = *span;
                 self.next();
-                self.parse_expr().map(|result| PExpression::FunctionType {
-                    binder: PFunctionBinder {
-                        name: None,
-                        annotation: BinderAnnotation::Explicit,
-                        brackets: None,
-                        ownership: None,
-                        ty: Box::new(expr),
-                    },
-                    arrow_token,
-                    result: Box::new(result),
-                })
+                self.parse_expr(multiple_lines)
+                    .map(|result| PExpression::FunctionType {
+                        binder: PFunctionBinder {
+                            name: None,
+                            annotation: BinderAnnotation::Explicit,
+                            brackets: None,
+                            ownership: None,
+                            ty: Box::new(expr),
+                        },
+                        arrow_token,
+                        result: Box::new(result),
+                    })
             } else {
                 Dr::ok(expr)
             }

@@ -80,6 +80,8 @@ pub enum ReservedSymbol {
     Let,
     /// `Sort`
     Sort,
+    /// `Type`
+    Type,
     /// `Region`
     Region,
 }
@@ -104,6 +106,7 @@ impl Display for ReservedSymbol {
             ReservedSymbol::Fn => write!(f, "fn"),
             ReservedSymbol::Let => write!(f, "let"),
             ReservedSymbol::Sort => write!(f, "Sort"),
+            ReservedSymbol::Type => write!(f, "Type"),
             ReservedSymbol::Region => write!(f, "Region"),
         }
     }
@@ -111,7 +114,10 @@ impl Display for ReservedSymbol {
 
 impl From<ReservedSymbol> for Message {
     fn from(value: ReservedSymbol) -> Self {
-        todo!()
+        Message::Styled {
+            style: Style::token_tree(),
+            message: Box::new(format!("'{value}'").into()),
+        }
     }
 }
 
@@ -325,7 +331,27 @@ impl Stack {
         }
     }
 
+    fn peek_top(&mut self) -> Option<&TokenTree> {
+        match self.stack.last() {
+            Some((_, tokens)) => tokens.last(),
+            None => self.result.last(),
+        }
+    }
+
+    fn pop_top(&mut self) {
+        if let Some((_, tokens)) = self.stack.last_mut() {
+            tokens.pop();
+        } else {
+            self.result.pop();
+        }
+    }
+
     fn pop_indent(&mut self, new_indent: usize, new_indent_span: Span) -> Dr<()> {
+        // While the previous token was a newline, remove it.
+        while matches!(self.peek_top(), Some(TokenTree::Newline { .. })) {
+            self.pop_top();
+        }
+
         match self.pop() {
             Some((StackEntry::OpenBracket { bracket: _, span }, _)) => Dr::fail(
                 Report::new(ReportKind::Error, self.source, new_indent_span.start)
@@ -378,7 +404,7 @@ impl Stack {
         }
     }
 
-    fn pop_bracket(&mut self, bracket: Bracket, span: Span) {
+    fn pop_bracket(&mut self, bracket: Bracket, span: Span) -> Dr<()> {
         match self.pop() {
             Some((
                 StackEntry::OpenBracket {
@@ -395,13 +421,24 @@ impl Stack {
                         close: span,
                         contents,
                     });
+                    Dr::ok(())
+                } else {
+                    todo!()
                 }
             }
             Some((StackEntry::Indent { .. }, _)) => {
                 // We're allowed to resolve indents *after* closing brackets.
                 todo!()
             }
-            None => todo!(),
+            None => Dr::fail(
+                Report::new(ReportKind::Error, self.source, span.start)
+                    .with_message("found unmatched closing bracket".into())
+                    .with_label(
+                        Label::new(self.source, span, LabelType::Error).with_message(
+                            "this closing bracket did not pair with an opening bracket".into(),
+                        ),
+                    ),
+            ),
         }
     }
 }
@@ -466,6 +503,12 @@ pub fn tokenise(source: Source, stream: impl Iterator<Item = char>) -> Dr<Vec<To
                 if indentation - current_indent != 4 {
                     todo!()
                 }
+
+                // If the previous token was a newline, remove it.
+                if matches!(stack.peek_top(), Some(TokenTree::Newline { .. })) {
+                    stack.pop_top();
+                }
+
                 stack.push(StackEntry::Indent {
                     level: indentation,
                     span: start_span,
@@ -489,9 +532,18 @@ pub fn tokenise(source: Source, stream: impl Iterator<Item = char>) -> Dr<Vec<To
                     bracket: Bracket::Brace,
                     span,
                 }),
-                ")" => stack.pop_bracket(Bracket::Paren, span),
-                "]" => stack.pop_bracket(Bracket::Square, span),
-                "}" => stack.pop_bracket(Bracket::Brace, span),
+                ")" => {
+                    let (_, more_reports) = stack.pop_bracket(Bracket::Paren, span).destructure();
+                    reports.extend(more_reports);
+                }
+                "]" => {
+                    let (_, more_reports) = stack.pop_bracket(Bracket::Square, span).destructure();
+                    reports.extend(more_reports);
+                }
+                "}" => {
+                    let (_, more_reports) = stack.pop_bracket(Bracket::Brace, span).destructure();
+                    reports.extend(more_reports);
+                }
                 _ => stack.push_top(TokenTree::Lexical { text: token, span }),
             }
         }

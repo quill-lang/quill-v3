@@ -1,18 +1,10 @@
-fn a {f: {erased A: Type} -> B -> (owned C) -> D a b -> [E] -> F} [b] => b
+id: {A: Sort::{u}} -> A -> A = fn {A} a => a
 
-def id::{u} : forall (A : Sort u), forall (a : A), A =
-    fn (A : Sort u), fn (a : A), a
+S: ({A: Sort::{u}} -> {B: Sort::{v}} -> {C: Sort::{w}} ->
+    (A -> B -> C) -> (A -> B) ->
+    (A) -> C
+) = fn {A} {B} {C} x y z => (x z) (y z)
 
-def S_combinator::{u v w} :
-forall (A : Sort u), forall (B : Sort v), forall (C : Sort w),
-forall (z : forall (a : A), forall (b : B), C), forall (y : forall (a : A), B), forall (z : A), C =
-    fn (A : Sort u), fn (B : Sort v), fn (C : Sort w),
-    fn (x : forall (a : A), forall (b : B), C), fn (y : forall (a : A), B), fn (z : A), (x z) (y z)
+K: {A: Sort::{u}} -> {B: Sort::{v}} -> A -> B -> A = fn {A} {B} a b => a
 
-def K_combinator::{u v} :
-forall (A : Sort u), forall (B : Sort v), forall (a : A), forall (b : B), A =
-    fn (A : Sort u), fn (B : Sort v), fn (a : A), fn (b : B), a
-
-def I_combinator::{u} :
-forall (A : Sort u), forall (a : A), A =
-    fn (A : Sort u), fn (a : A), K_combinator::{u u} A A a a
+I: {A: Sort::{u}} -> A -> A = fn {A} a => K a a

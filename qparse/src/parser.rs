@@ -137,6 +137,7 @@ impl<'db> ParserConfiguration<'db> {
                 "fn" => ReservedSymbol::Fn,
                 "let" => ReservedSymbol::Let,
                 "Sort" => ReservedSymbol::Sort,
+                "Type" => ReservedSymbol::Type,
                 "Region" => ReservedSymbol::Region,
                 _ => {
                     return vec![TokenTree::Lexical {
@@ -262,7 +263,15 @@ where
     pub fn require_lexical(&mut self) -> Dr<(String, Span)> {
         match self.next() {
             Some(TokenTree::Lexical { text, span }) => Dr::ok((text, span)),
-            _ => todo!(),
+            Some(tt) => Dr::fail(
+                Report::new(ReportKind::Error, self.config().source, tt.span().start)
+                    .with_message(message!["expected a name, found ", &tt])
+                    .with_label(
+                        Label::new(self.config().source, tt.span(), LabelType::Error)
+                            .with_message(message!["unexpected ", &tt, " found here"]),
+                    ),
+            ),
+            None => todo!(),
         }
     }
 
@@ -276,12 +285,39 @@ where
                 if symbol == found_symbol {
                     Dr::ok(span)
                 } else {
-                    todo!()
+                    Dr::fail(
+                        Report::new(ReportKind::Error, self.config().source, span.start)
+                            .with_message(message!["expected ", symbol, ", found ", found_symbol])
+                            .with_label(
+                                Label::new(self.config().source, span, LabelType::Error)
+                                    .with_message(message![
+                                        "unexpected ",
+                                        found_symbol,
+                                        " found here"
+                                    ]),
+                            ),
+                    )
                 }
             }
             Some(tt) => Dr::fail(
                 Report::new(ReportKind::Error, self.config().source, tt.span().start)
                     .with_message(message!["expected ", symbol, ", found ", &tt])
+                    .with_label(
+                        Label::new(self.config().source, tt.span(), LabelType::Error)
+                            .with_message(message!["unexpected ", &tt, " found here"]),
+                    ),
+            ),
+            None => todo!(),
+        }
+    }
+
+    /// Parses the next token tree, and asserts that it is a newline token tree.
+    pub fn require_newline(&mut self) -> Dr<Span> {
+        match self.next() {
+            Some(TokenTree::Newline { span }) => Dr::ok(span),
+            Some(tt) => Dr::fail(
+                Report::new(ReportKind::Error, self.config().source, tt.span().start)
+                    .with_message(message!["expected newline, found ", &tt])
                     .with_label(
                         Label::new(self.config().source, tt.span(), LabelType::Error)
                             .with_message(message!["unexpected ", &tt, " found here"]),
