@@ -24,6 +24,19 @@ pub enum PUniverse {
     Variable(Name<Provenance>),
 }
 
+/// A parsed `let` binder.
+/// A single `let` expression may contain multiple such binders.
+#[derive(Debug, PartialEq, Eq)]
+pub struct PLetBinder {
+    /// The name given to the bound variable.
+    pub name: Name<Provenance>,
+    /// The type, if explicitly given.
+    /// If it is not given, it must be inferred by the elaborator.
+    pub ty: Option<PExpression>,
+    /// The value to assign to the new bound variable.
+    pub to_assign: PExpression,
+}
+
 /// A parsed lambda binder.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PLambdaBinder {
@@ -72,6 +85,11 @@ pub enum PExpression {
     Apply {
         function: Box<PExpression>,
         argument: Box<PExpression>,
+    },
+    Let {
+        let_token: Span,
+        binders: Vec<PLetBinder>,
+        body: Box<PExpression>,
     },
     Lambda {
         fn_token: Span,
@@ -206,7 +224,12 @@ where
     }
 
     /// Parse all token trees that could be part of a Pratt expression.
-    fn parse_pratt_expr_terms(&mut self, indent: usize) -> Dr<Vec<SmallExpression>> {
+    fn parse_pratt_expr_terms(
+        &mut self,
+        min_indent: usize,
+        mut indent: usize,
+    ) -> Dr<Vec<SmallExpression>> {
+        let original_indent = indent;
         let mut result = Vec::new();
         loop {
             match self.peek() {
@@ -296,9 +319,7 @@ where
                     }) = self.next()
                     {
                         let mut inner = self.with_vec(open, close, contents);
-                        // We override the indent level to zero for blocks, so that
-                        // any newlines inside blocks are always consumed.
-                        result.push(inner.parse_expr(0).bind(|expr| {
+                        result.push(inner.parse_expr(indent, indent).bind(|expr| {
                             inner
                                 .assert_end()
                                 .map(|()| SmallExpression::PExpression(expr))
@@ -311,7 +332,8 @@ where
                     indent: newline_indent,
                     ..
                 }) => {
-                    if *newline_indent > indent {
+                    if *newline_indent > original_indent {
+                        indent = *newline_indent;
                         self.next();
                     } else {
                         return Dr::sequence(result);
@@ -324,82 +346,88 @@ where
 
     /// Parses a Pratt expression.
     /// TODO: Write this complete function. For now, we just parse function applications.
-    pub fn parse_pratt_expr(&mut self, indent: usize) -> Dr<PExpression> {
-        self.parse_pratt_expr_terms(indent).bind(|terms| {
-            let result = terms
-                .into_iter()
-                .map(|small_expr| match small_expr {
-                    SmallExpression::QualifiedName {
-                        segments,
-                        final_segment,
-                        final_span,
-                        universe_ascription,
-                    } => PExpression::Variable {
-                        name: QualifiedName(WithProvenance::new_with_provenance(
-                            self.provenance(match segments.first() {
-                                Some((_, first_span, _)) => Span {
-                                    start: first_span.start,
-                                    end: final_span.end,
-                                },
-                                None => final_span,
-                            }),
-                            segments
-                                .into_iter()
-                                .map(|(name, name_span, _)| {
-                                    Name(WithProvenance::new_with_provenance(
-                                        self.provenance(name_span),
-                                        Str::new(self.config().db, name),
-                                    ))
-                                })
-                                .chain(std::iter::once(Name(WithProvenance::new_with_provenance(
-                                    self.provenance(final_span),
-                                    Str::new(self.config().db, final_segment),
-                                ))))
-                                .collect(),
-                        )),
-                        universe_ascription,
-                    },
-                    SmallExpression::Operator { .. } => todo!(),
-                    SmallExpression::PExpression(pexpr) => pexpr,
-                })
-                .reduce(|acc, expr| PExpression::Apply {
-                    function: Box::new(acc),
-                    argument: Box::new(expr),
-                });
+    pub fn parse_pratt_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
+        self.parse_pratt_expr_terms(min_indent, indent)
+            .bind(|terms| {
+                let result = terms
+                    .into_iter()
+                    .map(|small_expr| match small_expr {
+                        SmallExpression::QualifiedName {
+                            segments,
+                            final_segment,
+                            final_span,
+                            universe_ascription,
+                        } => PExpression::Variable {
+                            name: QualifiedName(WithProvenance::new_with_provenance(
+                                self.provenance(match segments.first() {
+                                    Some((_, first_span, _)) => Span {
+                                        start: first_span.start,
+                                        end: final_span.end,
+                                    },
+                                    None => final_span,
+                                }),
+                                segments
+                                    .into_iter()
+                                    .map(|(name, name_span, _)| {
+                                        Name(WithProvenance::new_with_provenance(
+                                            self.provenance(name_span),
+                                            Str::new(self.config().db, name),
+                                        ))
+                                    })
+                                    .chain(std::iter::once(Name(
+                                        WithProvenance::new_with_provenance(
+                                            self.provenance(final_span),
+                                            Str::new(self.config().db, final_segment),
+                                        ),
+                                    )))
+                                    .collect(),
+                            )),
+                            universe_ascription,
+                        },
+                        SmallExpression::Operator { .. } => todo!(),
+                        SmallExpression::PExpression(pexpr) => pexpr,
+                    })
+                    .reduce(|acc, expr| PExpression::Apply {
+                        function: Box::new(acc),
+                        argument: Box::new(expr),
+                    });
 
-            let source = self.config().source;
-            match result {
-                Some(result) => Dr::ok(result),
-                None => match self.peek() {
-                    Some(tt) => Dr::fail(
-                        Report::new(ReportKind::Error, source, tt.span().start)
-                            .with_message("expected an expression".into())
-                            .with_label(
-                                Label::new(source, tt.span(), LabelType::Error).with_message(
-                                    message!["expected an expression but found ", tt],
-                                ),
-                            ),
-                    ),
-                    None => match self.block_brackets() {
-                        Some((open, close)) => Dr::fail(
-                            Report::new(ReportKind::Error, source, close.start)
+                // TODO: Once we have actual Pratt parsing, we should make some report messages for using things like
+                // `let` or `fn` in an incorrect position, i.e. not parsed by `parse_expr`.
+
+                let source = self.config().source;
+                match result {
+                    Some(result) => Dr::ok(result),
+                    None => match self.peek() {
+                        Some(tt) => Dr::fail(
+                            Report::new(ReportKind::Error, source, tt.span().start)
                                 .with_message("expected an expression".into())
                                 .with_label(
-                                    Label::new(source, close, LabelType::Error).with_message(
-                                        "expected an expression before the end of this block"
-                                            .into(),
+                                    Label::new(source, tt.span(), LabelType::Error).with_message(
+                                        message!["expected an expression but found ", tt],
                                     ),
-                                )
-                                .with_label(
-                                    Label::new(source, open, LabelType::Note)
-                                        .with_message("the block started here".into()),
                                 ),
                         ),
-                        None => todo!(),
+                        None => match self.block_brackets() {
+                            Some((open, close)) => Dr::fail(
+                                Report::new(ReportKind::Error, source, close.start)
+                                    .with_message("expected an expression".into())
+                                    .with_label(
+                                        Label::new(source, close, LabelType::Error).with_message(
+                                            "expected an expression before the end of this block"
+                                                .into(),
+                                        ),
+                                    )
+                                    .with_label(
+                                        Label::new(source, open, LabelType::Note)
+                                            .with_message("the block started here".into()),
+                                    ),
+                            ),
+                            None => todo!(),
+                        },
                     },
-                },
-            }
-        })
+                }
+            })
     }
 
     /// If the next token was an ownership label (`erased`, `owned`, `copyable`), consume and return it.
@@ -431,6 +459,145 @@ where
             }
             _ => None,
         }
+    }
+
+    fn parse_let_binder(&mut self, min_indent: usize, indent: usize) -> Dr<PLetBinder> {
+        self.require_lexical().bind(|(name, name_span)| {
+            // We may have a type ascription with `:`.
+            if let Some(TokenTree::Reserved {
+                symbol: ReservedSymbol::Colon,
+                ..
+            }) = self.peek()
+            {
+                // We have a type ascription.
+                self.parse_expr(min_indent, indent).bind(|ty| {
+                    self.require_reserved(ReservedSymbol::Assign).bind(|_| {
+                        self.parse_expr(min_indent, indent)
+                            .map(|to_assign| PLetBinder {
+                                name: Name(WithProvenance::new_with_provenance(
+                                    self.provenance(name_span),
+                                    Str::new(self.config().db, name),
+                                )),
+                                ty: Some(ty),
+                                to_assign,
+                            })
+                    })
+                })
+            } else {
+                self.require_reserved(ReservedSymbol::Assign).bind(|_| {
+                    self.parse_expr(min_indent, indent)
+                        .map(|to_assign| PLetBinder {
+                            name: Name(WithProvenance::new_with_provenance(
+                                self.provenance(name_span),
+                                Str::new(self.config().db, name),
+                            )),
+                            ty: None,
+                            to_assign,
+                        })
+                })
+            }
+        })
+    }
+
+    /// Assuming that the next token is a `let`, parse a `let` expression.
+    fn parse_let_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
+        self.require_reserved(ReservedSymbol::Let)
+            .bind(|let_token| {
+                // Allow a new line before the first binder.
+                let first_binder = if let Some(TokenTree::Newline { .. }) = self.peek() {
+                    Dr::ok(None)
+                } else {
+                    self.parse_let_binder(min_indent, indent + 4).map(Some)
+                };
+
+                first_binder.bind(|binder| {
+                    // Parse any extra binders.
+                    let mut more_binders = Vec::new();
+                    while let Some(TokenTree::Newline {
+                        indent: newline_indent,
+                        ..
+                    }) = self.peek()
+                    {
+                        let newline_indent = *newline_indent;
+                        if newline_indent == indent + 4 {
+                            // This is another binder.
+                            self.next();
+                            more_binders.push(self.parse_let_binder(min_indent, newline_indent));
+                        } else {
+                            break;
+                        }
+                    }
+                    Dr::sequence(more_binders).bind(|mut binders| {
+                        if let Some(binder) = binder {
+                            binders.insert(0, binder)
+                        };
+                        if binders.is_empty() {
+                            Dr::fail(
+                                Report::new(
+                                    ReportKind::Error,
+                                    self.config().source,
+                                    let_token.start,
+                                )
+                                .with_message(message![
+                                    ReservedSymbol::Let,
+                                    " expression bound no variables"
+                                ])
+                                .with_label(
+                                    Label::new(self.config().source, let_token, LabelType::Error)
+                                        .with_message(message![
+                                            "this ",
+                                            ReservedSymbol::Let,
+                                            " expression bound no variables"
+                                        ]),
+                                ),
+                            )
+                        } else {
+                            self.require_newline()
+                                .bind(|(newline_span, newline_indent)| {
+                                    if newline_indent != indent {
+                                        Dr::fail(
+                                            Report::new(
+                                                ReportKind::Error,
+                                                self.config().source,
+                                                newline_span.start,
+                                            )
+                                            .with_message("new line had incorrect indent".into())
+                                            .with_label(
+                                                Label::new(
+                                                    self.config().source,
+                                                    newline_span,
+                                                    LabelType::Error,
+                                                )
+                                                .with_message(message![
+                                                    "line had ",
+                                                    newline_indent.to_string(),
+                                                    " spaces of indent, but expected ",
+                                                    indent.to_string(),
+                                                    " spaces"
+                                                ]),
+                                            )
+                                            .with_note(message![
+                                                "to add another variable to the ",
+                                                ReservedSymbol::Let,
+                                                " expression, use ",
+                                                (indent + 4).to_string(),
+                                                " spaces"
+                                            ]),
+                                        )
+                                    } else {
+                                        self.parse_expr(min_indent, indent).map(|body| {
+                                            PExpression::Let {
+                                                let_token,
+                                                binders,
+                                                body: Box::new(body),
+                                            }
+                                        })
+                                    }
+                                })
+                        }
+                    })
+                })
+            })
     }
 
     /// Parses a single lambda abstraction binder.
@@ -485,10 +652,9 @@ where
                     } else {
                         todo!()
                     };
-                    // Indents inside blocks are set to zero, so that newlines are always consumed.
                     inner
                         .require_reserved(ReservedSymbol::Colon)
-                        .bind(|_| inner.parse_expr(0))
+                        .bind(|_| inner.parse_expr(indent, indent))
                         .bind(|ty| {
                             inner.assert_end().map(|()| PLambdaBinder {
                                 name,
@@ -521,7 +687,7 @@ where
     }
 
     /// Assuming that the next token is a `fn`, parse a `fn <binders> => e` expression.
-    fn parse_fn_expr(&mut self, indent: usize) -> Dr<PExpression> {
+    fn parse_fn_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
         let fn_token = self.next().unwrap().span();
 
         // Parse one or more binders.
@@ -548,17 +714,19 @@ where
 
         Dr::sequence(binders).bind(|binders| {
             // TODO: Check that there is at least one binder?
-            self.parse_expr(indent).map(|result| PExpression::Lambda {
-                fn_token,
-                binders,
-                result: Box::new(result),
-            })
+            self.parse_expr(min_indent, indent)
+                .map(|result| PExpression::Lambda {
+                    fn_token,
+                    binders,
+                    result: Box::new(result),
+                })
         })
     }
 
     /// Parses syntax of the form `ownership? name : type` or `ownership? type`.
     fn parse_function_binder(
         &mut self,
+        indent: usize,
         annotation: BinderAnnotation,
         brackets: Option<(Span, Span)>,
     ) -> Dr<PFunctionBinder> {
@@ -583,8 +751,7 @@ where
             self.next();
             if let TokenTree::Lexical { text, span } = tt {
                 // Parse the type of the parameter.
-                // Since we're in a block, the indent level is zero.
-                self.parse_expr(0).bind(|ty| {
+                self.parse_expr(indent, indent).bind(|ty| {
                     self.assert_end().map(|()| PFunctionBinder {
                         name: Some(Name(WithProvenance::new_with_provenance(
                             self.provenance(span),
@@ -602,8 +769,7 @@ where
         } else {
             // This is syntax of the form `type`.
             self.push(tt);
-            // Since we're in a block, the indent level is zero.
-            self.parse_expr(0).bind(|ty| {
+            self.parse_expr(indent, indent).bind(|ty| {
                 self.assert_end().map(|()| PFunctionBinder {
                     name: None,
                     annotation,
@@ -616,17 +782,22 @@ where
     }
 
     /// An expression is:
+    /// - a `let` expression;
     /// - a lambda, written `fn <binders> => e`;
     /// - a function type, written `<binder> -> e`; or
     /// - a Pratt expression.
     /// The indent parameter gives the indent level of the surrounding environment.
     /// New line tokens are consumed if their indent is greater than the environment's indent level.
-    pub fn parse_expr(&mut self, indent: usize) -> Dr<PExpression> {
+    pub fn parse_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
         let result = match self.peek() {
+            Some(TokenTree::Reserved {
+                symbol: ReservedSymbol::Let,
+                ..
+            }) => self.parse_let_expr(min_indent, indent),
             Some(TokenTree::Reserved {
                 symbol: ReservedSymbol::Fn,
                 ..
-            }) => self.parse_fn_expr(indent),
+            }) => self.parse_fn_expr(min_indent, indent),
             Some(TokenTree::Block { .. }) => {
                 // We can check if this is a function type by peeking at the token tree after this block.
                 let block = self.next().unwrap();
@@ -648,16 +819,16 @@ where
                     } = block
                     {
                         let mut inner = self.with_vec(open, close, contents);
-                        // Indents inside blocks are always set to zero so that newlines are always consumed.
                         inner
-                            .parse_function_binder(bracket.into(), Some((open, close)))
+                            .parse_function_binder(indent, bracket.into(), Some((open, close)))
                             .bind(|binder| {
-                                self.parse_expr(indent)
-                                    .map(|result| PExpression::FunctionType {
+                                self.parse_expr(indent, indent).map(|result| {
+                                    PExpression::FunctionType {
                                         binder,
                                         arrow_token,
                                         result: Box::new(result),
-                                    })
+                                    }
+                                })
                             })
                     } else {
                         unreachable!()
@@ -666,10 +837,10 @@ where
                     // This wasn't a function type.
                     // Push the block back, and fall back to the Pratt expression parser.
                     self.push(block);
-                    self.parse_pratt_expr(indent)
+                    self.parse_pratt_expr(min_indent, indent)
                 }
             }
-            _ => self.parse_pratt_expr(indent),
+            _ => self.parse_pratt_expr(min_indent, indent),
         };
 
         // After we parse the initial expression, it's possible that we have an arrow token `->`
@@ -682,7 +853,7 @@ where
             {
                 let arrow_token = *span;
                 self.next();
-                self.parse_expr(indent)
+                self.parse_expr(min_indent, indent)
                     .map(|result| PExpression::FunctionType {
                         binder: PFunctionBinder {
                             name: None,

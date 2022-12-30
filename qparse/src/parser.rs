@@ -307,7 +307,7 @@ where
                             .with_message(message!["unexpected ", &tt, " found here"]),
                     ),
             ),
-            None => todo!(),
+            None => todo!("{symbol}"),
         }
     }
 

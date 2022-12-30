@@ -8,3 +8,9 @@ S: {A: Sort::{u}} -> {B: Sort::{v}} -> {C: Sort::{w}} ->
 K: {A: Sort::{u}} -> {B: Sort::{v}} -> A -> B -> A = fn {A} {B} a b => a
 
 I: {A: Sort::{u}} -> A -> A = fn {A} a => K a a
+
+let_test: {A: Sort::{u}} -> A -> A =
+    fn a => let
+        b = a
+        c = b
+    c
