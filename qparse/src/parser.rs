@@ -312,12 +312,12 @@ where
     }
 
     /// Parses the next token tree, and asserts that it is a newline token tree.
-    pub fn require_newline(&mut self) -> Dr<Span> {
+    pub fn require_newline(&mut self) -> Dr<(Span, usize)> {
         match self.next() {
-            Some(TokenTree::Newline { span }) => Dr::ok(span),
+            Some(TokenTree::Newline { span, indent }) => Dr::ok((span, indent)),
             Some(tt) => Dr::fail(
                 Report::new(ReportKind::Error, self.config().source, tt.span().start)
-                    .with_message(message!["expected newline, found ", &tt])
+                    .with_message(message!["expected new line, found ", &tt])
                     .with_label(
                         Label::new(self.config().source, tt.span(), LabelType::Error)
                             .with_message(message!["unexpected ", &tt, " found here"]),

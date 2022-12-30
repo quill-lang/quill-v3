@@ -38,10 +38,20 @@ where
                     ..
                 }) => {
                     // We first need to parse a type ascription.
-                    self.parse_expr(false).bind(|ty| {
+                    self.parse_expr(0).bind(|ty| {
                         self.require_reserved(ReservedSymbol::Assign).bind(|_| {
+                            // Allow a newline after the `=` token.
+                            let indent =
+                                if let Some(TokenTree::Newline { indent, .. }) = self.peek() {
+                                    let indent = *indent;
+                                    self.next();
+                                    indent
+                                } else {
+                                    0
+                                };
+                                
                             // Parse the body of the definition.
-                            self.parse_expr(false).map(|body| PDefinition {
+                            self.parse_expr(indent).map(|body| PDefinition {
                                 name: Name(WithProvenance::new_with_provenance(
                                     self.provenance(name_span),
                                     Str::new(self.config().db, name),
@@ -56,8 +66,17 @@ where
                     symbol: ReservedSymbol::Assign,
                     ..
                 }) => {
+                    // Allow a newline after the `=` token.
+                    let indent = if let Some(TokenTree::Newline { indent, .. }) = self.peek() {
+                        let indent = *indent;
+                        self.next();
+                        indent
+                    } else {
+                        0
+                    };
+
                     // Parse the body of the definition.
-                    self.parse_expr(false).map(|body| PDefinition {
+                    self.parse_expr(indent).map(|body| PDefinition {
                         name: Name(WithProvenance::new_with_provenance(
                             self.provenance(name_span),
                             Str::new(self.config().db, name),
@@ -90,6 +109,11 @@ where
         let mut result = Vec::new();
         let mut reports = Vec::new();
         while self.peek().is_some() {
+            // Consume any extra new lines.
+            while matches!(self.peek(), Some(TokenTree::Newline { .. })) {
+                self.next();
+            }
+
             match self.parse_def().destructure() {
                 (Some(def), more_reports) => {
                     result.push(def);

@@ -206,7 +206,7 @@ where
     }
 
     /// Parse all token trees that could be part of a Pratt expression.
-    fn parse_pratt_expr_terms(&mut self, multiple_lines: bool) -> Dr<Vec<SmallExpression>> {
+    fn parse_pratt_expr_terms(&mut self, indent: usize) -> Dr<Vec<SmallExpression>> {
         let mut result = Vec::new();
         loop {
             match self.peek() {
@@ -296,7 +296,9 @@ where
                     }) = self.next()
                     {
                         let mut inner = self.with_vec(open, close, contents);
-                        result.push(inner.parse_expr(true).bind(|expr| {
+                        // We override the indent level to zero for blocks, so that
+                        // any newlines inside blocks are always consumed.
+                        result.push(inner.parse_expr(0).bind(|expr| {
                             inner
                                 .assert_end()
                                 .map(|()| SmallExpression::PExpression(expr))
@@ -305,37 +307,11 @@ where
                         unreachable!()
                     }
                 }
-                Some(indented @ TokenTree::Indented { .. }) => {
-                    let span = indented.span();
-                    if multiple_lines {
-                        if let Some(TokenTree::Indented { contents, .. }) = self.next() {
-                            let mut inner = self.with_vec(
-                                (span.start..span.start + 1).into(),
-                                (span.end..span.end + 1).into(),
-                                contents,
-                            );
-                            let (terms, mut reports) =
-                                inner.parse_pratt_expr_terms(true).destructure();
-                            match terms {
-                                Some(terms) => {
-                                    for term in terms {
-                                        result.push(Dr::ok_with_many(
-                                            term,
-                                            std::mem::take(&mut reports),
-                                        ));
-                                    }
-                                }
-                                None => result.push(Dr::fail_many(reports)),
-                            }
-                        } else {
-                            unreachable!()
-                        }
-                    } else {
-                        return Dr::sequence(result);
-                    }
-                }
-                Some(TokenTree::Newline { .. }) => {
-                    if multiple_lines {
+                Some(TokenTree::Newline {
+                    indent: newline_indent,
+                    ..
+                }) => {
+                    if *newline_indent > indent {
                         self.next();
                     } else {
                         return Dr::sequence(result);
@@ -348,8 +324,8 @@ where
 
     /// Parses a Pratt expression.
     /// TODO: Write this complete function. For now, we just parse function applications.
-    pub fn parse_pratt_expr(&mut self, multiple_lines: bool) -> Dr<PExpression> {
-        self.parse_pratt_expr_terms(multiple_lines).bind(|terms| {
+    pub fn parse_pratt_expr(&mut self, indent: usize) -> Dr<PExpression> {
+        self.parse_pratt_expr_terms(indent).bind(|terms| {
             let result = terms
                 .into_iter()
                 .map(|small_expr| match small_expr {
@@ -458,7 +434,7 @@ where
     }
 
     /// Parses a single lambda abstraction binder.
-    fn parse_lambda_binder(&mut self, fn_token: Span) -> Dr<PLambdaBinder> {
+    fn parse_lambda_binder(&mut self, indent: usize, fn_token: Span) -> Dr<PLambdaBinder> {
         match self.next() {
             // A single lexical token is interpreted as a binder with no explicit type, using
             // the explicit binder annotation.
@@ -509,9 +485,10 @@ where
                     } else {
                         todo!()
                     };
+                    // Indents inside blocks are set to zero, so that newlines are always consumed.
                     inner
                         .require_reserved(ReservedSymbol::Colon)
-                        .bind(|_| inner.parse_expr(true))
+                        .bind(|_| inner.parse_expr(0))
                         .bind(|ty| {
                             inner.assert_end().map(|()| PLambdaBinder {
                                 name,
@@ -544,7 +521,7 @@ where
     }
 
     /// Assuming that the next token is a `fn`, parse a `fn <binders> => e` expression.
-    fn parse_fn_expr(&mut self, multiple_lines: bool) -> Dr<PExpression> {
+    fn parse_fn_expr(&mut self, indent: usize) -> Dr<PExpression> {
         let fn_token = self.next().unwrap().span();
 
         // Parse one or more binders.
@@ -559,7 +536,7 @@ where
                     break;
                 }
                 _ => {
-                    let binder = self.parse_lambda_binder(fn_token);
+                    let binder = self.parse_lambda_binder(indent, fn_token);
                     let errored = binder.errored();
                     binders.push(binder);
                     if errored {
@@ -571,12 +548,11 @@ where
 
         Dr::sequence(binders).bind(|binders| {
             // TODO: Check that there is at least one binder?
-            self.parse_expr(multiple_lines)
-                .map(|result| PExpression::Lambda {
-                    fn_token,
-                    binders,
-                    result: Box::new(result),
-                })
+            self.parse_expr(indent).map(|result| PExpression::Lambda {
+                fn_token,
+                binders,
+                result: Box::new(result),
+            })
         })
     }
 
@@ -607,7 +583,8 @@ where
             self.next();
             if let TokenTree::Lexical { text, span } = tt {
                 // Parse the type of the parameter.
-                self.parse_expr(true).bind(|ty| {
+                // Since we're in a block, the indent level is zero.
+                self.parse_expr(0).bind(|ty| {
                     self.assert_end().map(|()| PFunctionBinder {
                         name: Some(Name(WithProvenance::new_with_provenance(
                             self.provenance(span),
@@ -625,7 +602,8 @@ where
         } else {
             // This is syntax of the form `type`.
             self.push(tt);
-            self.parse_expr(true).bind(|ty| {
+            // Since we're in a block, the indent level is zero.
+            self.parse_expr(0).bind(|ty| {
                 self.assert_end().map(|()| PFunctionBinder {
                     name: None,
                     annotation,
@@ -641,12 +619,14 @@ where
     /// - a lambda, written `fn <binders> => e`;
     /// - a function type, written `<binder> -> e`; or
     /// - a Pratt expression.
-    pub fn parse_expr(&mut self, multiple_lines: bool) -> Dr<PExpression> {
+    /// The indent parameter gives the indent level of the surrounding environment.
+    /// New line tokens are consumed if their indent is greater than the environment's indent level.
+    pub fn parse_expr(&mut self, indent: usize) -> Dr<PExpression> {
         let result = match self.peek() {
             Some(TokenTree::Reserved {
                 symbol: ReservedSymbol::Fn,
                 ..
-            }) => self.parse_fn_expr(multiple_lines),
+            }) => self.parse_fn_expr(indent),
             Some(TokenTree::Block { .. }) => {
                 // We can check if this is a function type by peeking at the token tree after this block.
                 let block = self.next().unwrap();
@@ -668,16 +648,16 @@ where
                     } = block
                     {
                         let mut inner = self.with_vec(open, close, contents);
+                        // Indents inside blocks are always set to zero so that newlines are always consumed.
                         inner
                             .parse_function_binder(bracket.into(), Some((open, close)))
                             .bind(|binder| {
-                                self.parse_expr(multiple_lines).map(|result| {
-                                    PExpression::FunctionType {
+                                self.parse_expr(indent)
+                                    .map(|result| PExpression::FunctionType {
                                         binder,
                                         arrow_token,
                                         result: Box::new(result),
-                                    }
-                                })
+                                    })
                             })
                     } else {
                         unreachable!()
@@ -686,10 +666,10 @@ where
                     // This wasn't a function type.
                     // Push the block back, and fall back to the Pratt expression parser.
                     self.push(block);
-                    self.parse_pratt_expr(multiple_lines)
+                    self.parse_pratt_expr(indent)
                 }
             }
-            _ => self.parse_pratt_expr(multiple_lines),
+            _ => self.parse_pratt_expr(indent),
         };
 
         // After we parse the initial expression, it's possible that we have an arrow token `->`
@@ -702,7 +682,7 @@ where
             {
                 let arrow_token = *span;
                 self.next();
-                self.parse_expr(multiple_lines)
+                self.parse_expr(indent)
                     .map(|result| PExpression::FunctionType {
                         binder: PFunctionBinder {
                             name: None,

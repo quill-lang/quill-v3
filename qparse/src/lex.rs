@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Display, iter::Peekable};
+use std::{fmt::Display, iter::Peekable};
 
 use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
 use fexpr::{
@@ -150,10 +150,9 @@ pub enum TokenTree {
         close: Span,
         contents: Vec<TokenTree>,
     },
-    /// An indented block of tokens.
-    Indented { contents: Vec<TokenTree> },
-    /// A line terminator.
-    Newline { span: Span },
+    /// The *start* of a new line.
+    /// The amount of indentation at the start of this line is given.
+    Newline { span: Span, indent: usize },
 }
 
 impl Display for TokenTree {
@@ -164,8 +163,7 @@ impl Display for TokenTree {
             TokenTree::Reserved { symbol, .. } => write!(f, "'{symbol}'"),
             TokenTree::Comment { .. } => write!(f, "comment"),
             TokenTree::Block { .. } => write!(f, "block"),
-            TokenTree::Indented { .. } => write!(f, "indented block"),
-            TokenTree::Newline { .. } => write!(f, "newline"),
+            TokenTree::Newline { .. } => write!(f, "new line"),
         }
     }
 }
@@ -190,17 +188,7 @@ impl Spanned for TokenTree {
                 start: open.start,
                 end: close.end,
             },
-            TokenTree::Indented { contents } => {
-                if let Some(first) = contents.first() {
-                    Span {
-                        start: first.span().start,
-                        end: contents.last().unwrap().span().end,
-                    }
-                } else {
-                    unreachable!("indented token trees should be nonempty")
-                }
-            }
-            TokenTree::Newline { span } => *span,
+            TokenTree::Newline { span, .. } => *span,
         }
     }
 }
@@ -297,14 +285,11 @@ fn tokenise_line(
     Dr::ok((leading_whitespace, tokens))
 }
 
+/// We opened a bracket that must be closed by a matching bracket.
 #[derive(Debug)]
-enum StackEntry {
-    /// We have entered into a deeper indentation level.
-    /// The field `level` is the amount of characters the indent is.
-    /// This is typically a multiple of 4.
-    Indent { level: usize, span: Span },
-    /// We opened a bracket that must be closed by a matching bracket.
-    OpenBracket { bracket: Bracket, span: Span },
+struct StackEntry {
+    bracket: Bracket,
+    span: Span,
 }
 
 struct Stack {
@@ -331,83 +316,10 @@ impl Stack {
         }
     }
 
-    fn peek_top(&mut self) -> Option<&TokenTree> {
-        match self.stack.last() {
-            Some((_, tokens)) => tokens.last(),
-            None => self.result.last(),
-        }
-    }
-
-    fn pop_top(&mut self) {
-        if let Some((_, tokens)) = self.stack.last_mut() {
-            tokens.pop();
-        } else {
-            self.result.pop();
-        }
-    }
-
-    fn pop_indent(&mut self, new_indent: usize, new_indent_span: Span) -> Dr<()> {
-        // While the previous token was a newline, remove it.
-        while matches!(self.peek_top(), Some(TokenTree::Newline { .. })) {
-            self.pop_top();
-        }
-
-        match self.pop() {
-            Some((StackEntry::OpenBracket { bracket: _, span }, _)) => Dr::fail(
-                Report::new(ReportKind::Error, self.source, new_indent_span.start)
-                    .with_message("decrease in indentation level was unexpected inside block".into())
-                    .with_label(
-                        Label::new(self.source, new_indent_span, LabelType::Error)
-                            .with_message("decrease in indentation level found here".into()),
-                    ).with_label(Label::new(self.source, span, LabelType::Note)
-                        .with_message("opening bracket found here, this bracket must be closed before the indent level can be reduced".into())),
-            ),
-            Some((StackEntry::Indent { level, .. }, contents)) => {
-                // Check if the new indentation level matches the given one.
-                match (new_indent + 4).cmp(&level) {
-                    Ordering::Less => {
-                        // We can skip over this level on the stack.
-                        self.push_top(TokenTree::Indented { contents });
-                        self.pop_indent(new_indent, new_indent_span)
-                    }
-                    Ordering::Equal => {
-                        // We are exactly at the correct level.
-                        self.push_top(TokenTree::Indented { contents });
-                        Dr::ok(())
-                    }
-                    Ordering::Greater => {
-                        // We removed too many levels of indentation.
-                        todo!()
-                    }
-                }
-            }
-            None => Dr::fail(
-                Report::new(ReportKind::Error, self.source, new_indent_span.start)
-                    .with_message("decrease in indentation level was unexpected, because there was no increase before".into())
-                    .with_label(
-                        Label::new(self.source, new_indent_span, LabelType::Error)
-                            .with_message("decrease in indentation level found here".into()),
-                    ),
-            ),
-        }
-    }
-
-    /// Call this at EOF. Pops all indents.
-    fn pop_all_indents(&mut self) {
-        while let Some((StackEntry::Indent { .. }, _)) = self.stack.last() {
-            match self.stack.pop() {
-                Some((StackEntry::Indent { .. }, contents)) => {
-                    self.push_top(TokenTree::Indented { contents });
-                }
-                _ => unreachable!(),
-            }
-        }
-    }
-
     fn pop_bracket(&mut self, bracket: Bracket, span: Span) -> Dr<()> {
         match self.pop() {
             Some((
-                StackEntry::OpenBracket {
+                StackEntry {
                     bracket: found_bracket,
                     span: found_span,
                 },
@@ -425,10 +337,6 @@ impl Stack {
                 } else {
                     todo!()
                 }
-            }
-            Some((StackEntry::Indent { .. }, _)) => {
-                // We're allowed to resolve indents *after* closing brackets.
-                todo!()
             }
             None => Dr::fail(
                 Report::new(ReportKind::Error, self.source, span.start)
@@ -456,79 +364,49 @@ pub fn tokenise(source: Source, stream: impl Iterator<Item = char>) -> Dr<Vec<To
         result: Vec::new(),
         stack: Vec::new(),
     };
-    let mut current_indent = 0;
+
+    let mut previous_newline_span = Span { start: 0, end: 0 };
 
     // Peek at the next character in the stream.
     loop {
         let (result, more_reports) = tokenise_line(source, &mut stream).destructure();
         reports.extend(more_reports);
-        let (indentation, tokens) = match result {
+        let (indent, tokens) = match result {
             Some(result) => result,
             None => break,
         };
 
-        // Get the span of the first character on the line.
+        stack.push_top(TokenTree::Newline {
+            span: previous_newline_span,
+            indent,
+        });
+
         // If there are no tokens on the line, just ignore the line entirely.
-        let start_span = match tokens.first() {
-            Some((_, span)) => Span {
-                start: span.start,
-                end: span.start + 1,
-            },
-            None => {
-                // Consume the newline character at the end of the line.
-                let mut consumed_anything = false;
-                while stream.next_if(|(_, c)| *c == '\r' || *c == '\n').is_some() {
-                    consumed_anything = true;
-                }
-                if consumed_anything {
-                    continue;
-                } else {
-                    break;
-                }
+        if tokens.first().is_none() {
+            // Consume the newline character at the end of the line.
+            let mut consumed_anything = false;
+            while stream.next_if(|(_, c)| *c == '\r' || *c == '\n').is_some() {
+                consumed_anything = true;
+            }
+            if consumed_anything {
+                continue;
+            } else {
+                break;
             }
         };
-
-        // If our indentation increased or decreased, resolve this on the stack.
-        match indentation.cmp(&current_indent) {
-            Ordering::Less => {
-                let (value, more_reports) = stack.pop_indent(indentation, start_span).destructure();
-                reports.extend(more_reports);
-                if value.is_none() {
-                    break;
-                }
-            }
-            Ordering::Equal => {}
-            Ordering::Greater => {
-                // The indentation level should have increased by exactly 4.
-                if indentation - current_indent != 4 {
-                    todo!()
-                }
-
-                // If the previous token was a newline, remove it.
-                if matches!(stack.peek_top(), Some(TokenTree::Newline { .. })) {
-                    stack.pop_top();
-                }
-
-                stack.push(StackEntry::Indent {
-                    level: indentation,
-                    span: start_span,
-                });
-            }
-        }
-        current_indent = indentation;
 
         // Operate on each token on the line.
         for (token, span) in tokens {
             match token.as_str() {
-                "(" => stack.push(StackEntry::OpenBracket {
+                "(" => stack.push(StackEntry {
                     bracket: Bracket::Paren,
                     span,
                 }),
-                "[" => stack.push(StackEntry::OpenBracket {
+                "[" => stack.push(StackEntry {
                     bracket: Bracket::Square,
                     span,
                 }),
-                "{" => stack.push(StackEntry::OpenBracket {
+                "{" => stack.push(StackEntry {
                     bracket: Bracket::Brace,
                     span,
                 }),
@@ -562,7 +440,12 @@ pub fn tokenise(source: Source, stream: impl Iterator<Item = char>) -> Dr<Vec<To
             }
         }
         match span {
-            Some(span) => stack.push_top(TokenTree::Newline { span }),
+            Some(span) => {
+                previous_newline_span = Span {
+                    start: span.end,
+                    end: span.end + 1,
+                }
+            }
             None => {
                 // We must be at the end of the file.
                 break;
@@ -575,23 +458,15 @@ pub fn tokenise(source: Source, stream: impl Iterator<Item = char>) -> Dr<Vec<To
         .any(|report| report.kind == ReportKind::Error)
     {
         // There were no errors emitted so far.
-        // Perform some final checks.
-
-        // First, pop all indents from the stack.
-        stack.pop_all_indents();
-
         if let Some((last, _)) = stack.stack.last() {
-            match last {
-                StackEntry::Indent { .. } => unreachable!("just popped all indents"),
-                StackEntry::OpenBracket { span, .. } => reports.push(
-                    Report::new(ReportKind::Error, source, span.start)
-                        .with_message("this bracket was not closed".into())
-                        .with_label(
-                            Label::new(source, *span, LabelType::Error)
-                                .with_message("opening bracket found here".into()),
-                        ),
-                ),
-            }
+            reports.push(
+                Report::new(ReportKind::Error, source, last.span.start)
+                    .with_message("this bracket was not closed".into())
+                    .with_label(
+                        Label::new(source, last.span, LabelType::Error)
+                            .with_message("opening bracket found here".into()),
+                    ),
+            )
         }
 
         if stream.next().is_some() {

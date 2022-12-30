@@ -1,9 +1,9 @@
 id: {A: Sort::{u}} -> A -> A = fn {A} a => a
 
-S: ({A: Sort::{u}} -> {B: Sort::{v}} -> {C: Sort::{w}} ->
-    (A -> B -> C) -> (A -> B) ->
-    (A) -> C
-) = fn {A} {B} {C} x y z => (x z) (y z)
+S: {A: Sort::{u}} -> {B: Sort::{v}} -> {C: Sort::{w}} ->
+        (A -> B -> C) -> (A -> B) ->
+        (A) -> C =
+    fn {A} {B} {C} x y z => (x z) (y z)
 
 K: {A: Sort::{u}} -> {B: Sort::{v}} -> A -> B -> A = fn {A} {B} a b => a
 
