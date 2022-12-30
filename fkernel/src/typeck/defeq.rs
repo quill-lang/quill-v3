@@ -152,6 +152,14 @@ fn binder_definitionally_equal(
     left: &Binder<(), Term>,
     right: &Binder<(), Term>,
 ) -> Ir<bool> {
+    if left.structure.ownership != right.structure.ownership {
+        return Ok(false);
+    }
+
+    if !definitionally_equal(db, left.structure.region, right.structure.region)? {
+        return Ok(false);
+    }
+
     if !definitionally_equal(db, left.structure.bound.ty, right.structure.bound.ty)? {
         return Ok(false);
     }
@@ -255,6 +263,10 @@ fn try_eta_expansion(db: &dyn Db, lambda: &Binder<(), Term>, t: Term) -> Option<
         Ok(value) => to_weak_head_normal_form(db, value),
         Err(err) => return Some(Err(err)),
     };
+
+    if lambda.structure.ownership == FunctionOwnership::Many {
+        todo!()
+    }
 
     if let ExpressionT::Pi(_) = t_type.value(db) {
         let new_expr = Term::new(

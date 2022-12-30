@@ -38,6 +38,7 @@ pub enum InferenceError {
         argument: Term,
         argument_type: Term,
     },
+    FunctionOwnershipMismatch,
     ExpectedSort(Term),
     ExpectedPi,
     ExpectedDelta,
@@ -72,6 +73,7 @@ impl From<&InferenceError> for Message {
                 " of type ",
                 *argument_type
             ],
+            InferenceError::FunctionOwnershipMismatch => todo!(),
             InferenceError::ExpectedSort(t) => message!["term ", *t, " was not a sort"],
             InferenceError::ExpectedPi => todo!(),
             InferenceError::ExpectedDelta => todo!(),
@@ -302,36 +304,76 @@ fn infer_type_region_pi(db: &dyn Db, pi: &RegionBinder<(), Term>) -> Ir<Term> {
 
 fn infer_type_apply(db: &dyn Db, apply: &Apply<Term>) -> Ir<Term> {
     let function_type = infer_type_core(db, apply.function)?;
-    match as_pi(db, function_type) {
-        Ok(function_type_binder) => {
-            let argument_type = infer_type_core(db, apply.argument)?;
+    match as_delta(db, function_type) {
+        Ok(function_type_delta) => match as_pi(db, function_type_delta.ty) {
+            Ok(function_type_binder) => {
+                if function_type_binder.structure.ownership != FunctionOwnership::Many {
+                    return Err(InferenceError::FunctionOwnershipMismatch);
+                }
 
-            if !definitionally_equal(db, argument_type, function_type_binder.structure.bound.ty)? {
-                return Err(InferenceError::ApplyTypeMismatch {
-                    function: apply.function,
-                    function_type,
-                    argument: apply.argument,
+                let argument_type = infer_type_core(db, apply.argument)?;
+
+                if !definitionally_equal(
+                    db,
                     argument_type,
-                });
+                    function_type_binder.structure.bound.ty,
+                )? {
+                    return Err(InferenceError::ApplyTypeMismatch {
+                        function: apply.function,
+                        function_type,
+                        argument: apply.argument,
+                        argument_type,
+                    });
+                }
+
+                Ok(instantiate(db, function_type_binder.result, apply.argument))
             }
+            Err(_) => Err(InferenceError::ApplyTypeMismatch {
+                function: apply.function,
+                function_type,
+                argument: apply.argument,
+                argument_type: infer_type_core(db, apply.argument)?,
+            }),
+        },
+        Err(_) => match as_pi(db, function_type) {
+            Ok(function_type_binder) => {
+                if function_type_binder.structure.ownership != FunctionOwnership::Once {
+                    return Err(InferenceError::FunctionOwnershipMismatch);
+                }
 
-            Ok(instantiate(db, function_type_binder.result, apply.argument))
-        }
-        Err(_) => {
-            let function_type_binder = as_region_pi(db, function_type)?;
-            let argument_type = infer_type_core(db, apply.argument)?;
+                let argument_type = infer_type_core(db, apply.argument)?;
 
-            if !definitionally_equal(db, argument_type, Term::new(db, ExpressionT::Region))? {
-                return Err(InferenceError::ApplyTypeMismatch {
-                    function: apply.function,
-                    function_type,
-                    argument: apply.argument,
+                if !definitionally_equal(
+                    db,
                     argument_type,
-                });
-            }
+                    function_type_binder.structure.bound.ty,
+                )? {
+                    return Err(InferenceError::ApplyTypeMismatch {
+                        function: apply.function,
+                        function_type,
+                        argument: apply.argument,
+                        argument_type,
+                    });
+                }
 
-            Ok(instantiate(db, function_type_binder.body, apply.argument))
-        }
+                Ok(instantiate(db, function_type_binder.result, apply.argument))
+            }
+            Err(_) => {
+                let function_type_binder = as_region_pi(db, function_type)?;
+                let argument_type = infer_type_core(db, apply.argument)?;
+
+                if !definitionally_equal(db, argument_type, Term::new(db, ExpressionT::Region))? {
+                    return Err(InferenceError::ApplyTypeMismatch {
+                        function: apply.function,
+                        function_type,
+                        argument: apply.argument,
+                        argument_type,
+                    });
+                }
+
+                Ok(instantiate(db, function_type_binder.body, apply.argument))
+            }
+        },
     }
 }
 
@@ -468,6 +510,7 @@ fn process_match(
                 },
                 ownership: ParameterOwnership::POwned,
             },
+            ownership: FunctionOwnership::Once,
             binder_annotation: BinderAnnotation::Explicit,
             region: Term::new(db, ExpressionT::StaticRegion),
         }))
@@ -834,6 +877,7 @@ fn process_fix(
                         ownership: ParameterOwnership::POwned,
                     },
                     binder_annotation: BinderAnnotation::Explicit,
+                    ownership: FunctionOwnership::Once,
                     region: Term::new(db, ExpressionT::StaticRegion),
                 };
                 let argument_local = LocalConstant {
@@ -858,6 +902,7 @@ fn process_fix(
                             ownership: ParameterOwnership::POwned,
                         },
                         binder_annotation: BinderAnnotation::Explicit,
+                        ownership: FunctionOwnership::Once,
                         region: Term::new(db, ExpressionT::StaticRegion),
                     },
                 };

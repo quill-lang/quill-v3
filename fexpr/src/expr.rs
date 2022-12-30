@@ -147,6 +147,16 @@ pub enum BinderAnnotation {
     ImplicitTypeclass,
 }
 
+/// How should the function be called?
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum FunctionOwnership {
+    /// The function is to be called exactly once.
+    Once,
+    /// The function can be called arbitrarily many times, from behind a borrow.
+    /// Such functions can be dropped (as in [`Drop`]).
+    Many,
+}
+
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct BinderStructure<P, E>
 where
@@ -156,6 +166,8 @@ where
     pub bound: BoundVariable<P, E>,
     /// How the parameter should be filled when calling the function.
     pub binder_annotation: BinderAnnotation,
+    /// How the function should be called.
+    pub ownership: FunctionOwnership,
     /// The region for which the function may be owned.
     pub region: E,
 }
@@ -165,6 +177,7 @@ impl BinderStructure<Provenance, Box<Expression>> {
         BinderStructure {
             bound: self.bound.without_provenance(db),
             binder_annotation: self.binder_annotation,
+            ownership: self.ownership,
             region: self.region.to_term(db),
         }
     }
@@ -175,6 +188,7 @@ impl BinderStructure<(), Term> {
         BinderStructure {
             bound: self.bound.synthetic(db),
             binder_annotation: self.binder_annotation,
+            ownership: self.ownership,
             region: Box::new(self.region.to_expression(db)),
         }
     }
@@ -274,6 +288,7 @@ impl RegionBinder<(), Term> {
                     ty: Term::new(db, ExpressionT::Region),
                     ownership: ParameterOwnership::PCopyable,
                 },
+                ownership: FunctionOwnership::Once,
                 binder_annotation: BinderAnnotation::Explicit,
                 region: Term::new(db, ExpressionT::StaticRegion),
             },

@@ -37,6 +37,7 @@
                                     ownership: POwned,
                                 ),
                                 binder_annotation: Explicit,
+                                ownership: Once,
                                 region: (contents: StaticRegion),
                             ),
                         ],
@@ -67,6 +68,7 @@
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
+                        ownership: Once,
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Inst(
@@ -91,6 +93,7 @@
                             ownership: POwned,
                         ),
                         binder_annotation: Explicit,
+                        ownership: Once,
                         region: (contents: StaticRegion),
                     ),
                     result: (contents: Fix(
@@ -153,6 +156,7 @@
                             ownership: PZero,
                         ),
                         binder_annotation: ImplicitEager,
+                        ownership: Once,
                         region: (contents: StaticRegion)
                     ),
                     (
@@ -162,6 +166,7 @@
                             ownership: PZero,
                         ),
                         binder_annotation: Explicit,
+                        ownership: Once,
                         region: (contents: StaticRegion)
                     ),
                     (
@@ -171,6 +176,7 @@
                             ownership: PZero,
                         ),
                         binder_annotation: Explicit,
+                        ownership: Once,
                         region: (contents: StaticRegion)
                     ),
                 ],
@@ -189,6 +195,7 @@
                                     ownership: PZero,
                                 ),
                                 binder_annotation: ImplicitEager,
+                                ownership: Once,
                                 region: (contents: StaticRegion)
                             ),
                             (
@@ -198,6 +205,7 @@
                                     ownership: PZero,
                                 ),
                                 binder_annotation: Explicit,
+                                ownership: Once,
                                 region: (contents: StaticRegion)
                             ),
                         ],

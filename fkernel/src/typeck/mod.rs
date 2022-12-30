@@ -162,7 +162,7 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
                         ))
                     }
                 }
-                Err(err) => Dr::fail(
+                Err(_) => Dr::fail(
                     Report::new(
                         ReportKind::Error,
                         Source::new(db, path.split_last(db).0, SourceType::Feather),
