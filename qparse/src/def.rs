@@ -40,18 +40,8 @@ where
                     // We first need to parse a type ascription.
                     self.parse_expr(0, 0).bind(|ty| {
                         self.require_reserved(ReservedSymbol::Assign).bind(|_| {
-                            // Allow a newline after the `=` token.
-                            let indent =
-                                if let Some(TokenTree::Newline { indent, .. }) = self.peek() {
-                                    let indent = *indent;
-                                    self.next();
-                                    indent
-                                } else {
-                                    0
-                                };
-
                             // Parse the body of the definition.
-                            self.parse_expr(indent, indent).map(|body| PDefinition {
+                            self.parse_expr(0, 0).map(|body| PDefinition {
                                 name: Name(WithProvenance::new_with_provenance(
                                     self.provenance(name_span),
                                     Str::new(self.config().db, name),
@@ -66,17 +56,8 @@ where
                     symbol: ReservedSymbol::Assign,
                     ..
                 }) => {
-                    // Allow a newline after the `=` token.
-                    let indent = if let Some(TokenTree::Newline { indent, .. }) = self.peek() {
-                        let indent = *indent;
-                        self.next();
-                        indent
-                    } else {
-                        0
-                    };
-
                     // Parse the body of the definition.
-                    self.parse_expr(indent, indent).map(|body| PDefinition {
+                    self.parse_expr(0, 0).map(|body| PDefinition {
                         name: Name(WithProvenance::new_with_provenance(
                             self.provenance(name_span),
                             Str::new(self.config().db, name),

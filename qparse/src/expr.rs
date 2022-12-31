@@ -224,11 +224,7 @@ where
     }
 
     /// Parse all token trees that could be part of a Pratt expression.
-    fn parse_pratt_expr_terms(
-        &mut self,
-        min_indent: usize,
-        mut indent: usize,
-    ) -> Dr<Vec<SmallExpression>> {
+    fn parse_pratt_expr_terms(&mut self, mut indent: usize) -> Dr<Vec<SmallExpression>> {
         let original_indent = indent;
         let mut result = Vec::new();
         loop {
@@ -346,88 +342,85 @@ where
 
     /// Parses a Pratt expression.
     /// TODO: Write this complete function. For now, we just parse function applications.
-    pub fn parse_pratt_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
-        self.parse_pratt_expr_terms(min_indent, indent)
-            .bind(|terms| {
-                let result = terms
-                    .into_iter()
-                    .map(|small_expr| match small_expr {
-                        SmallExpression::QualifiedName {
-                            segments,
-                            final_segment,
-                            final_span,
-                            universe_ascription,
-                        } => PExpression::Variable {
-                            name: QualifiedName(WithProvenance::new_with_provenance(
-                                self.provenance(match segments.first() {
-                                    Some((_, first_span, _)) => Span {
-                                        start: first_span.start,
-                                        end: final_span.end,
-                                    },
-                                    None => final_span,
-                                }),
-                                segments
-                                    .into_iter()
-                                    .map(|(name, name_span, _)| {
-                                        Name(WithProvenance::new_with_provenance(
-                                            self.provenance(name_span),
-                                            Str::new(self.config().db, name),
-                                        ))
-                                    })
-                                    .chain(std::iter::once(Name(
-                                        WithProvenance::new_with_provenance(
-                                            self.provenance(final_span),
-                                            Str::new(self.config().db, final_segment),
-                                        ),
-                                    )))
-                                    .collect(),
-                            )),
-                            universe_ascription,
-                        },
-                        SmallExpression::Operator { .. } => todo!(),
-                        SmallExpression::PExpression(pexpr) => pexpr,
-                    })
-                    .reduce(|acc, expr| PExpression::Apply {
-                        function: Box::new(acc),
-                        argument: Box::new(expr),
-                    });
+    pub fn parse_pratt_expr(&mut self, indent: usize) -> Dr<PExpression> {
+        self.parse_pratt_expr_terms(indent).bind(|terms| {
+            let result = terms
+                .into_iter()
+                .map(|small_expr| match small_expr {
+                    SmallExpression::QualifiedName {
+                        segments,
+                        final_segment,
+                        final_span,
+                        universe_ascription,
+                    } => PExpression::Variable {
+                        name: QualifiedName(WithProvenance::new_with_provenance(
+                            self.provenance(match segments.first() {
+                                Some((_, first_span, _)) => Span {
+                                    start: first_span.start,
+                                    end: final_span.end,
+                                },
+                                None => final_span,
+                            }),
+                            segments
+                                .into_iter()
+                                .map(|(name, name_span, _)| {
+                                    Name(WithProvenance::new_with_provenance(
+                                        self.provenance(name_span),
+                                        Str::new(self.config().db, name),
+                                    ))
+                                })
+                                .chain(std::iter::once(Name(WithProvenance::new_with_provenance(
+                                    self.provenance(final_span),
+                                    Str::new(self.config().db, final_segment),
+                                ))))
+                                .collect(),
+                        )),
+                        universe_ascription,
+                    },
+                    SmallExpression::Operator { .. } => todo!(),
+                    SmallExpression::PExpression(pexpr) => pexpr,
+                })
+                .reduce(|acc, expr| PExpression::Apply {
+                    function: Box::new(acc),
+                    argument: Box::new(expr),
+                });
 
-                // TODO: Once we have actual Pratt parsing, we should make some report messages for using things like
-                // `let` or `fn` in an incorrect position, i.e. not parsed by `parse_expr`.
+            // TODO: Once we have actual Pratt parsing, we should make some report messages for using things like
+            // `let` or `fn` in an incorrect position, i.e. not parsed by `parse_expr`.
 
-                let source = self.config().source;
-                match result {
-                    Some(result) => Dr::ok(result),
-                    None => match self.peek() {
-                        Some(tt) => Dr::fail(
-                            Report::new(ReportKind::Error, source, tt.span().start)
+            let source = self.config().source;
+            match result {
+                Some(result) => Dr::ok(result),
+                None => match self.peek() {
+                    Some(tt) => Dr::fail(
+                        Report::new(ReportKind::Error, source, tt.span().start)
+                            .with_message("expected an expression".into())
+                            .with_label(
+                                Label::new(source, tt.span(), LabelType::Error).with_message(
+                                    message!["expected an expression but found ", tt],
+                                ),
+                            ),
+                    ),
+                    None => match self.block_brackets() {
+                        Some((open, close)) => Dr::fail(
+                            Report::new(ReportKind::Error, source, close.start)
                                 .with_message("expected an expression".into())
                                 .with_label(
-                                    Label::new(source, tt.span(), LabelType::Error).with_message(
-                                        message!["expected an expression but found ", tt],
+                                    Label::new(source, close, LabelType::Error).with_message(
+                                        "expected an expression before the end of this block"
+                                            .into(),
                                     ),
+                                )
+                                .with_label(
+                                    Label::new(source, open, LabelType::Note)
+                                        .with_message("the block started here".into()),
                                 ),
                         ),
-                        None => match self.block_brackets() {
-                            Some((open, close)) => Dr::fail(
-                                Report::new(ReportKind::Error, source, close.start)
-                                    .with_message("expected an expression".into())
-                                    .with_label(
-                                        Label::new(source, close, LabelType::Error).with_message(
-                                            "expected an expression before the end of this block"
-                                                .into(),
-                                        ),
-                                    )
-                                    .with_label(
-                                        Label::new(source, open, LabelType::Note)
-                                            .with_message("the block started here".into()),
-                                    ),
-                            ),
-                            None => todo!(),
-                        },
+                        None => todo!(),
                     },
-                }
-            })
+                },
+            }
+        })
     }
 
     /// If the next token was an ownership label (`erased`, `owned`, `copyable`), consume and return it.
@@ -837,10 +830,18 @@ where
                     // This wasn't a function type.
                     // Push the block back, and fall back to the Pratt expression parser.
                     self.push(block);
-                    self.parse_pratt_expr(min_indent, indent)
+                    self.parse_pratt_expr(indent)
                 }
             }
-            _ => self.parse_pratt_expr(min_indent, indent),
+            Some(TokenTree::Newline {
+                indent: newline_indent,
+                ..
+            }) => {
+                let newline_indent = *newline_indent;
+                self.next();
+                self.parse_expr(min_indent, newline_indent)
+            }
+            _ => self.parse_pratt_expr(indent),
         };
 
         // After we parse the initial expression, it's possible that we have an arrow token `->`
