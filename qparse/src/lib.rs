@@ -34,5 +34,4 @@ pub fn module_from_quill_source(db: &dyn Db, source: Source) -> Dr<Vec<PDefiniti
             let mut parser = parser::Parser::new(&config, token_trees.into_iter());
             parser.parse_defs()
         })
-        .map(|defs| dbg!(defs))
 }

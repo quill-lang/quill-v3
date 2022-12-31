@@ -85,6 +85,8 @@ pub enum ReservedSymbol {
     Sort,
     /// `Type`
     Type,
+    /// `Prop`
+    Prop,
     /// `Region`
     Region,
     /// `RegionT`
@@ -112,6 +114,7 @@ impl Display for ReservedSymbol {
             ReservedSymbol::Static => write!(f, "static"),
             ReservedSymbol::Sort => write!(f, "Sort"),
             ReservedSymbol::Type => write!(f, "Type"),
+            ReservedSymbol::Prop => write!(f, "Prop"),
             ReservedSymbol::Region => write!(f, "Region"),
             ReservedSymbol::RegionT => write!(f, "RegionT"),
         }

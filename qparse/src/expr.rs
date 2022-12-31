@@ -130,6 +130,7 @@ pub enum PExpression {
         /// Otherwise, the expression was just `Type`.
         universe: Option<(Span, PUniverse, Span)>,
     },
+    Prop(Span),
     StaticRegion(Span),
     Region(Span),
     RegionT(Span),
@@ -175,7 +176,8 @@ impl Spanned for PExpression {
                     .map(|(_, _, right)| right.end)
                     .unwrap_or(span.end),
             },
-            PExpression::StaticRegion(span)
+            PExpression::Prop(span)
+            | PExpression::StaticRegion(span)
             | PExpression::Region(span)
             | PExpression::RegionT(span) => *span,
         }
@@ -457,6 +459,16 @@ where
                     let span = *span;
                     self.next();
                     result.push(Dr::ok(SmallExpression::PExpression(PExpression::RegionT(
+                        span,
+                    ))));
+                }
+                Some(TokenTree::Reserved {
+                    symbol: ReservedSymbol::Prop,
+                    span,
+                }) => {
+                    let span = *span;
+                    self.next();
+                    result.push(Dr::ok(SmallExpression::PExpression(PExpression::Prop(
                         span,
                     ))));
                 }

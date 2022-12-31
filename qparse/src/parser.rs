@@ -149,6 +149,7 @@ impl<'db> ParserConfiguration<'db> {
                 "static" => ReservedSymbol::Static,
                 "Sort" => ReservedSymbol::Sort,
                 "Type" => ReservedSymbol::Type,
+                "Prop" => ReservedSymbol::Prop,
                 "Region" => ReservedSymbol::Region,
                 "RegionT" => ReservedSymbol::RegionT,
                 _ => {

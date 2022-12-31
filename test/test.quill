@@ -19,3 +19,60 @@ region: RegionT = Region
 static_region: Region = static
 
 borrow_deref: {A: Type::{u}} -> A -> A = fn {A} a => *&a
+
+True: Prop = inductive
+    intro
+
+False: Prop = inductive
+
+Eq: {A: Sort::{u}} -> A -> A -> Prop =
+    fn {A} a => inductive
+        refl -> Eq a a
+
+HEq: {A: Sort::{u}} -> A -> {B: Sort::{u}} -> B -> Prop =
+    fn {A} a => inductive
+        refl -> HEq a a
+
+Prod: {A: Type::{u}} -> {B: Type::{v}} -> Type::{max u v} = inductive
+    intro {
+        fst: A
+        snd: B
+    }
+
+Sum: {A: Type::{u}} -> {B: Type::{v}} -> Type::{max u v} = inductive
+    inl {
+        value: A
+    }
+    inr {
+        value: B
+    }
+
+Subtype: {A: Type::{u}} -> (p: A -> Prop) -> Type::{u} = inductive
+    intro {
+        value: A
+        property: p value
+    }
+
+Not: Prop -> Prop = fn p => p -> false
+
+Decidable: Prop -> Type = fn p => inductive
+    false {
+        proof: Not p
+    }
+    true {
+        proof: p
+    }
+
+Nat: Type = inductive
+    zero
+    succ {
+        value: Nat
+    }
+
+List: (A: Type::{u}) -> Type::{u} =
+    fn A => inductive
+        nil
+        cons {
+            value: A
+            tail: List A
+        }
