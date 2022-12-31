@@ -142,6 +142,12 @@ pub enum PExpression {
         motive: Option<Box<PMatchReturn>>,
         minor_premises: Vec<PMinorPremise>,
     },
+    Fix {
+        function_name: Name<Provenance>,
+        argument: Box<PExpression>,
+        argument_name: Name<Provenance>,
+        body: Box<PExpression>,
+    },
     Let {
         let_token: Span,
         binders: Vec<PLetBinder>,
@@ -198,6 +204,7 @@ impl Spanned for PExpression {
                 end: close.end,
             },
             PExpression::Match { .. } => todo!(),
+            PExpression::Fix { .. } => todo!(),
             PExpression::Let {
                 let_token,
                 binders,
@@ -1253,6 +1260,59 @@ where
         })
     }
 
+    /// A `fix` expression is of the form
+    /// ```notrust
+    /// "fix" name expr "with" name "=>" expr
+    /// ```
+    /// where
+    /// - the first name represents a function to be constructed by fixed point recursion,
+    /// - the first expression is the argument to the fixed point function,
+    /// - the second name is the recursive argument,
+    /// - the second expression is the body of the fixed point construction.
+    fn parse_fix_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
+        self.require_reserved(ReservedSymbol::Fix).bind(|_| {
+            self.require_lexical()
+                .bind(|(function_name, function_name_span)| {
+                    // We parse a Pratt expression here so that the
+                    // implied precedence with the function application works.
+                    self.parse_pratt_expr(indent).bind(|argument| {
+                        self.require_reserved(ReservedSymbol::With).bind(|_| {
+                            self.require_lexical()
+                                .bind(|(argument_name, argument_name_span)| {
+                                    self.require_reserved(ReservedSymbol::DoubleArrow)
+                                        .bind(|_| {
+                                            self.parse_expr(min_indent, indent).map(|body| {
+                                                PExpression::Fix {
+                                                    function_name: Name(
+                                                        WithProvenance::new_with_provenance(
+                                                            self.provenance(function_name_span),
+                                                            Str::new(
+                                                                self.config().db,
+                                                                function_name,
+                                                            ),
+                                                        ),
+                                                    ),
+                                                    argument: Box::new(argument),
+                                                    argument_name: Name(
+                                                        WithProvenance::new_with_provenance(
+                                                            self.provenance(argument_name_span),
+                                                            Str::new(
+                                                                self.config().db,
+                                                                argument_name,
+                                                            ),
+                                                        ),
+                                                    ),
+                                                    body: Box::new(body),
+                                                }
+                                            })
+                                        })
+                                })
+                        })
+                    })
+                })
+        })
+    }
+
     /// Parses a single lambda abstraction binder.
     fn parse_lambda_binder(&mut self, indent: usize, fn_token: Span) -> Dr<PLambdaBinder> {
         match self.next() {
@@ -1438,6 +1498,7 @@ where
     /// - an `inductive` definition;
     /// - a `let` expression;
     /// - a `match` expression;
+    /// - a `fix` expression;
     /// - a lambda, written `fn <binders> => e`;
     /// - a function type, written `<binder> -> e`; or
     /// - a Pratt expression.
@@ -1458,6 +1519,10 @@ where
                 symbol: ReservedSymbol::Match,
                 ..
             }) => self.parse_match_expr(min_indent, indent),
+            Some(TokenTree::Reserved {
+                symbol: ReservedSymbol::Fix,
+                ..
+            }) => self.parse_fix_expr(min_indent, indent),
             Some(TokenTree::Reserved {
                 symbol: ReservedSymbol::Fn,
                 ..

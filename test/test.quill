@@ -107,3 +107,14 @@ pred: Nat -> Nat = fn n =>
         succ {
             value = prececessor
         } => prececessor
+
+add: Nat -> Nat -> Nat = fn a b =>
+    fix f b with x => match x with
+        zero => a
+        succ {
+            value
+        } => succ {
+            value = f value
+        }
+
+two_plus_two_eq_four: Eq (add two two) four = Eq::refl {}
