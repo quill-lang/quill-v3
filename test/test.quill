@@ -33,13 +33,13 @@ HEq: {A: Sort::{u}} -> A -> {B: Sort::{u}} -> B -> Prop =
     fn {A} a => inductive
         refl -> HEq a a
 
-Prod: {A: Type::{u}} -> {B: Type::{v}} -> Type::{max u v} = inductive
+Prod: {A: Type::{u}} -> {B: Type::{u}} -> Type::{u} = inductive
     intro {
         fst: A
         snd: B
     }
 
-Sum: {A: Type::{u}} -> {B: Type::{v}} -> Type::{max u v} = inductive
+Sum: {A: Type::{u}} -> {B: Type::{u}} -> Type::{u} = inductive
     inl {
         value: A
     }
@@ -76,3 +76,12 @@ List: (A: Type::{u}) -> Type::{u} =
             value: A
             tail: List A
         }
+
+zero: Nat = Nat::zero {}
+succ: Nat -> Nat = fn value => Nat::succ {
+    value = value
+}
+
+one = succ zero
+two = succ one
+four = succ (succ two)

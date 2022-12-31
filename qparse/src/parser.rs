@@ -340,40 +340,47 @@ where
         }
     }
 
-    pub fn assert_end(&mut self) -> Dr<()> {
+    pub fn assert_end(&mut self, while_parsing: &str) -> Dr<()> {
         let source = self.config().source;
         let block_brackets = self.block_brackets;
         match self.peek() {
-            Some(tt) => {
-                Dr::ok_with(
-                    (),
-                    if let Some((open, close)) = block_brackets {
-                        Report::<Message>::new(ReportKind::Error, source, tt.span().start)
-                            .with_message("unexpected extra tokens".into())
-                            .with_label(
-                                Label::new(source, tt.span(), LabelType::Error).with_message(
-                                    message!["did not expect ", tt, " while parsing this block"],
-                                ),
-                            )
-                            .with_label(
-                                Label::new(source, open, LabelType::Note)
-                                    .with_message("block started here".into()),
-                            )
-                            .with_label(
-                                Label::new(source, close, LabelType::Note)
-                                    .with_message("block ended here".into()),
-                            )
-                    } else {
-                        Report::new(ReportKind::Error, source, tt.span().start)
-                            .with_message("unexpected extra tokens".into())
-                            .with_label(
-                                Label::new(source, tt.span(), LabelType::Error).with_message(
-                                    message!["did not expect ", tt, " while parsing the file"],
-                                ),
-                            )
-                    },
-                )
-            }
+            Some(tt) => Dr::ok_with(
+                (),
+                if let Some((open, close)) = block_brackets {
+                    Report::<Message>::new(ReportKind::Error, source, tt.span().start)
+                        .with_message(
+                            format!("unexpected extra tokens while parsing {while_parsing}").into(),
+                        )
+                        .with_label(
+                            Label::new(source, tt.span(), LabelType::Error).with_message(message![
+                                "did not expect ",
+                                tt,
+                                " while parsing ",
+                                while_parsing,
+                                " in this block"
+                            ]),
+                        )
+                        .with_label(
+                            Label::new(source, open, LabelType::Note)
+                                .with_message("block started here".into()),
+                        )
+                        .with_label(
+                            Label::new(source, close, LabelType::Note)
+                                .with_message("block ended here".into()),
+                        )
+                } else {
+                    Report::new(ReportKind::Error, source, tt.span().start)
+                        .with_message("unexpected extra tokens".into())
+                        .with_label(
+                            Label::new(source, tt.span(), LabelType::Error).with_message(message![
+                                "did not expect ",
+                                tt,
+                                " while parsing ",
+                                while_parsing
+                            ]),
+                        )
+                },
+            ),
             None => Dr::ok(()),
         }
     }

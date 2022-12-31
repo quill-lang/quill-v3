@@ -8,8 +8,8 @@
 
 mod def;
 mod expr;
+mod inductive;
 mod lex;
-mod parse;
 mod parser;
 
 use def::PDefinition;

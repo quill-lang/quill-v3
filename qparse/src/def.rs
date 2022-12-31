@@ -28,6 +28,7 @@ where
     I: Iterator<Item = TokenTree>,
 {
     /// Parses a definition.
+    /// TODO: Check that after a definition is a newline with indent level zero, or nothing.
     pub fn parse_def(&mut self) -> Dr<PDefinition> {
         self.require_lexical().bind(|(name, name_span)| {
             // Either this name is followed by a type ascription with `:`,
@@ -121,6 +122,7 @@ where
             let (_, more_reports) = self.require_newline().destructure();
             reports.extend(more_reports);
         }
-        Dr::ok_with_many(result, reports).bind(|result| self.assert_end().map(|_| result))
+        Dr::ok_with_many(result, reports)
+            .bind(|result| self.assert_end("definitions").map(|_| result))
     }
 }

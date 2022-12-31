@@ -15,6 +15,7 @@ use fexpr::{
 };
 
 use crate::{
+    inductive::PInductive,
     lex::{Bracket, OperatorInfo, ReservedSymbol, TokenTree},
     parser::Parser,
 };
@@ -104,6 +105,19 @@ pub enum PExpression {
         function: Box<PExpression>,
         argument: Box<PExpression>,
     },
+    Intro {
+        /// The inductive and variant.
+        inductive: QualifiedName<Provenance>,
+        /// If present, the spans are the opening and closing brackets,
+        /// and the universes are the universe parameters.
+        universe_ascription: Option<(Span, Vec<PUniverse>, Span)>,
+        /// The fields assigned to the new value.
+        fields: Vec<(Name<Provenance>, PExpression)>,
+        /// The opening brace.
+        open: Span,
+        /// The closing brace.
+        close: Span,
+    },
     Let {
         let_token: Span,
         binders: Vec<PLetBinder>,
@@ -134,17 +148,30 @@ pub enum PExpression {
     StaticRegion(Span),
     Region(Span),
     RegionT(Span),
+    Inductive(PInductive),
 }
 
 impl Spanned for PExpression {
     fn span(&self) -> Span {
         match self {
             PExpression::Variable { name, .. } => name.0.provenance.span(),
-            PExpression::Borrow { borrow, value } => todo!(),
-            PExpression::Dereference { deref, value } => todo!(),
+            PExpression::Borrow { borrow, value } => Span {
+                start: borrow.start,
+                end: value.span().end,
+            },
+            PExpression::Dereference { deref, value } => Span {
+                start: deref.start,
+                end: value.span().end,
+            },
             PExpression::Apply { function, argument } => Span {
                 start: function.span().start,
                 end: argument.span().end,
+            },
+            PExpression::Intro {
+                inductive, close, ..
+            } => Span {
+                start: inductive.0.provenance.span().start,
+                end: close.end,
             },
             PExpression::Let {
                 let_token,
@@ -180,6 +207,7 @@ impl Spanned for PExpression {
             | PExpression::StaticRegion(span)
             | PExpression::Region(span)
             | PExpression::RegionT(span) => *span,
+            PExpression::Inductive(inductive) => inductive.span(),
         }
     }
 }
@@ -277,7 +305,7 @@ where
     /// Parse a universe, and then the end of the stream.
     fn parse_universe_end(&mut self) -> Dr<PUniverse> {
         self.require_lexical().bind(|(name, span)| {
-            self.assert_end().map(|()| {
+            self.assert_end("universe").map(|()| {
                 PUniverse::Variable(Name(WithProvenance::new_with_provenance(
                     self.provenance(span),
                     Str::new(self.config().db, name),
@@ -351,13 +379,120 @@ where
         }
     }
 
+    /// Parse an intro rule. Assumes that `name` is a [`SmallExpression::QualifiedName`].
+    fn parse_intro_inner(
+        &mut self,
+        open: Span,
+        close: Span,
+        name: SmallExpression,
+    ) -> Dr<SmallExpression> {
+        let mut fields = Vec::new();
+        while self.peek().is_some() {
+            let newline = self.require_newline();
+            // Parse a field assignment.
+            if self.peek().is_some() {
+                fields.push(newline.bind(|(_, newline_indent)| {
+                    self.require_lexical().bind(|(name, name_span)| {
+                        self.require_reserved(ReservedSymbol::Assign).bind(|_| {
+                            self.parse_expr(0, newline_indent).map(|value| {
+                                (
+                                    Name(WithProvenance::new_with_provenance(
+                                        self.provenance(name_span),
+                                        Str::new(self.config().db, name),
+                                    )),
+                                    value,
+                                )
+                            })
+                        })
+                    })
+                }));
+            } else {
+                break;
+            }
+        }
+
+        Dr::sequence(fields).map(|fields| {
+            if let SmallExpression::QualifiedName {
+                segments,
+                final_segment,
+                final_span,
+                universe_ascription,
+            } = name
+            {
+                SmallExpression::PExpression(PExpression::Intro {
+                    inductive: QualifiedName(WithProvenance::new_with_provenance(
+                        self.provenance(match segments.first() {
+                            Some((_, first_span, _)) => Span {
+                                start: first_span.start,
+                                end: final_span.end,
+                            },
+                            None => final_span,
+                        }),
+                        segments
+                            .into_iter()
+                            .map(|(name, name_span, _)| {
+                                Name(WithProvenance::new_with_provenance(
+                                    self.provenance(name_span),
+                                    Str::new(self.config().db, name),
+                                ))
+                            })
+                            .chain(std::iter::once(Name(WithProvenance::new_with_provenance(
+                                self.provenance(final_span),
+                                Str::new(self.config().db, final_segment),
+                            ))))
+                            .collect(),
+                    )),
+                    universe_ascription,
+                    fields,
+                    open,
+                    close,
+                })
+            } else {
+                unreachable!()
+            }
+        })
+    }
+
+    /// Parse an intro rule. Assumes that the next token tree is a brace bracket block.
+    /// Assumes that `name` is a [`SmallExpression::QualifiedName`].
+    fn parse_intro(&mut self, name: SmallExpression) -> Dr<SmallExpression> {
+        if let Some(TokenTree::Block {
+            open,
+            close,
+            contents,
+            ..
+        }) = self.next()
+        {
+            let mut inner = self.with_vec(open, close, contents);
+            inner
+                .parse_intro_inner(open, close, name)
+                .bind(|result| inner.assert_end("constructor").map(|()| result))
+        } else {
+            unreachable!()
+        }
+    }
+
     /// Parse all token trees that could be part of a Pratt expression.
     fn parse_pratt_expr_terms(&mut self, mut indent: usize) -> Dr<Vec<SmallExpression>> {
         let original_indent = indent;
         let mut result = Vec::new();
         loop {
             match self.peek() {
-                Some(TokenTree::Lexical { .. }) => result.push(self.parse_qualified_name()),
+                Some(TokenTree::Lexical { .. }) => {
+                    result.push(self.parse_qualified_name().bind(|name| {
+                        // If the next token tree is a block delimited by braces,
+                        // we are constructing an inductive.
+                        if let Some(TokenTree::Block {
+                            bracket: Bracket::Brace,
+                            ..
+                        }) = self.peek()
+                        {
+                            self.parse_intro(name)
+                        } else {
+                            Dr::ok(name)
+                        }
+                    }))
+                }
                 Some(TokenTree::Operator { .. }) => {
                     if let Some(TokenTree::Operator { text, info, span }) = self.next() {
                         result.push(Dr::ok(SmallExpression::Operator { text, info, span }));
@@ -486,7 +621,7 @@ where
                         let mut inner = self.with_vec(open, close, contents);
                         result.push(inner.parse_expr(indent, indent).bind(|expr| {
                             inner
-                                .assert_end()
+                                .assert_end("expression inside bracketed block")
                                 .map(|()| SmallExpression::PExpression(expr))
                         }));
                     } else {
@@ -695,7 +830,7 @@ where
     }
 
     /// If the next token was an ownership label (`erased`, `owned`, `copyable`), consume and return it.
-    fn parse_ownership(&mut self) -> Option<(ParameterOwnership, Span)> {
+    pub fn parse_ownership(&mut self) -> Option<(ParameterOwnership, Span)> {
         match self.peek() {
             Some(TokenTree::Reserved {
                 symbol: ReservedSymbol::Erased,
@@ -920,7 +1055,7 @@ where
                         .require_reserved(ReservedSymbol::Colon)
                         .bind(|_| inner.parse_expr(indent, indent))
                         .bind(|ty| {
-                            inner.assert_end().map(|()| PLambdaBinder {
+                            inner.assert_end("parameter type").map(|()| PLambdaBinder {
                                 name,
                                 annotation: bracket.into(),
                                 brackets: Some((open, close)),
@@ -1016,7 +1151,7 @@ where
             if let TokenTree::Lexical { text, span } = tt {
                 // Parse the type of the parameter.
                 self.parse_expr(indent, indent).bind(|ty| {
-                    self.assert_end().map(|()| PFunctionBinder {
+                    self.assert_end("parameter type").map(|()| PFunctionBinder {
                         name: Some(Name(WithProvenance::new_with_provenance(
                             self.provenance(span),
                             Str::new(self.config().db, text),
@@ -1034,7 +1169,7 @@ where
             // This is syntax of the form `type`.
             self.push(tt);
             self.parse_expr(indent, indent).bind(|ty| {
-                self.assert_end().map(|()| PFunctionBinder {
+                self.assert_end("parameter type").map(|()| PFunctionBinder {
                     name: None,
                     annotation,
                     brackets,
@@ -1046,6 +1181,7 @@ where
     }
 
     /// An expression is:
+    /// - an `inductive` definition;
     /// - a `let` expression;
     /// - a lambda, written `fn <binders> => e`;
     /// - a function type, written `<binder> -> e`; or
@@ -1055,6 +1191,10 @@ where
     /// TODO: Check if any newlines are less indented than `min_indent`.
     pub fn parse_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
         let result = match self.peek() {
+            Some(TokenTree::Reserved {
+                symbol: ReservedSymbol::Inductive,
+                ..
+            }) => self.parse_inductive_expr(min_indent, indent),
             Some(TokenTree::Reserved {
                 symbol: ReservedSymbol::Let,
                 ..
