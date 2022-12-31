@@ -78,12 +78,16 @@ pub enum ReservedSymbol {
     Fn,
     /// `let`
     Let,
+    /// `static`
+    Static,
     /// `Sort`
     Sort,
     /// `Type`
     Type,
     /// `Region`
     Region,
+    /// `RegionT`
+    RegionT,
 }
 
 impl Display for ReservedSymbol {
@@ -105,9 +109,11 @@ impl Display for ReservedSymbol {
             ReservedSymbol::Inductive => write!(f, "inductive"),
             ReservedSymbol::Fn => write!(f, "fn"),
             ReservedSymbol::Let => write!(f, "let"),
+            ReservedSymbol::Static => write!(f, "static"),
             ReservedSymbol::Sort => write!(f, "Sort"),
             ReservedSymbol::Type => write!(f, "Type"),
             ReservedSymbol::Region => write!(f, "Region"),
+            ReservedSymbol::RegionT => write!(f, "RegionT"),
         }
     }
 }

@@ -105,6 +105,9 @@ pub enum PExpression {
         span: Span,
         universe: PUniverse,
     },
+    StaticRegion(Span),
+    Region(Span),
+    RegionT(Span),
     Type {
         span: Span,
         /// If this was present, the expression was `Type::{u}` for some `u`.
@@ -302,6 +305,36 @@ where
                             universe: None,
                         })));
                     }
+                }
+                Some(TokenTree::Reserved {
+                    symbol: ReservedSymbol::Static,
+                    span,
+                }) => {
+                    let span = *span;
+                    self.next();
+                    result.push(Dr::ok(SmallExpression::PExpression(
+                        PExpression::StaticRegion(span),
+                    )));
+                }
+                Some(TokenTree::Reserved {
+                    symbol: ReservedSymbol::Region,
+                    span,
+                }) => {
+                    let span = *span;
+                    self.next();
+                    result.push(Dr::ok(SmallExpression::PExpression(PExpression::Region(
+                        span,
+                    ))));
+                }
+                Some(TokenTree::Reserved {
+                    symbol: ReservedSymbol::RegionT,
+                    span,
+                }) => {
+                    let span = *span;
+                    self.next();
+                    result.push(Dr::ok(SmallExpression::PExpression(PExpression::RegionT(
+                        span,
+                    ))));
                 }
                 Some(TokenTree::Block {
                     bracket: Bracket::Paren,
@@ -781,6 +814,7 @@ where
     /// - a Pratt expression.
     /// The indent parameter gives the indent level of the surrounding environment.
     /// New line tokens are consumed if their indent is greater than the environment's indent level.
+    /// TODO: Check if any newlines are less indented than `min_indent`.
     pub fn parse_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
         let result = match self.peek() {
             Some(TokenTree::Reserved {

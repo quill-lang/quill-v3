@@ -136,9 +136,11 @@ impl<'db> ParserConfiguration<'db> {
                 "inductive" => ReservedSymbol::Inductive,
                 "fn" => ReservedSymbol::Fn,
                 "let" => ReservedSymbol::Let,
+                "static" => ReservedSymbol::Static,
                 "Sort" => ReservedSymbol::Sort,
                 "Type" => ReservedSymbol::Type,
                 "Region" => ReservedSymbol::Region,
+                "RegionT" => ReservedSymbol::RegionT,
                 _ => {
                     return vec![TokenTree::Lexical {
                         text: text.to_owned(),
