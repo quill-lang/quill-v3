@@ -79,6 +79,14 @@ pub enum ReservedSymbol {
     Fn,
     /// `let`
     Let,
+    /// `match`
+    Match,
+    /// `fix`
+    Fix,
+    /// `return`
+    Return,
+    /// `with`
+    With,
     /// `static`
     Static,
     /// `Sort`
@@ -111,6 +119,10 @@ impl Display for ReservedSymbol {
             ReservedSymbol::Inductive => write!(f, "inductive"),
             ReservedSymbol::Fn => write!(f, "fn"),
             ReservedSymbol::Let => write!(f, "let"),
+            ReservedSymbol::Match => write!(f, "match"),
+            ReservedSymbol::Fix => write!(f, "fix"),
+            ReservedSymbol::Return => write!(f, "return"),
+            ReservedSymbol::With => write!(f, "with"),
             ReservedSymbol::Static => write!(f, "static"),
             ReservedSymbol::Sort => write!(f, "Sort"),
             ReservedSymbol::Type => write!(f, "Type"),

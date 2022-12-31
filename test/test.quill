@@ -25,6 +25,10 @@ True: Prop = inductive
 
 False: Prop = inductive
 
+Bool: Type = inductive
+    true
+    false
+
 Eq: {A: Sort::{u}} -> A -> A -> Prop =
     fn {A} a => inductive
         refl -> Eq a a
@@ -85,3 +89,21 @@ succ: Nat -> Nat = fn value => Nat::succ {
 one = succ zero
 two = succ one
 four = succ (succ two)
+
+is_zero: Nat -> Bool = fn n =>
+    match n with
+        zero => Bool::true {}
+        succ {
+            value
+        } => Bool::false {}
+
+eq_symm: {A: Sort::{u}} -> {a: A} -> {b: A} -> Eq a b -> Eq b a =
+    fn A a b h => match h return [x] Eq x a with
+        refl => Eq::refl {}
+
+pred: Nat -> Nat = fn n =>
+    match n with
+        zero => zero
+        succ {
+            value = prececessor
+        } => prececessor

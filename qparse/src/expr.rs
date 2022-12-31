@@ -81,6 +81,24 @@ pub struct PFunctionBinder {
     pub ty: Box<PExpression>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct PMatchReturn {
+    index_params: Option<Vec<Name<Provenance>>>,
+    motive: PExpression,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PMinorPremiseFields {
+    fields: Vec<(Name<Provenance>, Option<Name<Provenance>>)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct PMinorPremise {
+    variant: Name<Provenance>,
+    fields: Option<(Span, PMinorPremiseFields, Span)>,
+    result: PExpression,
+}
+
 /// A parsed expression.
 #[derive(Debug, PartialEq, Eq)]
 pub enum PExpression {
@@ -117,6 +135,12 @@ pub enum PExpression {
         open: Span,
         /// The closing brace.
         close: Span,
+    },
+    Match {
+        major_premise: Box<PExpression>,
+        major_premise_name: Option<Name<Provenance>>,
+        motive: Option<Box<PMatchReturn>>,
+        minor_premises: Vec<PMinorPremise>,
     },
     Let {
         let_token: Span,
@@ -173,6 +197,7 @@ impl Spanned for PExpression {
                 start: inductive.0.provenance.span().start,
                 end: close.end,
             },
+            PExpression::Match { .. } => todo!(),
             PExpression::Let {
                 let_token,
                 binders,
@@ -379,18 +404,12 @@ where
         }
     }
 
-    /// Parse an intro rule. Assumes that `name` is a [`SmallExpression::QualifiedName`].
-    fn parse_intro_inner(
-        &mut self,
-        open: Span,
-        close: Span,
-        name: SmallExpression,
-    ) -> Dr<SmallExpression> {
+    fn parse_intro_fields(&mut self) -> Dr<Vec<(Name<Provenance>, PExpression)>> {
         let mut fields = Vec::new();
         while self.peek().is_some() {
             let newline = self.require_newline();
-            // Parse a field assignment.
             if self.peek().is_some() {
+                // Parse a field assignment.
                 fields.push(newline.bind(|(_, newline_indent)| {
                     self.require_lexical().bind(|(name, name_span)| {
                         self.require_reserved(ReservedSymbol::Assign).bind(|_| {
@@ -410,8 +429,17 @@ where
                 break;
             }
         }
+        Dr::sequence(fields)
+    }
 
-        Dr::sequence(fields).map(|fields| {
+    /// Parse an intro rule. Assumes that `name` is a [`SmallExpression::QualifiedName`].
+    fn parse_intro_inner(
+        &mut self,
+        open: Span,
+        close: Span,
+        name: SmallExpression,
+    ) -> Dr<SmallExpression> {
+        self.parse_intro_fields().map(|fields| {
             if let SmallExpression::QualifiedName {
                 segments,
                 final_segment,
@@ -999,6 +1027,232 @@ where
             })
     }
 
+    /// Assume that we have just parsed a `return` keyword in a `match` expression.
+    /// Return the list of bound index parameters, as well as the motive
+    fn parse_match_return(&mut self, min_indent: usize, indent: usize) -> Dr<PMatchReturn> {
+        // Check if we have a sequence of index parameters to bind.
+        let index_params = if let Some(TokenTree::Block {
+            bracket: Bracket::Square,
+            ..
+        }) = self.peek()
+        {
+            if let Some(TokenTree::Block {
+                open,
+                close,
+                contents,
+                ..
+            }) = self.next()
+            {
+                let mut inner = self.with_vec(open, close, contents);
+                let mut index_params = Vec::new();
+                while inner.peek().is_some() {
+                    index_params.push(inner.require_lexical().map(|(text, span)| {
+                        Name(WithProvenance::new_with_provenance(
+                            self.provenance(span),
+                            Str::new(self.config().db, text),
+                        ))
+                    }));
+                }
+                Dr::sequence(index_params).map(Some)
+            } else {
+                unreachable!()
+            }
+        } else {
+            Dr::ok(None)
+        };
+
+        // Parse the expression to return.
+        index_params.bind(|index_params| {
+            self.parse_expr(min_indent, indent)
+                .map(|motive| PMatchReturn {
+                    index_params,
+                    motive,
+                })
+        })
+    }
+
+    fn parse_match_fields(&mut self) -> Dr<PMinorPremiseFields> {
+        let mut fields = Vec::new();
+        let mut extra_reports = Vec::new();
+        while self.peek().is_some() {
+            let newline = self.require_newline();
+            if self.peek().is_some() {
+                // Parse a field assignment.
+                fields.push(newline.bind(|_| {
+                    self.require_lexical()
+                        .bind(|(field_name, field_name_span)| {
+                            if let Some(TokenTree::Reserved {
+                                symbol: ReservedSymbol::Assign,
+                                ..
+                            }) = self.peek()
+                            {
+                                self.next();
+                                self.require_lexical()
+                                    .map(|(name_to_bind, name_to_bind_span)| {
+                                        (
+                                            Name(WithProvenance::new_with_provenance(
+                                                self.provenance(field_name_span),
+                                                Str::new(self.config().db, field_name),
+                                            )),
+                                            Some(Name(WithProvenance::new_with_provenance(
+                                                self.provenance(name_to_bind_span),
+                                                Str::new(self.config().db, name_to_bind),
+                                            ))),
+                                        )
+                                    })
+                            } else {
+                                Dr::ok((
+                                    Name(WithProvenance::new_with_provenance(
+                                        self.provenance(field_name_span),
+                                        Str::new(self.config().db, field_name),
+                                    )),
+                                    None,
+                                ))
+                            }
+                        })
+                }));
+            } else {
+                extra_reports.extend(newline.destructure().1);
+                break;
+            }
+        }
+        Dr::sequence(fields)
+            .with_many(extra_reports)
+            .map(|fields| PMinorPremiseFields { fields })
+    }
+
+    fn parse_minor_premise(&mut self, min_indent: usize, indent: usize) -> Dr<PMinorPremise> {
+        // Parse the variant name.
+        self.require_lexical().bind(|(variant, variant_span)| {
+            // Check if we have a list of fields or a `=>` token.
+            let fields = if let Some(TokenTree::Block {
+                bracket: Bracket::Brace,
+                ..
+            }) = self.peek()
+            {
+                if let Some(TokenTree::Block {
+                    open,
+                    close,
+                    contents,
+                    ..
+                }) = self.next()
+                {
+                    let mut inner = self.with_vec(open, close, contents);
+                    inner
+                        .parse_match_fields()
+                        .map(|fields| Some((open, fields, close)))
+                } else {
+                    unreachable!()
+                }
+            } else {
+                Dr::ok(None)
+            };
+
+            fields.bind(|fields| {
+                // Parse a `=>` token.
+                self.require_reserved(ReservedSymbol::DoubleArrow)
+                    .bind(|_| {
+                        // Parse the result.
+                        self.parse_expr(min_indent, indent)
+                            .map(|result| PMinorPremise {
+                                variant: Name(WithProvenance::new_with_provenance(
+                                    self.provenance(variant_span),
+                                    Str::new(self.config().db, variant),
+                                )),
+                                fields,
+                                result,
+                            })
+                    })
+            })
+        })
+    }
+
+    /// Assuming that the next token is a `match`, parse a `match` expression.
+    /// A match expression is of the form
+    /// ```notrust
+    /// "match" (name "=")? expr ("return" ([name*])? expr)? "with"
+    ///     name ({ (name [",", "\n"])* })? => expr
+    ///     ...
+    /// ```
+    /// This syntax is inspired by Coq <https://coq.inria.fr/refman/language/core/variants.html#definition-by-cases-match>,
+    /// but we use `name "="` instead of `"as" name`, and `[name*]` instead of `"in" pattern`.
+    fn parse_match_expr(&mut self, min_indent: usize, indent: usize) -> Dr<PExpression> {
+        self.require_reserved(ReservedSymbol::Match).bind(|_| {
+            // Check if we have `name "="`.
+            let name = if let Some(name) = self.next() {
+                name
+            } else {
+                todo!()
+            };
+
+            let major_premise_name = if let Some(TokenTree::Reserved {
+                symbol: ReservedSymbol::Assign,
+                ..
+            }) = self.peek()
+            {
+                self.next();
+                // We have `name "="` syntax.
+                if let TokenTree::Lexical { text, span } = name {
+                    Some(Name(WithProvenance::new_with_provenance(
+                        self.provenance(span),
+                        Str::new(self.config().db, text),
+                    )))
+                } else {
+                    // The name wasn't a name.
+                    todo!()
+                }
+            } else {
+                // This wasn't a `name "="` syntax, so push the "name" token back onto the parser.
+                self.push(name);
+                None
+            };
+
+            // Parse the major premise.
+            self.parse_expr(min_indent, indent).bind(|major_premise| {
+                // Check if we have "return" syntax.
+                let motive = if let Some(TokenTree::Reserved {
+                    symbol: ReservedSymbol::Return,
+                    ..
+                }) = self.peek()
+                {
+                    self.next();
+                    self.parse_match_return(min_indent, indent)
+                        .map(Box::new)
+                        .map(Some)
+                } else {
+                    Dr::ok(None)
+                };
+
+                motive.bind(|motive| {
+                    self.require_reserved(ReservedSymbol::With).bind(|_| {
+                        // Parse each minor premise.
+                        let mut premises = Vec::new();
+                        while let Some(TokenTree::Newline {
+                            indent: newline_indent,
+                            ..
+                        }) = self.peek()
+                        {
+                            let newline_indent = *newline_indent;
+                            if newline_indent > indent {
+                                // This is a minor premise.
+                                self.next();
+                                premises.push(self.parse_minor_premise(min_indent, newline_indent));
+                            } else {
+                                break;
+                            }
+                        }
+                        Dr::sequence(premises).map(|minor_premises| PExpression::Match {
+                            major_premise: Box::new(major_premise),
+                            major_premise_name,
+                            motive,
+                            minor_premises,
+                        })
+                    })
+                })
+            })
+        })
+    }
+
     /// Parses a single lambda abstraction binder.
     fn parse_lambda_binder(&mut self, indent: usize, fn_token: Span) -> Dr<PLambdaBinder> {
         match self.next() {
@@ -1183,6 +1437,7 @@ where
     /// An expression is:
     /// - an `inductive` definition;
     /// - a `let` expression;
+    /// - a `match` expression;
     /// - a lambda, written `fn <binders> => e`;
     /// - a function type, written `<binder> -> e`; or
     /// - a Pratt expression.
@@ -1199,6 +1454,10 @@ where
                 symbol: ReservedSymbol::Let,
                 ..
             }) => self.parse_let_expr(min_indent, indent),
+            Some(TokenTree::Reserved {
+                symbol: ReservedSymbol::Match,
+                ..
+            }) => self.parse_match_expr(min_indent, indent),
             Some(TokenTree::Reserved {
                 symbol: ReservedSymbol::Fn,
                 ..

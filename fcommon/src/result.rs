@@ -396,6 +396,12 @@ impl<M, T> ParametricDr<M, T> {
         self
     }
 
+    /// Appends some reports to this diagnostic result, regardless of whether the result succeeded or failed.
+    pub fn with_many(mut self, reports: impl IntoIterator<Item = Report<M>>) -> Self {
+        self.reports.extend(reports);
+        self
+    }
+
     /// Converts a failed diagnostic into a successful diagnostic by wrapping
     /// the contained value in an `Option`.
     pub fn unfail(self) -> ParametricDr<M, Option<T>> {
