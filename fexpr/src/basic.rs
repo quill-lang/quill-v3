@@ -385,6 +385,11 @@ where
                 .zip(other.deref())
                 .all(|(left, right)| left.deref() == right.deref())
     }
+
+    pub fn replace_provenance(mut self, provenance: P) -> Self {
+        self.0.provenance = provenance;
+        self
+    }
 }
 
 impl<P> QualifiedName<P>

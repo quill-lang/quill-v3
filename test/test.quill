@@ -17,3 +17,5 @@ let_test: {A: Sort::{u}} -> A -> A =
 
 region: RegionT = Region
 static_region: Region = static
+
+borrow_deref: {A: Type::{u}} -> A -> A = fn {A} a => *&a

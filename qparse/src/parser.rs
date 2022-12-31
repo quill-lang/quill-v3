@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
 use fexpr::{
-    basic::Provenance,
+    basic::{Provenance, QualifiedName, WithProvenance},
     message,
     result::{Dr, Message},
 };
@@ -28,9 +28,20 @@ pub struct ParserConfiguration<'db> {
 
 impl<'db> ParserConfiguration<'db> {
     pub fn new(db: &'db dyn Db, source: Source) -> Self {
-        let mut operators = BTreeMap::new();
+        let mut operators: BTreeMap<usize, BTreeMap<String, OperatorInfo>> = BTreeMap::new();
         operators.insert(1, Default::default());
         operators.insert(2, Default::default());
+        // Add prefix operators for `*` and `&`.
+        for op in ["*", "&"] {
+            operators.get_mut(&1).unwrap().insert(
+                op.to_owned(),
+                OperatorInfo {
+                    prefix: Some((0, QualifiedName(WithProvenance::new_synthetic(Vec::new())))),
+                    infix: None,
+                    postfix: None,
+                },
+            );
+        }
         Self {
             db,
             source,
@@ -49,7 +60,6 @@ impl<'db> ParserConfiguration<'db> {
                     ReservedSymbol::Assign,
                     ReservedSymbol::Comma,
                     ReservedSymbol::Pipe,
-                    ReservedSymbol::Borrow,
                 ],
                 2 => &[
                     ReservedSymbol::Arrow,
@@ -103,7 +113,7 @@ impl<'db> ParserConfiguration<'db> {
                     );
                     result.push(TokenTree::Operator {
                         text: operator.clone(),
-                        info: *info,
+                        info: info.clone(),
                         span: Span {
                             start: span.start + before_len,
                             end: span.start + before_len + token_len,

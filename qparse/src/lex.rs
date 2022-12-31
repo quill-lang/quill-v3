@@ -2,6 +2,7 @@ use std::{fmt::Display, iter::Peekable};
 
 use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
 use fexpr::{
+    basic::{Provenance, QualifiedName},
     expr::BinderAnnotation,
     result::{Dr, Message, Style},
 };
@@ -29,18 +30,20 @@ impl From<Bracket> for BinderAnnotation {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum OperatorInfo {
-    Prefix {
-        precedence: i32,
-    },
-    Infix {
-        left_precedence: i32,
-        right_precedence: i32,
-    },
-    Postfix {
-        precedence: i32,
-    },
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OperatorInfo {
+    /// The binding power for this operator used as a prefix operator,
+    /// and the function represented by this prefix operator.
+    ///
+    /// Special case: for the builtin operators `&` and `*`,
+    /// there is no function associated with the operator.
+    pub prefix: Option<(i32, QualifiedName<Provenance>)>,
+    /// The left and right binding power for this operator used as an infix operator.
+    /// and the function represented by this infix operator.
+    pub infix: Option<(i32, i32, QualifiedName<Provenance>)>,
+    /// The binding power for this operator used as a postfix operator.
+    /// and the function represented by this postfix operator.
+    pub postfix: Option<(i32, QualifiedName<Provenance>)>,
 }
 
 /// The reserved operators and keywords.
@@ -60,8 +63,6 @@ pub enum ReservedSymbol {
     Comma,
     /// `|`
     Pipe,
-    /// `&`
-    Borrow,
     /// `erased`. 0 ownership.
     Erased,
     /// `owned`. 1 ownership.
@@ -100,7 +101,6 @@ impl Display for ReservedSymbol {
             ReservedSymbol::Assign => write!(f, "="),
             ReservedSymbol::Comma => write!(f, ","),
             ReservedSymbol::Pipe => write!(f, "|"),
-            ReservedSymbol::Borrow => write!(f, "&"),
             ReservedSymbol::Erased => write!(f, "erased"),
             ReservedSymbol::Owned => write!(f, "owned"),
             ReservedSymbol::Copyable => write!(f, "copyable"),

@@ -3,6 +3,8 @@
 //! and use a Pratt parser for the "Pratt expressions", a specific kind of sub-expression
 //! that deals only with prefix, infix, and postfix operators, as well as function application.
 
+use std::iter::Peekable;
+
 use fcommon::{Label, LabelType, Report, ReportKind, Span, Spanned, Str};
 use fexpr::{
     basic::{Name, Provenance, QualifiedName, WithProvenance},
@@ -22,6 +24,14 @@ use crate::{
 pub enum PUniverse {
     /// A universe variable.
     Variable(Name<Provenance>),
+}
+
+impl Spanned for PUniverse {
+    fn span(&self) -> Span {
+        match self {
+            PUniverse::Variable(name) => name.0.provenance.span(),
+        }
+    }
 }
 
 /// A parsed `let` binder.
@@ -82,6 +92,14 @@ pub enum PExpression {
         /// but this is used for universes, not type parameters.
         universe_ascription: Option<(Span, Vec<PUniverse>, Span)>,
     },
+    Borrow {
+        borrow: Span,
+        value: Box<PExpression>,
+    },
+    Dereference {
+        deref: Span,
+        value: Box<PExpression>,
+    },
     Apply {
         function: Box<PExpression>,
         argument: Box<PExpression>,
@@ -105,9 +123,6 @@ pub enum PExpression {
         span: Span,
         universe: PUniverse,
     },
-    StaticRegion(Span),
-    Region(Span),
-    RegionT(Span),
     Type {
         span: Span,
         /// If this was present, the expression was `Type::{u}` for some `u`.
@@ -115,11 +130,55 @@ pub enum PExpression {
         /// Otherwise, the expression was just `Type`.
         universe: Option<(Span, PUniverse, Span)>,
     },
+    StaticRegion(Span),
+    Region(Span),
+    RegionT(Span),
 }
 
 impl Spanned for PExpression {
     fn span(&self) -> Span {
-        todo!()
+        match self {
+            PExpression::Variable { name, .. } => name.0.provenance.span(),
+            PExpression::Borrow { borrow, value } => todo!(),
+            PExpression::Dereference { deref, value } => todo!(),
+            PExpression::Apply { function, argument } => Span {
+                start: function.span().start,
+                end: argument.span().end,
+            },
+            PExpression::Let {
+                let_token,
+                binders,
+                body,
+            } => todo!(),
+            PExpression::Lambda {
+                fn_token,
+                binders,
+                result,
+            } => todo!(),
+            PExpression::FunctionType { binder, result, .. } => Span {
+                start: binder
+                    .brackets
+                    .map(|(left, _)| left)
+                    .or_else(|| binder.name.as_ref().map(|name| name.0.provenance.span()))
+                    .unwrap_or_else(|| binder.ty.span())
+                    .start,
+                end: result.span().end,
+            },
+            PExpression::Sort { span, universe } => Span {
+                start: span.start,
+                end: universe.span().end,
+            },
+            PExpression::Type { span, universe } => Span {
+                start: span.start,
+                end: universe
+                    .as_ref()
+                    .map(|(_, _, right)| right.end)
+                    .unwrap_or(span.end),
+            },
+            PExpression::StaticRegion(span)
+            | PExpression::Region(span)
+            | PExpression::RegionT(span) => *span,
+        }
     }
 }
 
@@ -143,6 +202,70 @@ enum SmallExpression {
         span: Span,
     },
     PExpression(PExpression),
+}
+
+impl Spanned for SmallExpression {
+    fn span(&self) -> Span {
+        match self {
+            SmallExpression::QualifiedName {
+                segments,
+                final_span,
+                ..
+            } => match segments.first() {
+                Some((_, first_span, _)) => Span {
+                    start: first_span.start,
+                    end: final_span.end,
+                },
+                None => *final_span,
+            },
+            SmallExpression::Operator { span, .. } => *span,
+            SmallExpression::PExpression(expr) => expr.span(),
+        }
+    }
+}
+
+impl SmallExpression {
+    /// Flattens a qualified name expression into a PExpression.
+    /// We only really need the qualified name variant while parsing the individual terms,
+    /// and not while processing them or their binding powers.
+    fn qualified_name_to_pexpression(
+        self,
+        parser: &Parser<'_, '_, impl Iterator<Item = TokenTree>>,
+    ) -> Self {
+        match self {
+            SmallExpression::QualifiedName {
+                segments,
+                final_segment,
+                final_span,
+                universe_ascription,
+            } => SmallExpression::PExpression(PExpression::Variable {
+                name: QualifiedName(WithProvenance::new_with_provenance(
+                    parser.provenance(match segments.first() {
+                        Some((_, first_span, _)) => Span {
+                            start: first_span.start,
+                            end: final_span.end,
+                        },
+                        None => final_span,
+                    }),
+                    segments
+                        .into_iter()
+                        .map(|(name, name_span, _)| {
+                            Name(WithProvenance::new_with_provenance(
+                                parser.provenance(name_span),
+                                Str::new(parser.config().db, name),
+                            ))
+                        })
+                        .chain(std::iter::once(Name(WithProvenance::new_with_provenance(
+                            parser.provenance(final_span),
+                            Str::new(parser.config().db, final_segment),
+                        ))))
+                        .collect(),
+                )),
+                universe_ascription,
+            }),
+            other => other,
+        }
+    }
 }
 
 impl<'db, 'a, I> Parser<'db, 'a, I>
@@ -274,11 +397,12 @@ where
                 }) => {
                     let span = *span;
                     self.next();
-                    if let Some(TokenTree::Block {
-                        bracket: Bracket::Brace,
+                    if let Some(TokenTree::Reserved {
+                        symbol: ReservedSymbol::Scope,
                         ..
                     }) = self.peek()
                     {
+                        self.next();
                         if let Some(TokenTree::Block {
                             open,
                             close,
@@ -373,57 +497,159 @@ where
         }
     }
 
+    /// Uses the algorithm from <https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html>.
+    fn parse_pratt_expr_binding_power(
+        &self,
+        terms: &mut Peekable<impl Iterator<Item = SmallExpression>>,
+        min_power: i32,
+        expr_span: Span,
+    ) -> Dr<PExpression> {
+        let mut lhs = match terms
+            .next()
+            .map(|value| value.qualified_name_to_pexpression(self))
+        {
+            Some(SmallExpression::QualifiedName { .. }) => unreachable!(),
+            Some(SmallExpression::Operator { text, info, span }) => {
+                // We have a prefix operator.
+                match info.prefix {
+                    Some((prefix_power, prefix_function)) => self
+                        .parse_pratt_expr_binding_power(terms, prefix_power, expr_span)
+                        .map(|rhs| match text.as_str() {
+                            "&" => PExpression::Borrow {
+                                borrow: span,
+                                value: Box::new(rhs),
+                            },
+                            "*" => PExpression::Dereference {
+                                deref: span,
+                                value: Box::new(rhs),
+                            },
+                            _ => PExpression::Apply {
+                                function: Box::new(PExpression::Variable {
+                                    name: prefix_function.replace_provenance(self.provenance(span)),
+                                    universe_ascription: None,
+                                }),
+                                argument: Box::new(rhs),
+                            },
+                        }),
+                    None => {
+                        // This wasn't a prefix operator.
+                        todo!()
+                    }
+                }
+            }
+            Some(SmallExpression::PExpression(expr)) => Dr::ok(expr),
+            None => todo!(),
+        };
+
+        loop {
+            match terms.peek() {
+                Some(SmallExpression::QualifiedName { .. }) => {
+                    if let Some(SmallExpression::PExpression(rhs)) = terms
+                        .next()
+                        .map(|value| value.qualified_name_to_pexpression(self))
+                    {
+                        lhs = lhs.map(|lhs| PExpression::Apply {
+                            function: Box::new(lhs),
+                            argument: Box::new(rhs),
+                        })
+                    } else {
+                        unreachable!()
+                    }
+                }
+                Some(SmallExpression::PExpression(_)) => {
+                    if let Some(SmallExpression::PExpression(rhs)) = terms.next() {
+                        lhs = lhs.map(|lhs| PExpression::Apply {
+                            function: Box::new(lhs),
+                            argument: Box::new(rhs),
+                        })
+                    } else {
+                        unreachable!()
+                    }
+                }
+                Some(SmallExpression::Operator { info, .. }) => {
+                    if let Some((postfix_power, _)) = &info.postfix {
+                        if *postfix_power < min_power {
+                            break lhs;
+                        }
+
+                        if let Some(SmallExpression::Operator {
+                            info:
+                                OperatorInfo {
+                                    postfix: Some((_, postfix_function)),
+                                    ..
+                                },
+                            span,
+                            ..
+                        }) = terms.next()
+                        {
+                            lhs = lhs.map(|lhs| PExpression::Apply {
+                                function: Box::new(PExpression::Variable {
+                                    name: postfix_function
+                                        .replace_provenance(self.provenance(span)),
+                                    universe_ascription: None,
+                                }),
+                                argument: Box::new(lhs),
+                            });
+                        } else {
+                            unreachable!()
+                        }
+                    } else if let Some((left_power, _, _)) = &info.infix {
+                        if *left_power < min_power {
+                            break lhs;
+                        }
+
+                        if let Some(SmallExpression::Operator {
+                            info:
+                                OperatorInfo {
+                                    infix: Some((_, right_power, infix_function)),
+                                    ..
+                                },
+                            span,
+                            ..
+                        }) = terms.next()
+                        {
+                            let result = lhs.bind(|lhs| {
+                                self.parse_pratt_expr_binding_power(terms, right_power, expr_span)
+                                    .map(|rhs| (lhs, rhs))
+                            });
+
+                            lhs = result.map(|(lhs, rhs)| PExpression::Apply {
+                                function: Box::new(PExpression::Apply {
+                                    function: Box::new(PExpression::Variable {
+                                        name: infix_function
+                                            .replace_provenance(self.provenance(span)),
+                                        universe_ascription: None,
+                                    }),
+                                    argument: Box::new(lhs),
+                                }),
+                                argument: Box::new(rhs),
+                            });
+                        } else {
+                            unreachable!()
+                        }
+                    } else {
+                        break lhs;
+                    }
+                }
+                None => break lhs,
+            }
+        }
+    }
+
     /// Parses a Pratt expression.
-    /// TODO: Write this complete function. For now, we just parse function applications.
     pub fn parse_pratt_expr(&mut self, indent: usize) -> Dr<PExpression> {
         self.parse_pratt_expr_terms(indent).bind(|terms| {
-            let result = terms
-                .into_iter()
-                .map(|small_expr| match small_expr {
-                    SmallExpression::QualifiedName {
-                        segments,
-                        final_segment,
-                        final_span,
-                        universe_ascription,
-                    } => PExpression::Variable {
-                        name: QualifiedName(WithProvenance::new_with_provenance(
-                            self.provenance(match segments.first() {
-                                Some((_, first_span, _)) => Span {
-                                    start: first_span.start,
-                                    end: final_span.end,
-                                },
-                                None => final_span,
-                            }),
-                            segments
-                                .into_iter()
-                                .map(|(name, name_span, _)| {
-                                    Name(WithProvenance::new_with_provenance(
-                                        self.provenance(name_span),
-                                        Str::new(self.config().db, name),
-                                    ))
-                                })
-                                .chain(std::iter::once(Name(WithProvenance::new_with_provenance(
-                                    self.provenance(final_span),
-                                    Str::new(self.config().db, final_segment),
-                                ))))
-                                .collect(),
-                        )),
-                        universe_ascription,
-                    },
-                    SmallExpression::Operator { .. } => todo!(),
-                    SmallExpression::PExpression(pexpr) => pexpr,
-                })
-                .reduce(|acc, expr| PExpression::Apply {
-                    function: Box::new(acc),
-                    argument: Box::new(expr),
-                });
-
-            // TODO: Once we have actual Pratt parsing, we should make some report messages for using things like
-            // `let` or `fn` in an incorrect position, i.e. not parsed by `parse_expr`.
-
             let source = self.config().source;
-            match result {
-                Some(result) => Dr::ok(result),
+            let expr_span = terms.iter().map(|expr| expr.span()).reduce(|l, r| Span {
+                start: l.start,
+                end: r.end,
+            });
+            match expr_span {
+                Some(expr_span) => self.parse_pratt_expr_binding_power(
+                    &mut terms.into_iter().peekable(),
+                    i32::MIN,
+                    expr_span,
+                ),
                 None => match self.peek() {
                     Some(tt) => Dr::fail(
                         Report::new(ReportKind::Error, source, tt.span().start)
