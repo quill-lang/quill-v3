@@ -10,11 +10,7 @@ pub mod result;
 pub mod universe;
 
 #[salsa::jar(db = Db)]
-pub struct Jar(
-    expr::largest_unusable_metavariable,
-    expr::Term,
-    module::module_from_feather_source,
-);
+pub struct Jar(module::module_from_feather_source);
 
 pub trait Db: fcommon::Db + salsa::DbWithJar<Jar> {}
 

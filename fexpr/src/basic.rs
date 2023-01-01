@@ -46,8 +46,6 @@ impl Provenance {
 }
 
 /// Attaches provenance data to a type.
-/// Parametric over the type `P` of provenance data used.
-/// Typically, `P` is either [`Provenance`] or `()`.
 ///
 /// # Common patterns
 ///
@@ -61,9 +59,9 @@ impl Provenance {
 /// pub struct TContents;
 ///
 /// #[derive(Serialize, Deserialize, PartialEq, Eq)]
-/// pub struct T<P: Default + PartialEq>(pub WithProvenance<P, TContents>);
+/// pub struct T(pub WithProvenance<TContents>);
 ///
-/// impl<P: Default + PartialEq> Deref for T<P> {
+/// impl Deref for T {
 ///     type Target = TContents;
 ///
 ///     fn deref(&self) -> &Self::Target {
@@ -71,20 +69,17 @@ impl Provenance {
 ///     }
 /// }
 ///
-/// impl<P: Default + PartialEq> DerefMut for T<P> {
+/// impl DerefMut for T {
 ///     fn deref_mut(&mut self) -> &mut Self::Target {
 ///         &mut self.0.contents
 ///     }
 /// }
 /// ```
 #[derive(Serialize, Deserialize, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct WithProvenance<P, T>
-where
-    P: Default + PartialEq,
-{
+pub struct WithProvenance<T> {
     /// The origin of the value.
     #[serde(default, skip_serializing_if = "is_default_value")]
-    pub provenance: P,
+    pub provenance: Provenance,
     /// The actual contents of the value.
     pub contents: T,
 }
@@ -96,30 +91,7 @@ where
     *provenance == P::default()
 }
 
-impl<T> WithProvenance<(), T> {
-    pub fn new(contents: T) -> Self {
-        Self {
-            provenance: (),
-            contents,
-        }
-    }
-}
-
-impl<T> WithProvenance<Provenance, T> {
-    pub fn without_provenance(self) -> WithProvenance<(), T> {
-        WithProvenance {
-            provenance: (),
-            contents: self.contents,
-        }
-    }
-
-    pub fn new_with_span(source_span: SourceSpan, contents: T) -> Self {
-        Self {
-            provenance: Provenance::Feather(source_span),
-            contents,
-        }
-    }
-
+impl<T> WithProvenance<T> {
     pub fn new_synthetic(contents: T) -> Self {
         Self {
             provenance: Provenance::Synthetic,
@@ -135,9 +107,8 @@ impl<T> WithProvenance<Provenance, T> {
     }
 }
 
-impl<P, T> Debug for WithProvenance<P, T>
+impl<T> Debug for WithProvenance<T>
 where
-    P: Debug + Default + PartialEq,
     T: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -149,10 +120,7 @@ where
     }
 }
 
-impl<P, T> Deref for WithProvenance<P, T>
-where
-    P: Default + PartialEq,
-{
+impl<T> Deref for WithProvenance<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -160,10 +128,7 @@ where
     }
 }
 
-impl<P, T> DerefMut for WithProvenance<P, T>
-where
-    P: Default + PartialEq,
-{
+impl<T> DerefMut for WithProvenance<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.contents
     }
@@ -192,14 +157,9 @@ impl Spanned for Provenance {
 
 /// A single indivisible lexical unit in an identifier, variable, or so on.
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Name<P>(pub WithProvenance<P, Str>)
-where
-    P: Default + PartialEq;
+pub struct Name(pub WithProvenance<Str>);
 
-impl<P> Deref for Name<P>
-where
-    P: Default + PartialEq,
-{
+impl Deref for Name {
     type Target = Str;
 
     fn deref(&self) -> &Self::Target {
@@ -207,49 +167,27 @@ where
     }
 }
 
-impl<P> DerefMut for Name<P>
-where
-    P: Default + PartialEq,
-{
+impl DerefMut for Name {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0.contents
     }
 }
 
-impl<P> Debug for Name<P>
-where
-    P: Default + PartialEq,
-{
+impl Debug for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
-    }
-}
-
-impl<P> Name<P>
-where
-    P: Default + PartialEq,
-{
-    pub fn without_provenance(&self) -> Name<()> {
-        Name(WithProvenance::new(**self))
-    }
-
-    pub fn synthetic(&self) -> Name<Provenance> {
-        Name(WithProvenance::new_synthetic(**self))
     }
 }
 
 // We need a custom Serialize/Deserialize impl for Name.
 // Because `Str` is not a struct, `#[flatten]` doesn't work.
 
-impl<P> Serialize for Name<P>
-where
-    P: Default + PartialEq + Serialize,
-{
+impl Serialize for Name {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        if self.0.provenance == P::default() {
+        if self.0.provenance == Provenance::default() {
             self.deref().serialize(serializer)
         } else {
             let mut s = serializer.serialize_tuple(2)?;
@@ -261,15 +199,10 @@ where
 }
 
 #[derive(Default)]
-struct NameVisitor<P> {
-    _phantom: std::marker::PhantomData<P>,
-}
+struct NameVisitor;
 
-impl<'de, P> Visitor<'de> for NameVisitor<P>
-where
-    P: Default + Deserialize<'de> + PartialEq,
-{
-    type Value = Name<P>;
+impl<'de> Visitor<'de> for NameVisitor {
+    type Value = Name;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("a string or a 2-tuple")
@@ -280,7 +213,7 @@ where
         E: serde::de::Error,
     {
         Ok(Name(WithProvenance {
-            provenance: P::default(),
+            provenance: Provenance::default(),
             contents: Str::deserialise(v.to_owned()),
         }))
     }
@@ -302,10 +235,7 @@ where
     }
 }
 
-impl<'de, P> Deserialize<'de> for Name<P>
-where
-    P: Default + PartialEq + Deserialize<'de>,
-{
+impl<'de> Deserialize<'de> for Name {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -317,52 +247,38 @@ where
 /// A qualified name that may have been written in code, rather than one simply stored internally
 /// that was never written in code (see [`fcommon::Path`] for that use case).
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct QualifiedName<P>(pub WithProvenance<P, Vec<Name<P>>>)
-where
-    P: Default + PartialEq;
+pub struct QualifiedName(pub WithProvenance<Vec<Name>>);
 
-impl<P> Deref for QualifiedName<P>
-where
-    P: Default + PartialEq,
-{
-    type Target = Vec<Name<P>>;
+impl Deref for QualifiedName {
+    type Target = Vec<Name>;
 
     fn deref(&self) -> &Self::Target {
         &self.0.contents
     }
 }
 
-impl<P> DerefMut for QualifiedName<P>
-where
-    P: Default + PartialEq,
-{
+impl DerefMut for QualifiedName {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0.contents
     }
 }
 
-impl<P> Debug for QualifiedName<P>
-where
-    P: Default + PartialEq,
-{
+impl Debug for QualifiedName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl<P> QualifiedName<P>
-where
-    P: Default + PartialEq,
-{
+impl QualifiedName {
     pub fn from_path(db: &dyn Db, path: Path) -> Self {
         QualifiedName(WithProvenance {
-            provenance: P::default(),
+            provenance: Provenance::default(),
             contents: path
                 .segments(db)
                 .iter()
                 .map(|s| {
                     Name(WithProvenance {
-                        provenance: P::default(),
+                        provenance: Provenance::default(),
                         contents: *s,
                     })
                 })
@@ -378,7 +294,7 @@ where
         self.to_path(db).display(db)
     }
 
-    pub fn eq_ignoring_provenance(&self, other: &QualifiedName<P>) -> bool {
+    pub fn eq_ignoring_provenance(&self, other: &QualifiedName) -> bool {
         self.len() == other.len()
             && self
                 .iter()
@@ -386,32 +302,9 @@ where
                 .all(|(left, right)| left.deref() == right.deref())
     }
 
-    pub fn replace_provenance(mut self, provenance: P) -> Self {
+    pub fn replace_provenance(mut self, provenance: Provenance) -> Self {
         self.0.provenance = provenance;
         self
-    }
-}
-
-impl<P> QualifiedName<P>
-where
-    P: Default + PartialEq,
-{
-    pub fn without_provenance(&self) -> QualifiedName<()> {
-        QualifiedName(WithProvenance {
-            provenance: (),
-            contents: self
-                .0
-                .contents
-                .iter()
-                .map(Name::without_provenance)
-                .collect(),
-        })
-    }
-
-    pub fn synthetic(&self) -> QualifiedName<Provenance> {
-        QualifiedName(WithProvenance::new_synthetic(
-            self.0.contents.iter().map(Name::synthetic).collect(),
-        ))
     }
 }
 

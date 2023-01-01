@@ -1,25 +1,31 @@
 //! # Expressions and terms
 //!
+//! TODO: Rewrite this documentation.
+//!
 //! A term is a feather value. An expression is a term with provenance data; it tracks where expressions were written in code.
 //! Expressions should be used for user-provided data, and things like type checking where we want to be able to output error messages at precise locations.
-//! Terms should be used for things like kernel computation and code generation, where we either discard provenance data, or it is not relevant.
+//! Expressions should be used for things like kernel computation and code generation, where we either discard provenance data, or it is not relevant.
 //!
 //! ## Type parameters
 //!
-//! Throughout this file, we work under the assumption that we have a type variable `E` representing an expression or term type.
-//! Most commonly, this will be [`Term`] or [`Expression`].
+//! Throughout this file, we work under the assumption that we have a type variable `E` representing an expression type.
+//! Most commonly, this will be [`Expression`] or [`Expression`].
 //! We then construct the type [`ExpressionT`], generic over this parameter `E`.
-//! This allows us to write functions that are generic over both [`Term`] and [`Expression`].
+//! This allows us to write functions that are generic over both [`Expression`] and [`Expression`].
 //!
 //! ## Interning
 //!
-//! Terms can be interned by salsa, as they have no provenance information.
-//! Since [`ExpressionT<(), Term>`] is parametrised by the interned `Term` type, when we look up an interned term value, we only 'unbox' one level at a time.
+//! Expressions can be interned by salsa, as they have no provenance information.
+//! Since [`ExpressionT<Expression>`] is parametrised by the interned `Expression` type, when we look up an interned term value, we only 'unbox' one level at a time.
 //! This improves efficiency, and allows us to cache various results about many small terms, such as their type.
 
-use std::cmp::max;
+use std::{
+    cmp::max,
+    collections::{hash_map::Entry, HashMap},
+    marker::PhantomData,
+};
 
-use fcommon::with_local_database;
+use fcommon::{Span, Spanned};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -79,55 +85,49 @@ pub struct Delta<E> {
 /// Either a definition or an inductive data type.
 /// Parametrised by a list of universe parameters.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Inst<P>
-where
-    P: Default + PartialEq,
-{
-    pub name: QualifiedName<P>,
-    pub universes: Vec<Universe<P>>,
+pub struct Inst {
+    pub name: QualifiedName,
+    pub universes: Vec<Universe>,
 }
 
 /// A bound variable in a lambda, pi, let, or lifespan expression.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct BoundVariable<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct BoundVariable<E> {
     /// The name of the local variable to bind.
-    pub name: Name<P>,
+    pub name: Name,
     /// The type of the value assigned to the bound variable.
     pub ty: E,
     /// The multiplicity for which the value is bound.
     pub ownership: ParameterOwnership,
 }
 
-impl BoundVariable<Provenance, Box<Expression>> {
-    fn without_provenance(&self, db: &dyn Db) -> BoundVariable<(), Term> {
+impl BoundVariable<HeapExpression> {
+    fn from_heap<'cache>(
+        &self,
+        cache: &mut ExpressionCache<'cache>,
+    ) -> BoundVariable<Expression<'cache>> {
         BoundVariable {
-            name: self.name.without_provenance(),
-            ty: self.ty.to_term(db),
+            name: self.name,
+            ty: self.ty.from_heap(cache),
             ownership: self.ownership,
         }
     }
 }
 
-impl BoundVariable<(), Term> {
-    fn synthetic(&self, db: &dyn Db) -> BoundVariable<Provenance, Box<Expression>> {
+impl<'cache> BoundVariable<Expression<'cache>> {
+    fn to_heap(self, cache: &ExpressionCache<'cache>) -> BoundVariable<HeapExpression> {
         BoundVariable {
-            name: self.name.synthetic(),
-            ty: Box::new(self.ty.to_expression(db)),
+            name: self.name,
+            ty: self.ty.to_heap(cache),
             ownership: self.ownership,
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Let<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct Let<E> {
     /// The local variable to bind.
-    pub bound: BoundVariable<P, E>,
+    pub bound: BoundVariable<E>,
     /// The value to assign to the new bound variable.
     pub to_assign: E,
     /// The main body of the expression to be executed after assigning the value.
@@ -158,12 +158,9 @@ pub enum FunctionOwnership {
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct BinderStructure<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct BinderStructure<E> {
     /// The local variable to bind.
-    pub bound: BoundVariable<P, E>,
+    pub bound: BoundVariable<E>,
     /// How the parameter should be filled when calling the function.
     pub binder_annotation: BinderAnnotation,
     /// How the function should be called.
@@ -172,52 +169,51 @@ where
     pub region: E,
 }
 
-impl BinderStructure<Provenance, Box<Expression>> {
-    pub fn without_provenance(&self, db: &dyn Db) -> BinderStructure<(), Term> {
+impl BinderStructure<HeapExpression> {
+    pub fn from_heap<'cache>(
+        &self,
+        cache: &mut ExpressionCache<'cache>,
+    ) -> BinderStructure<Expression<'cache>> {
         BinderStructure {
-            bound: self.bound.without_provenance(db),
+            bound: self.bound.from_heap(cache),
             binder_annotation: self.binder_annotation,
             ownership: self.ownership,
-            region: self.region.to_term(db),
+            region: self.region.from_heap(cache),
         }
     }
 }
 
-impl BinderStructure<(), Term> {
-    pub fn synthetic(&self, db: &dyn Db) -> BinderStructure<Provenance, Box<Expression>> {
+impl<'cache> BinderStructure<Expression<'cache>> {
+    pub fn to_heap(&self, cache: &ExpressionCache<'cache>) -> BinderStructure<HeapExpression> {
         BinderStructure {
-            bound: self.bound.synthetic(db),
+            bound: self.bound.to_heap(cache),
             binder_annotation: self.binder_annotation,
             ownership: self.ownership,
-            region: Box::new(self.region.to_expression(db)),
+            region: self.region.to_heap(cache),
         }
     }
 }
 
 /// Either a lambda abstraction or the type of such lambda abstractions.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Binder<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct Binder<E> {
     /// The structure of the binder.
-    pub structure: BinderStructure<P, E>,
+    pub structure: BinderStructure<E>,
     /// The result.
     /// If this is a lambda abstraction, this is the lambda term.
     /// If this is a function type, this is the type of the function's body.
     pub result: E,
 }
 
-impl<P, E> BinderStructure<P, E>
+impl<E> BinderStructure<E>
 where
-    P: Default + Clone + PartialEq,
     E: Clone,
 {
     /// Generates a local constant that represents the argument to this dependent function type.
     pub fn generate_local_with_gen(
         &self,
         meta_gen: &mut MetavariableGenerator<E>,
-    ) -> LocalConstant<P, E> {
+    ) -> LocalConstant<E> {
         LocalConstant {
             metavariable: meta_gen.gen(self.bound.ty.clone()),
             structure: self.clone(),
@@ -226,9 +222,13 @@ where
 
     /// Generates a local constant that represents the argument to this dependent function type.
     /// The index of the metavariable is guaranteed not to collide with the metavariables in `t`.
-    pub fn generate_local(&self, db: &dyn Db, t: Term) -> LocalConstant<P, E> {
+    pub fn generate_local<'cache>(
+        &self,
+        cache: &mut ExpressionCache<'cache>,
+        e: Expression<'cache>,
+    ) -> LocalConstant<E> {
         self.generate_local_with_gen(&mut MetavariableGenerator::new(
-            largest_unusable_metavariable(db, t),
+            e.largest_unusable_metavariable(cache),
         ))
     }
 }
@@ -236,72 +236,79 @@ where
 /// A [`Binder`] that takes an arbitrary amount of parameters, including zero.
 /// Each binder may depend on the previous ones.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct NaryBinder<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct NaryBinder<E> {
     /// The structures of each successive binder.
-    pub structures: Vec<BinderStructure<P, E>>,
+    pub structures: Vec<BinderStructure<E>>,
     /// The result.
     /// If this is a lambda abstraction, this is the lambda term.
     /// If this is a function type, this is the type of the function's body.
     pub result: E,
 }
 
-impl NaryBinder<Provenance, Box<Expression>> {
-    pub fn without_provenance(&self, db: &dyn Db) -> NaryBinder<(), Term> {
+impl NaryBinder<HeapExpression> {
+    pub fn from_heap<'cache>(
+        &self,
+        cache: &mut ExpressionCache<'cache>,
+    ) -> NaryBinder<Expression<'cache>> {
         NaryBinder {
             structures: self
                 .structures
                 .iter()
-                .map(|structure| structure.without_provenance(db))
+                .map(|structure| structure.from_heap(cache))
                 .collect(),
-            result: self.result.to_term(db),
+            result: self.result.from_heap(cache),
         }
     }
 }
 
 /// A region-polymorphic value, or the type of such values.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct RegionBinder<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct RegionBinder<E> {
     /// The name of the parameter.
-    pub region_name: Name<P>,
+    pub region_name: Name,
     /// The body of the expression.
     pub body: E,
 }
 
-impl RegionBinder<(), Term> {
+impl<'cache> RegionBinder<Expression<'cache>> {
     /// Generates a local constant that represents the argument to this dependent function type.
     pub fn generate_local_with_gen(
         &self,
-        db: &dyn Db,
-        meta_gen: &mut MetavariableGenerator<Term>,
-    ) -> LocalConstant<(), Term> {
+        cache: &mut ExpressionCache<'cache>,
+        meta_gen: &mut MetavariableGenerator<Expression<'cache>>,
+    ) -> LocalConstant<Expression<'cache>> {
         LocalConstant {
-            metavariable: meta_gen.gen(Term::new(db, ExpressionT::Region)),
+            metavariable: meta_gen.gen(Expression::new(
+                cache,
+                self.region_name.0.provenance,
+                ExpressionT::Region,
+            )),
             structure: BinderStructure {
                 bound: BoundVariable {
                     name: self.region_name,
-                    ty: Term::new(db, ExpressionT::Region),
+                    ty: Expression::new(cache, self.region_name.0.provenance, ExpressionT::Region),
                     ownership: ParameterOwnership::PCopyable,
                 },
                 ownership: FunctionOwnership::Once,
                 binder_annotation: BinderAnnotation::Explicit,
-                region: Term::new(db, ExpressionT::StaticRegion),
+                region: Expression::new(
+                    cache,
+                    self.region_name.0.provenance,
+                    ExpressionT::StaticRegion,
+                ),
             },
         }
     }
 
     /// Generates a local constant that represents the argument to this dependent function type.
-    /// The index of the metavariable is guaranteed not to collide with the metavariables in `t`.
-    pub fn generate_local(&self, db: &dyn Db, t: Term) -> LocalConstant<(), Term> {
-        self.generate_local_with_gen(
-            db,
-            &mut MetavariableGenerator::new(largest_unusable_metavariable(db, t)),
-        )
+    /// The index of the metavariable is guaranteed not to collide with the metavariables in `e`.
+    pub fn generate_local(
+        &self,
+        cache: &mut ExpressionCache<'cache>,
+        e: Expression<'cache>,
+    ) -> LocalConstant<Expression<'cache>> {
+        let largest_unusable = e.largest_unusable_metavariable(cache);
+        self.generate_local_with_gen(cache, &mut MetavariableGenerator::new(largest_unusable))
     }
 }
 
@@ -315,28 +322,22 @@ pub struct Apply<E> {
 
 /// Constructs an inductive data type using an introduction rule.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Intro<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct Intro<E> {
     /// The inductive that we are constructing.
-    pub inductive: QualifiedName<P>,
+    pub inductive: QualifiedName,
     /// The universe parameters on the inductive.
-    pub universes: Vec<Universe<P>>,
+    pub universes: Vec<Universe>,
     /// The name of the variant we are constructing.
-    pub variant: Name<P>,
+    pub variant: Name,
     /// The parameters we supply to the introduction rule.
     /// This is the sequence of global parameters, followed by the list of fields.
     pub parameters: Vec<E>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MinorPremise<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct MinorPremise<E> {
     /// The variant that this minor premise operates on.
-    pub variant: Name<P>,
+    pub variant: Name,
     /// The number of fields (non-global parameters) that this variant has.
     ///
     /// Technically this is data duplication, since we can infer it from the type of the major premise after
@@ -351,10 +352,7 @@ where
 
 /// Performs dependent pattern matching on an inductive data type.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Match<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct Match<E> {
     /// The value to eliminate.
     /// The type of the major premise must be an inductive.
     /// We supply this here, instead of making [`Match`] return a function, to avoid issues with lifetimes.
@@ -371,23 +369,20 @@ where
     /// The type of this expression should be a [`Sort`].
     pub motive: E,
     /// The set of minor premises that represent each possible branch of the match expression.
-    pub minor_premises: Vec<MinorPremise<P, E>>,
+    pub minor_premises: Vec<MinorPremise<E>>,
 }
 
 /// The fixed point construction on inductive data types.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Fix<P, E>
-where
-    P: Default + PartialEq,
-{
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Fix<E> {
     /// The concrete argument to instantiate the parameter to the fixed point construction with.
     /// We supply this here, instead of making [`Fix`] return a function, to avoid issues with lifetimes.
     pub argument: E,
     /// The name supplied to the argument to the fixed point construction.
-    pub argument_name: Name<P>,
+    pub argument_name: Name,
     /// The local variable to be constructed by a fixed point process.
     /// The parameter is bound at index 0 in this expression.
-    pub fixpoint: BoundVariable<P, E>,
+    pub fixpoint: BoundVariable<E>,
     /// The main body of the fixed point expression.
     /// The parameter is bound at index 0 and the function `parameter -> fixpoint` is bound at index 1 in this expression.
     /// The parameter `fixpoint` should only be invoked with structurally smaller parameters.
@@ -398,9 +393,7 @@ where
 /// Represents the universe of types corresponding to the given universe.
 /// For example, if the universe is `0`, this is `Prop`, the type of propositions.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Sort<P>(pub Universe<P>)
-where
-    P: Default + PartialEq;
+pub struct Sort(pub Universe);
 
 /// The maximum possible lifespan of a type.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -422,13 +415,10 @@ pub struct Metavariable<E> {
 /// De Bruijn indices (bound variables) are replaced with local constants while we're inside the function body.
 /// Should not be used in functions manually.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct LocalConstant<P, E>
-where
-    P: Default + PartialEq,
-{
+pub struct LocalConstant<E> {
     pub metavariable: Metavariable<E>,
     /// The structure of the binder that introduced this local constant.
-    pub structure: BinderStructure<P, E>,
+    pub structure: BinderStructure<E>,
 }
 
 /// Generates unique inference variable names.
@@ -458,49 +448,143 @@ impl<E> MetavariableGenerator<E> {
 
 /// The main expression type.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ExpressionT<P, E>
-where
-    P: Default + PartialEq,
-{
+pub enum ExpressionT<E> {
     Local(Local),
     Borrow(Borrow<E>),
     Dereference(Dereference<E>),
     Delta(Delta<E>),
-    Inst(Inst<P>),
-    Let(Let<P, E>),
-    Lambda(Binder<P, E>),
-    Pi(Binder<P, E>),
-    RegionLambda(RegionBinder<P, E>),
-    RegionPi(RegionBinder<P, E>),
+    Inst(Inst),
+    Let(Let<E>),
+    Lambda(Binder<E>),
+    Pi(Binder<E>),
+    RegionLambda(RegionBinder<E>),
+    RegionPi(RegionBinder<E>),
     Apply(Apply<E>),
-    Intro(Intro<P, E>),
-    Match(Match<P, E>),
-    Fix(Fix<P, E>),
-    Sort(Sort<P>),
+    Intro(Intro<E>),
+    Match(Match<E>),
+    Fix(Fix<E>),
+    Sort(Sort),
     Region,
     /// The type of [`ExpressionT::Region`], and the type of itself.
     RegionT,
-    /// TODO: Remove this field, replacing it with a call to [`Inst`] to simplify the kernel.
     StaticRegion,
     Lifespan(Lifespan<E>),
     Metavariable(Metavariable<E>),
-    LocalConstant(LocalConstant<P, E>),
+    LocalConstant(LocalConstant<E>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Expression {
-    pub value: WithProvenance<Provenance, ExpressionT<Provenance, Box<Expression>>>,
+/// Caches values and properties of expressions.
+///
+/// This is intended to be used on a more granular level than `salsa` queries:
+/// when a query is executed, we create and manipulate a cache.
+/// Then, when the query ends, we can safely destroy the cache.
+pub struct ExpressionCache<'cache> {
+    db: &'cache dyn Db,
+    next_id: u64,
+    /// Maps from expressions to their IDs.
+    /// Inverse to `expressions`.
+    ids: HashMap<WithProvenance<ExpressionT<Expression<'cache>>>, Expression<'cache>>,
+    /// Maps from IDs to the expressions they represent.
+    /// Inverse to `ids`.
+    expressions: HashMap<Expression<'cache>, WithProvenance<ExpressionT<Expression<'cache>>>>,
+
+    /// Memoised results of `largest_unusable_metavariable`.
+    largest_unusable_metavariable: HashMap<Expression<'cache>, Option<u32>>,
 }
 
-impl Expression {
-    pub fn new_synthetic(value: ExpressionT<Provenance, Box<Expression>>) -> Self {
+impl<'cache> ExpressionCache<'cache> {
+    /// Uses branded types to ensure that expressions generated by one cache are never used in another.
+    /// See <https://plv.mpi-sws.org/rustbelt/ghostcell/paper.pdf> for more information about this technique.
+    pub fn with_cache<R>(db: &dyn Db, f: impl for<'a> FnOnce(ExpressionCache<'a>) -> R) -> R {
+        f(ExpressionCache {
+            db,
+            next_id: 0,
+            ids: Default::default(),
+            expressions: Default::default(),
+            largest_unusable_metavariable: Default::default(),
+        })
+    }
+
+    pub fn db(&self) -> &dyn Db {
+        self.db
+    }
+}
+
+/// An ID for an expression, tied to an [`ExpressionCache`] by the `'cache` lifetime.
+/// See also [`HeapExpression`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct Expression<'cache> {
+    _phantom: PhantomData<&'cache ()>,
+    id: u64,
+}
+
+/// An expression, stored entirely on the heap.
+/// This doesn't use an [`ExpressionCache`], so it can be used as an input or output of a `salsa` query.
+/// See also [`Expression`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeapExpression {
+    value: WithProvenance<Box<ExpressionT<HeapExpression>>>,
+}
+
+impl<'cache> Expression<'cache> {
+    /// Creates a new [`Expression`] with the given value.
+    /// If an expression with this body was already cached, return the cached [`Expression`].
+    pub fn new(
+        cache: &mut ExpressionCache<'cache>,
+        provenance: Provenance,
+        value: ExpressionT<Expression<'cache>>,
+    ) -> Self {
+        let value = WithProvenance::new_with_provenance(provenance, value);
+        match cache.ids.entry(value.clone()) {
+            Entry::Occupied(occupied) => *occupied.get(),
+            Entry::Vacant(vacant) => {
+                let e = Expression {
+                    _phantom: PhantomData,
+                    id: cache.next_id,
+                };
+                cache.next_id += 1;
+                cache.expressions.insert(e, value);
+                vacant.insert(e);
+                e
+            }
+        }
+    }
+
+    pub fn provenance(self, cache: &ExpressionCache<'cache>) -> Provenance {
+        cache
+            .expressions
+            .get(&self)
+            .expect("expression not found in cache")
+            .provenance
+    }
+
+    pub fn span(self, cache: &ExpressionCache<'cache>) -> Span {
+        self.provenance(cache).span()
+    }
+
+    pub fn value<'a>(
+        self,
+        cache: &'a ExpressionCache<'cache>,
+    ) -> &'a ExpressionT<Expression<'cache>> {
+        cache
+            .expressions
+            .get(&self)
+            .expect("expression not found in cache")
+    }
+}
+
+impl HeapExpression {
+    pub fn new(provenance: Provenance, contents: ExpressionT<HeapExpression>) -> Self {
         Self {
-            value: WithProvenance::new_synthetic(value),
+            value: WithProvenance {
+                provenance,
+                contents: Box::new(contents),
+            },
         }
     }
 }
 
-impl Serialize for Expression {
+impl Serialize for HeapExpression {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -509,7 +593,7 @@ impl Serialize for Expression {
     }
 }
 
-impl<'de> Deserialize<'de> for Expression {
+impl<'de> Deserialize<'de> for HeapExpression {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -518,378 +602,395 @@ impl<'de> Deserialize<'de> for Expression {
     }
 }
 
-#[salsa::interned]
-pub struct Term {
-    #[return_ref]
-    pub value: ExpressionT<(), Term>,
-}
-
-impl Term {
+impl<'cache> Expression<'cache> {
     /// We use [`ron`] to provide nice debug output for terms.
-    pub fn display(&self, db: &dyn Db) -> String {
-        with_local_database(db, || {
-            ron::ser::to_string_pretty(&self.to_expression(db), ron::ser::PrettyConfig::default())
-                .unwrap()
-        })
+    pub fn display(self, cache: &ExpressionCache<'cache>) -> String {
+        todo!()
+        // with_local_database(cache, self.value.provenance, || {
+        //     ron::ser::to_string_pretty(&self.to_heap(cache), ron::ser::PrettyConfig::default())
+        //         .unwrap()
+        // })
     }
 
     /// Returns the sort of proof-irrelevant propositions.
-    pub fn sort_prop(db: &dyn Db) -> Term {
-        Term::new(
-            db,
-            ExpressionT::Sort(Sort(Universe::new(UniverseContents::UniverseZero))),
+    pub fn sort_prop(cache: &mut ExpressionCache<'cache>) -> Self {
+        Self::new(
+            cache,
+            Provenance::Synthetic,
+            ExpressionT::Sort(Sort(Universe::new_synthetic(
+                UniverseContents::UniverseZero,
+            ))),
         )
     }
 
     /// Returns the sort of small types.
-    pub fn sort_type(db: &dyn Db) -> Term {
-        Term::new(
-            db,
-            ExpressionT::Sort(Sort(Universe::new(UniverseContents::UniverseSucc(
-                UniverseSucc(Box::new(Universe::new(UniverseContents::UniverseZero))),
-            )))),
+    pub fn sort_type(cache: &mut ExpressionCache<'cache>) -> Self {
+        Self::new(
+            cache,
+            Provenance::Synthetic,
+            ExpressionT::Sort(Sort(Universe::new_synthetic(
+                UniverseContents::UniverseSucc(UniverseSucc(Box::new(Universe::new_synthetic(
+                    UniverseContents::UniverseZero,
+                )))),
+            ))),
         )
     }
 }
 
-/// Returns the largest metavariable index that was referenced in the given term, or [`None`] if none were referenced.
-/// We are free to use metavariables with strictly higher indices than what is returned here without name clashing.
-#[must_use]
-#[salsa::tracked]
-pub fn largest_unusable_metavariable(db: &dyn Db, t: Term) -> Option<u32> {
-    match t.value(db) {
-        ExpressionT::Local(_) => None,
-        ExpressionT::Borrow(t) => max(
-            largest_unusable_metavariable(db, t.region),
-            largest_unusable_metavariable(db, t.value),
-        ),
-        ExpressionT::Dereference(t) => largest_unusable_metavariable(db, t.value),
-        ExpressionT::Delta(t) => max(
-            largest_unusable_metavariable(db, t.region),
-            largest_unusable_metavariable(db, t.ty),
-        ),
-        ExpressionT::Inst(_) => None,
-        ExpressionT::Let(t) => max(
-            max(
-                largest_unusable_metavariable(db, t.bound.ty),
-                largest_unusable_metavariable(db, t.to_assign),
-            ),
-            largest_unusable_metavariable(db, t.body),
-        ),
-        ExpressionT::Lambda(t) | ExpressionT::Pi(t) => max(
-            max(
-                largest_unusable_metavariable(db, t.structure.bound.ty),
-                largest_unusable_metavariable(db, t.structure.region),
-            ),
-            largest_unusable_metavariable(db, t.result),
-        ),
-        ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => {
-            largest_unusable_metavariable(db, t.body)
-        }
-        ExpressionT::Apply(t) => max(
-            largest_unusable_metavariable(db, t.function),
-            largest_unusable_metavariable(db, t.argument),
-        ),
-        ExpressionT::Intro(t) => t
-            .parameters
-            .iter()
-            .map(|param| largest_unusable_metavariable(db, *param))
-            .max()
-            .unwrap_or(None),
-        ExpressionT::Match(t) => t
-            .minor_premises
-            .iter()
-            .map(|premise| largest_unusable_metavariable(db, premise.result))
-            .chain(std::iter::once(largest_unusable_metavariable(
-                db,
-                t.major_premise,
-            )))
-            .chain(std::iter::once(largest_unusable_metavariable(db, t.motive)))
-            .max()
-            .unwrap(),
-        ExpressionT::Fix(t) => max(
-            max(
-                largest_unusable_metavariable(db, t.fixpoint.ty),
-                largest_unusable_metavariable(db, t.body),
-            ),
-            largest_unusable_metavariable(db, t.argument),
-        ),
-        ExpressionT::Sort(_)
-        | ExpressionT::Region
-        | ExpressionT::RegionT
-        | ExpressionT::StaticRegion => None,
-        ExpressionT::Lifespan(t) => largest_unusable_metavariable(db, t.ty),
-        ExpressionT::Metavariable(t) => Some(t.index),
-        ExpressionT::LocalConstant(t) => Some(t.metavariable.index),
-    }
-}
-
-impl Term {
-    /// Converts a term into an expression, using [`Provenance::Synthetic`] where necessary.
-    pub fn to_expression(&self, db: &dyn Db) -> Expression {
-        match self.value(db) {
-            ExpressionT::Local(e) => Expression::new_synthetic(ExpressionT::Local(*e)),
-            ExpressionT::Borrow(e) => Expression::new_synthetic(ExpressionT::Borrow(Borrow {
-                region: Box::new(e.region.to_expression(db)),
-                value: Box::new(e.value.to_expression(db)),
-            })),
-            ExpressionT::Dereference(e) => {
-                Expression::new_synthetic(ExpressionT::Dereference(Dereference {
-                    value: Box::new(e.value.to_expression(db)),
-                }))
-            }
-            ExpressionT::Delta(e) => Expression::new_synthetic(ExpressionT::Delta(Delta {
-                region: Box::new(e.region.to_expression(db)),
-                ty: Box::new(e.ty.to_expression(db)),
-            })),
-            ExpressionT::Inst(e) => Expression::new_synthetic(ExpressionT::Inst(Inst {
-                name: e.name.synthetic(),
-                universes: e
-                    .universes
-                    .iter()
-                    .map(|u| WithProvenance::new_synthetic(u.synthetic()))
-                    .collect(),
-            })),
-            ExpressionT::Let(e) => Expression::new_synthetic(ExpressionT::Let(Let {
-                bound: e.bound.synthetic(db),
-                to_assign: Box::new(e.to_assign.to_expression(db)),
-                body: Box::new(e.body.to_expression(db)),
-            })),
-            ExpressionT::Lambda(e) => Expression::new_synthetic(ExpressionT::Lambda(Binder {
-                structure: e.structure.synthetic(db),
-                result: Box::new(e.result.to_expression(db)),
-            })),
-            ExpressionT::Pi(e) => Expression::new_synthetic(ExpressionT::Pi(Binder {
-                structure: e.structure.synthetic(db),
-                result: Box::new(e.result.to_expression(db)),
-            })),
-            ExpressionT::RegionLambda(e) => {
-                Expression::new_synthetic(ExpressionT::RegionLambda(RegionBinder {
-                    region_name: e.region_name.synthetic(),
-                    body: Box::new(e.body.to_expression(db)),
-                }))
-            }
-            ExpressionT::RegionPi(e) => {
-                Expression::new_synthetic(ExpressionT::RegionPi(RegionBinder {
-                    region_name: e.region_name.synthetic(),
-                    body: Box::new(e.body.to_expression(db)),
-                }))
-            }
-            ExpressionT::Apply(e) => Expression::new_synthetic(ExpressionT::Apply(Apply {
-                function: Box::new(e.function.to_expression(db)),
-                argument: Box::new(e.argument.to_expression(db)),
-            })),
-            ExpressionT::Intro(e) => Expression::new_synthetic(ExpressionT::Intro(Intro {
-                inductive: e.inductive.synthetic(),
-                universes: e
-                    .universes
-                    .iter()
-                    .map(|u| WithProvenance::new_synthetic(u.synthetic()))
-                    .collect(),
-                variant: e.variant.synthetic(),
-                parameters: e
-                    .parameters
-                    .iter()
-                    .map(|term| Box::new(term.to_expression(db)))
-                    .collect(),
-            })),
-            ExpressionT::Match(e) => Expression::new_synthetic(ExpressionT::Match(Match {
-                major_premise: Box::new(e.major_premise.to_expression(db)),
-                index_params: e.index_params,
-                motive: Box::new(e.motive.to_expression(db)),
-                minor_premises: e
-                    .minor_premises
-                    .iter()
-                    .map(|premise| MinorPremise {
-                        variant: premise.variant.synthetic(),
-                        fields: premise.fields,
-                        result: Box::new(premise.result.to_expression(db)),
-                    })
-                    .collect(),
-            })),
-            ExpressionT::Fix(e) => Expression::new_synthetic(ExpressionT::Fix(Fix {
-                argument: Box::new(e.argument.to_expression(db)),
-                argument_name: e.argument_name.synthetic(),
-                fixpoint: e.fixpoint.synthetic(db),
-                body: Box::new(e.body.to_expression(db)),
-            })),
-            ExpressionT::Sort(e) => Expression::new_synthetic(ExpressionT::Sort(Sort(
-                WithProvenance::new_synthetic(e.0.synthetic()),
-            ))),
-            ExpressionT::Region => Expression::new_synthetic(ExpressionT::Region),
-            ExpressionT::RegionT => Expression::new_synthetic(ExpressionT::RegionT),
-            ExpressionT::StaticRegion => Expression::new_synthetic(ExpressionT::StaticRegion),
-            ExpressionT::Lifespan(e) => {
-                Expression::new_synthetic(ExpressionT::Lifespan(Lifespan {
-                    ty: Box::new(e.ty.to_expression(db)),
-                }))
-            }
-            ExpressionT::Metavariable(e) => {
-                Expression::new_synthetic(ExpressionT::Metavariable(Metavariable {
-                    index: e.index,
-                    ty: Box::new(e.ty.to_expression(db)),
-                }))
-            }
-            ExpressionT::LocalConstant(e) => {
-                Expression::new_synthetic(ExpressionT::LocalConstant(LocalConstant {
-                    metavariable: Metavariable {
-                        index: e.metavariable.index,
-                        ty: Box::new(e.metavariable.ty.to_expression(db)),
-                    },
-                    structure: e.structure.synthetic(db),
-                }))
-            }
+impl<'cache> Expression<'cache> {
+    /// Returns the largest metavariable index that was referenced in the given term, or [`None`] if none were referenced.
+    /// We are free to use metavariables with strictly higher indices than what is returned here without name clashing.
+    #[must_use]
+    pub fn largest_unusable_metavariable(self, cache: &mut ExpressionCache<'cache>) -> Option<u32> {
+        if let Some(result) = cache.largest_unusable_metavariable.get(&self) {
+            *result
+        } else {
+            let result = match self.value(cache) {
+                ExpressionT::Local(_) => None,
+                ExpressionT::Borrow(t) => {
+                    let t = *t;
+                    max(
+                        t.region.largest_unusable_metavariable(cache),
+                        t.value.largest_unusable_metavariable(cache),
+                    )
+                }
+                ExpressionT::Dereference(t) => t.value.largest_unusable_metavariable(cache),
+                ExpressionT::Delta(t) => {
+                    let t = *t;
+                    max(
+                        t.region.largest_unusable_metavariable(cache),
+                        t.ty.largest_unusable_metavariable(cache),
+                    )
+                }
+                ExpressionT::Inst(_) => None,
+                ExpressionT::Let(t) => {
+                    let t = *t;
+                    max(
+                        max(
+                            t.bound.ty.largest_unusable_metavariable(cache),
+                            t.to_assign.largest_unusable_metavariable(cache),
+                        ),
+                        t.body.largest_unusable_metavariable(cache),
+                    )
+                }
+                ExpressionT::Lambda(t) | ExpressionT::Pi(t) => {
+                    let t = *t;
+                    max(
+                        max(
+                            t.structure.bound.ty.largest_unusable_metavariable(cache),
+                            t.structure.region.largest_unusable_metavariable(cache),
+                        ),
+                        t.result.largest_unusable_metavariable(cache),
+                    )
+                }
+                ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => {
+                    t.body.largest_unusable_metavariable(cache)
+                }
+                ExpressionT::Apply(t) => {
+                    let t = *t;
+                    max(
+                        t.function.largest_unusable_metavariable(cache),
+                        t.argument.largest_unusable_metavariable(cache),
+                    )
+                }
+                ExpressionT::Intro(t) => {
+                    let t = t.clone();
+                    t.parameters
+                        .iter()
+                        .map(|param| param.largest_unusable_metavariable(cache))
+                        .max()
+                        .unwrap_or(None)
+                }
+                ExpressionT::Match(t) => {
+                    let t = t.clone();
+                    max(
+                        max(
+                            t.minor_premises
+                                .into_iter()
+                                .map(|premise| premise.result.largest_unusable_metavariable(cache))
+                                .max()
+                                .unwrap_or(None),
+                            t.major_premise.largest_unusable_metavariable(cache),
+                        ),
+                        t.motive.largest_unusable_metavariable(cache),
+                    )
+                }
+                ExpressionT::Fix(t) => {
+                    let t = *t;
+                    max(
+                        max(
+                            t.fixpoint.ty.largest_unusable_metavariable(cache),
+                            t.body.largest_unusable_metavariable(cache),
+                        ),
+                        t.argument.largest_unusable_metavariable(cache),
+                    )
+                }
+                ExpressionT::Sort(_)
+                | ExpressionT::Region
+                | ExpressionT::RegionT
+                | ExpressionT::StaticRegion => None,
+                ExpressionT::Lifespan(t) => t.ty.largest_unusable_metavariable(cache),
+                ExpressionT::Metavariable(t) => Some(t.index),
+                ExpressionT::LocalConstant(t) => Some(t.metavariable.index),
+            };
+            cache.largest_unusable_metavariable.insert(self, result);
+            result
         }
     }
-}
 
-impl Expression {
-    pub fn to_term(&self, db: &dyn Db) -> Term {
-        match &self.value.contents {
-            ExpressionT::Local(e) => Term::new(db, ExpressionT::Local(*e)),
-            ExpressionT::Borrow(e) => Term::new(
-                db,
+    pub fn to_heap(&self, cache: &ExpressionCache<'cache>) -> HeapExpression {
+        match self.value(cache) {
+            ExpressionT::Local(e) => {
+                HeapExpression::new(self.provenance(cache), ExpressionT::Local(*e))
+            }
+            ExpressionT::Borrow(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Borrow(Borrow {
-                    region: e.region.to_term(db),
-                    value: e.value.to_term(db),
+                    region: (e.region.to_heap(cache)),
+                    value: (e.value.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Dereference(e) => Term::new(
-                db,
+            ExpressionT::Dereference(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Dereference(Dereference {
-                    value: e.value.to_term(db),
+                    value: (e.value.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Delta(e) => Term::new(
-                db,
+            ExpressionT::Delta(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Delta(Delta {
-                    region: e.region.to_term(db),
-                    ty: e.ty.to_term(db),
+                    region: (e.region.to_heap(cache)),
+                    ty: (e.ty.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Inst(e) => Term::new(
-                db,
+            ExpressionT::Inst(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Inst(Inst {
-                    name: e.name.clone().without_provenance(),
-                    universes: e
-                        .universes
-                        .iter()
-                        .map(|u| WithProvenance::new(u.contents.without_provenance()))
-                        .collect(),
+                    name: e.name.clone(),
+                    universes: e.universes.clone(),
                 }),
             ),
-            ExpressionT::Let(e) => Term::new(
-                db,
+            ExpressionT::Let(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Let(Let {
-                    bound: e.bound.without_provenance(db),
-                    to_assign: e.to_assign.to_term(db),
-                    body: e.body.to_term(db),
+                    bound: e.bound.to_heap(cache),
+                    to_assign: (e.to_assign.to_heap(cache)),
+                    body: (e.body.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Lambda(e) => Term::new(
-                db,
+            ExpressionT::Lambda(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Lambda(Binder {
-                    structure: e.structure.without_provenance(db),
-                    result: e.result.to_term(db),
+                    structure: e.structure.to_heap(cache),
+                    result: (e.result.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Pi(e) => Term::new(
-                db,
+            ExpressionT::Pi(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Pi(Binder {
-                    structure: e.structure.without_provenance(db),
-                    result: e.result.to_term(db),
+                    structure: e.structure.to_heap(cache),
+                    result: (e.result.to_heap(cache)),
                 }),
             ),
-            ExpressionT::RegionLambda(e) => Term::new(
-                db,
+            ExpressionT::RegionLambda(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::RegionLambda(RegionBinder {
-                    region_name: e.region_name.without_provenance(),
-                    body: e.body.to_term(db),
+                    region_name: e.region_name,
+                    body: (e.body.to_heap(cache)),
                 }),
             ),
-            ExpressionT::RegionPi(e) => Term::new(
-                db,
+            ExpressionT::RegionPi(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::RegionPi(RegionBinder {
-                    region_name: e.region_name.without_provenance(),
-                    body: e.body.to_term(db),
+                    region_name: e.region_name,
+                    body: (e.body.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Apply(e) => Term::new(
-                db,
+            ExpressionT::Apply(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Apply(Apply {
-                    function: e.function.to_term(db),
-                    argument: e.argument.to_term(db),
+                    function: (e.function.to_heap(cache)),
+                    argument: (e.argument.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Intro(e) => Term::new(
-                db,
+            ExpressionT::Intro(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Intro(Intro {
-                    inductive: e.inductive.without_provenance(),
-                    universes: e
-                        .universes
+                    inductive: e.inductive.clone(),
+                    universes: e.universes.clone(),
+                    variant: e.variant,
+                    parameters: e
+                        .parameters
                         .iter()
-                        .map(|u| WithProvenance::new(u.contents.without_provenance()))
+                        .map(|param| param.to_heap(cache))
                         .collect(),
-                    variant: e.variant.without_provenance(),
-                    parameters: e.parameters.iter().map(|e| e.to_term(db)).collect(),
                 }),
             ),
-            ExpressionT::Match(e) => Term::new(
-                db,
+            ExpressionT::Match(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Match(Match {
-                    major_premise: e.major_premise.to_term(db),
+                    major_premise: (e.major_premise.to_heap(cache)),
                     index_params: e.index_params,
-                    motive: e.motive.to_term(db),
+                    motive: (e.motive.to_heap(cache)),
                     minor_premises: e
                         .minor_premises
                         .iter()
                         .map(|premise| MinorPremise {
-                            variant: premise.variant.without_provenance(),
+                            variant: premise.variant,
                             fields: premise.fields,
-                            result: premise.result.to_term(db),
+                            result: premise.result.to_heap(cache),
                         })
                         .collect(),
                 }),
             ),
-            ExpressionT::Fix(e) => Term::new(
-                db,
+            ExpressionT::Fix(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Fix(Fix {
-                    argument: e.argument.to_term(db),
-                    argument_name: e.argument_name.without_provenance(),
-                    fixpoint: e.fixpoint.without_provenance(db),
-                    body: e.body.to_term(db),
+                    argument: (e.argument.to_heap(cache)),
+                    argument_name: e.argument_name,
+                    fixpoint: e.fixpoint.to_heap(cache),
+                    body: (e.body.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Sort(e) => Term::new(
-                db,
-                ExpressionT::Sort(Sort(WithProvenance::new(e.0.contents.without_provenance()))),
-            ),
-            ExpressionT::Region => Term::new(db, ExpressionT::Region),
-            ExpressionT::RegionT => Term::new(db, ExpressionT::RegionT),
-            ExpressionT::StaticRegion => Term::new(db, ExpressionT::StaticRegion),
-            ExpressionT::Lifespan(e) => Term::new(
-                db,
+            ExpressionT::Sort(e) => {
+                HeapExpression::new(self.provenance(cache), ExpressionT::Sort(e.clone()))
+            }
+            ExpressionT::Region => HeapExpression::new(self.provenance(cache), ExpressionT::Region),
+            ExpressionT::RegionT => {
+                HeapExpression::new(self.provenance(cache), ExpressionT::RegionT)
+            }
+            ExpressionT::StaticRegion => {
+                HeapExpression::new(self.provenance(cache), ExpressionT::StaticRegion)
+            }
+            ExpressionT::Lifespan(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Lifespan(Lifespan {
-                    ty: e.ty.to_term(db),
+                    ty: (e.ty.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Metavariable(e) => Term::new(
-                db,
+            ExpressionT::Metavariable(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::Metavariable(Metavariable {
                     index: e.index,
-                    ty: e.ty.to_term(db),
+                    ty: (e.ty.to_heap(cache)),
                 }),
             ),
-            ExpressionT::LocalConstant(e) => Term::new(
-                db,
+            ExpressionT::LocalConstant(e) => HeapExpression::new(
+                self.provenance(cache),
                 ExpressionT::LocalConstant(LocalConstant {
                     metavariable: Metavariable {
                         index: e.metavariable.index,
-                        ty: e.metavariable.ty.to_term(db),
+                        ty: (e.metavariable.ty.to_heap(cache)),
                     },
-                    structure: e.structure.without_provenance(db),
+                    structure: e.structure.to_heap(cache),
                 }),
             ),
         }
+    }
+}
+
+impl HeapExpression {
+    pub fn from_heap<'cache>(&self, cache: &mut ExpressionCache<'cache>) -> Expression<'cache> {
+        let body = match &*self.value.contents {
+            ExpressionT::Local(e) => ExpressionT::Local(*e),
+            ExpressionT::Borrow(e) => ExpressionT::Borrow(Borrow {
+                region: e.region.from_heap(cache),
+                value: e.value.from_heap(cache),
+            }),
+
+            ExpressionT::Dereference(e) => ExpressionT::Dereference(Dereference {
+                value: e.value.from_heap(cache),
+            }),
+
+            ExpressionT::Delta(e) => ExpressionT::Delta(Delta {
+                region: e.region.from_heap(cache),
+                ty: e.ty.from_heap(cache),
+            }),
+            ExpressionT::Inst(e) => ExpressionT::Inst(Inst {
+                name: e.name.clone(),
+                universes: e.universes.clone(),
+            }),
+
+            ExpressionT::Let(e) => ExpressionT::Let(Let {
+                bound: e.bound.from_heap(cache),
+                to_assign: e.to_assign.from_heap(cache),
+                body: e.body.from_heap(cache),
+            }),
+
+            ExpressionT::Lambda(e) => ExpressionT::Lambda(Binder {
+                structure: e.structure.from_heap(cache),
+                result: e.result.from_heap(cache),
+            }),
+
+            ExpressionT::Pi(e) => ExpressionT::Pi(Binder {
+                structure: e.structure.from_heap(cache),
+                result: e.result.from_heap(cache),
+            }),
+
+            ExpressionT::RegionLambda(e) => ExpressionT::RegionLambda(RegionBinder {
+                region_name: e.region_name,
+                body: e.body.from_heap(cache),
+            }),
+
+            ExpressionT::RegionPi(e) => ExpressionT::RegionPi(RegionBinder {
+                region_name: e.region_name,
+                body: e.body.from_heap(cache),
+            }),
+
+            ExpressionT::Apply(e) => ExpressionT::Apply(Apply {
+                function: e.function.from_heap(cache),
+                argument: e.argument.from_heap(cache),
+            }),
+
+            ExpressionT::Intro(e) => ExpressionT::Intro(Intro {
+                inductive: e.inductive.clone(),
+                universes: e.universes.clone(),
+                variant: e.variant,
+                parameters: e.parameters.iter().map(|e| e.from_heap(cache)).collect(),
+            }),
+            ExpressionT::Match(e) => ExpressionT::Match(Match {
+                major_premise: e.major_premise.from_heap(cache),
+                index_params: e.index_params,
+                motive: e.motive.from_heap(cache),
+                minor_premises: e
+                    .minor_premises
+                    .iter()
+                    .map(|premise| MinorPremise {
+                        variant: premise.variant,
+                        fields: premise.fields,
+                        result: premise.result.from_heap(cache),
+                    })
+                    .collect(),
+            }),
+
+            ExpressionT::Fix(e) => ExpressionT::Fix(Fix {
+                argument: e.argument.from_heap(cache),
+                argument_name: e.argument_name,
+                fixpoint: e.fixpoint.from_heap(cache),
+                body: e.body.from_heap(cache),
+            }),
+            ExpressionT::Sort(e) => ExpressionT::Sort(e.clone()),
+            ExpressionT::Region => ExpressionT::Region,
+            ExpressionT::RegionT => ExpressionT::RegionT,
+            ExpressionT::StaticRegion => ExpressionT::StaticRegion,
+            ExpressionT::Lifespan(e) => ExpressionT::Lifespan(Lifespan {
+                ty: e.ty.from_heap(cache),
+            }),
+
+            ExpressionT::Metavariable(e) => ExpressionT::Metavariable(Metavariable {
+                index: e.index,
+                ty: e.ty.from_heap(cache),
+            }),
+
+            ExpressionT::LocalConstant(e) => ExpressionT::LocalConstant(LocalConstant {
+                metavariable: Metavariable {
+                    index: e.metavariable.index,
+                    ty: e.metavariable.ty.from_heap(cache),
+                },
+                structure: e.structure.from_heap(cache),
+            }),
+        };
+
+        Expression::new(cache, self.value.provenance, body)
     }
 }

@@ -6,7 +6,7 @@ use fcommon::{MessageFormatter, ParametricDr, Path, Str};
 
 use crate::{
     basic::{Name, WithProvenance},
-    expr::Term,
+    expr::HeapExpression,
 };
 
 /// A colour associated to a particular concept.
@@ -110,7 +110,7 @@ impl From<&Style> for console::Style {
 pub enum Message {
     String(String),
     Str(Str),
-    Term(Term),
+    Expression(HeapExpression),
     Path(Path),
     Styled { style: Style, message: Box<Message> },
     Sequence(Vec<Message>),
@@ -134,21 +134,17 @@ impl From<Str> for Message {
     }
 }
 
-impl<P, T> From<WithProvenance<P, T>> for Message
+impl<T> From<WithProvenance<T>> for Message
 where
-    P: Default + PartialEq,
     T: Into<Message>,
 {
-    fn from(value: WithProvenance<P, T>) -> Self {
+    fn from(value: WithProvenance<T>) -> Self {
         value.contents.into()
     }
 }
 
-impl<P> From<Name<P>> for Message
-where
-    P: Default + PartialEq,
-{
-    fn from(value: Name<P>) -> Self {
+impl From<Name> for Message {
+    fn from(value: Name) -> Self {
         Message::Styled {
             style: Style::name(),
             message: Box::new(value.0.into()),
@@ -162,9 +158,9 @@ impl From<Path> for Message {
     }
 }
 
-impl From<Term> for Message {
-    fn from(value: Term) -> Self {
-        Message::Term(value)
+impl From<HeapExpression> for Message {
+    fn from(value: HeapExpression) -> Self {
+        Message::Expression(value)
     }
 }
 
@@ -189,10 +185,10 @@ macro_rules! message {
 /// See [`ParametricDr`].
 pub type Dr<T> = ParametricDr<Message, T>;
 
-/// A delaborator can render a term into a message.
-/// The resulting message should not contain any [`Message::Term`].
+/// A delaborator can render an expression into a message.
+/// The resulting message should not contain any [`Message::Expression`].
 pub trait Delaborator {
-    fn delaborate(&self, term: Term) -> Message;
+    fn delaborate(&self, expr: &HeapExpression) -> Message;
 }
 
 /// A message formatter for the console, using a given delaborator of type `T`.
@@ -213,7 +209,7 @@ where
         match &message {
             Message::String(string) => string.to_owned(),
             Message::Str(str) => str.text(self.db).to_owned(),
-            Message::Term(term) => self.format(&self.delaborator.delaborate(*term)),
+            Message::Expression(expr) => self.format(&self.delaborator.delaborate(expr)),
             Message::Path(path) => path
                 .segments(self.db)
                 .iter()
