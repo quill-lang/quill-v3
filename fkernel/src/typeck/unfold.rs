@@ -1,8 +1,8 @@
 //! Unfolds definitions.
 
-use fexpr::expr::{Apply, ExpressionT, Inst, Term};
+use crate::expr::{Apply, Expression, ExpressionT, Inst};
 
-use super::{def::DefinitionHeight, get_certified_definition, Db, ReducibilityHints};
+use super::{definition::DefinitionHeight, get_certified_definition, Db, ReducibilityHints};
 
 /// Returns a number if the head of this expression is a definition that we can unfold.
 /// Intuitively, the number returned is higher for more complicated definitions.
@@ -10,9 +10,8 @@ use super::{def::DefinitionHeight, get_certified_definition, Db, ReducibilityHin
 /// # Dependencies
 ///
 /// If the head of this expression is a definition, this query depends on the certified definition.
-#[salsa::tracked]
-pub fn head_definition_height(db: &dyn Db, t: Term) -> Option<DefinitionHeight> {
-    match t.value(db) {
+pub fn head_definition_height(e: Expression, db: &dyn Db) -> Option<DefinitionHeight> {
+    match e.value(db) {
         ExpressionT::Inst(inst) => definition_height(db, inst),
         ExpressionT::Apply(ap) => head_definition_height(db, ap.function),
         _ => None,
@@ -21,7 +20,7 @@ pub fn head_definition_height(db: &dyn Db, t: Term) -> Option<DefinitionHeight> 
 
 /// Returns the height of the definition that this [`Inst`] refers to.
 /// If this instance could not be resolved, was not a definition, or was not reducible, return [`None`].
-pub fn definition_height(db: &dyn Db, inst: &Inst<()>) -> Option<DefinitionHeight> {
+pub fn definition_height(db: &dyn Db, inst: &Inst) -> Option<DefinitionHeight> {
     get_certified_definition(db, inst.name.to_path(db)).and_then(|def| {
         if let ReducibilityHints::Regular { height } = def.reducibility_hints() {
             Some(*height)
@@ -37,11 +36,6 @@ pub fn definition_height(db: &dyn Db, inst: &Inst<()>) -> Option<DefinitionHeigh
 ///
 /// If we couldn't unfold anything, return [`None`].
 /// This will always return a value if [`head_definition_height`] returned a [`Some`] value.
-///
-/// # Dependencies
-///
-/// If the head of this expression is a definition, this query depends on the certified definition.
-#[salsa::tracked]
 pub fn unfold_definition(db: &dyn Db, t: Term) -> Option<Term> {
     match t.value(db) {
         ExpressionT::Inst(inst) => get_certified_definition(db, inst.name.to_path(db))

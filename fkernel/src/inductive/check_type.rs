@@ -8,7 +8,7 @@ use fexpr::{
 };
 
 use crate::{
-    term::nary_binder_to_pi_expression,
+    expr::nary_binder_to_pi_expression,
     typeck::{as_sort, check_no_local_or_metavariable, infer_type},
     universe::normalise_universe,
     Db,

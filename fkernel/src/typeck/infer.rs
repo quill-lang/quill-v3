@@ -13,13 +13,13 @@ use fexpr::{
 };
 
 use crate::{
-    inductive::{get_certified_inductive, get_inductive, CertifiedInductive},
-    term::{
+    expr::{
         abstract_binder, abstract_region_binder, create_nary_application,
         destructure_as_nary_application, has_free_variables, instantiate,
         instantiate_universe_parameters, leftmost_function, nary_binder_to_lambda,
         nary_binder_to_pi_expression, replace_in_term, replace_local, subterms, ReplaceResult,
     },
+    inductive::{get_certified_inductive, get_inductive, CertifiedInductive},
     universe::is_zero,
 };
 

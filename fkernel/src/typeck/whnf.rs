@@ -10,7 +10,7 @@ use fexpr::{
 };
 
 use crate::{
-    term::{instantiate, lift_free_vars, replace_in_term, ReplaceResult},
+    expr::{instantiate, lift_free_vars, replace_in_term, ReplaceResult},
     Db,
 };
 

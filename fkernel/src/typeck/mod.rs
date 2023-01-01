@@ -9,18 +9,18 @@ use fexpr::{
 };
 
 use crate::{
-    term::{first_local_or_metavariable, get_max_height},
+    expr::{first_local_or_metavariable, get_max_height},
     universe::normalise_universe,
     Db,
 };
 
-mod def;
+mod definition;
 mod defeq;
 mod infer;
 mod unfold;
 mod whnf;
 
-pub use def::*;
+pub use definition::*;
 pub use defeq::*;
 pub use infer::*;
 pub use unfold::*;

@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use fexpr::{basic::DeBruijnIndex, expr::*, universe::Universe};
 
 use crate::{
-    term::{apply_args, instantiate},
+    expr::{apply_args, instantiate},
     universe::normalise_universe,
     Db,
 };

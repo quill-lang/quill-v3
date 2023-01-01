@@ -7,7 +7,7 @@ use fexpr::{
 };
 
 use crate::{
-    term::{
+    expr::{
         destructure_as_nary_application, find_inst, instantiate, local_is_bound,
         nary_binder_to_pi_expression,
     },

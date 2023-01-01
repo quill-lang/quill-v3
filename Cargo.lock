@@ -218,19 +218,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fexpr"
-version = "0.0.0"
-dependencies = [
- "chumsky",
- "console",
- "fcommon",
- "ron",
- "salsa-2022",
- "serde",
- "tracing",
-]
-
-[[package]]
 name = "filetime"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -246,9 +233,11 @@ dependencies = [
 name = "fkernel"
 version = "0.0.0"
 dependencies = [
+ "chumsky",
+ "console",
  "fcommon",
- "fexpr",
  "qdb",
+ "ron",
  "salsa-2022",
  "serde",
  "tracing",
@@ -259,7 +248,6 @@ name = "fkernel_tests"
 version = "0.0.0"
 dependencies = [
  "fcommon",
- "fexpr",
  "fkernel",
  "qdb",
  "salsa-2022",
@@ -515,7 +503,6 @@ name = "qdb"
 version = "0.0.0"
 dependencies = [
  "fcommon",
- "fexpr",
  "fkernel",
  "notify-debouncer-mini",
  "qelab",
@@ -528,7 +515,6 @@ name = "qelab"
 version = "0.0.0"
 dependencies = [
  "fcommon",
- "fexpr",
  "fkernel",
  "qparse",
  "salsa-2022",
@@ -539,7 +525,7 @@ name = "qparse"
 version = "0.0.0"
 dependencies = [
  "fcommon",
- "fexpr",
+ "fkernel",
  "salsa-2022",
  "tracing",
 ]
@@ -549,7 +535,6 @@ name = "quill"
 version = "0.0.0"
 dependencies = [
  "fcommon",
- "fexpr",
  "fkernel",
  "qdb",
  "qelab",
