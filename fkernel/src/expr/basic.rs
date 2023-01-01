@@ -568,7 +568,7 @@ impl<'cache> Expression<'cache> {
         self.provenance(cache).span()
     }
 
-    pub fn value<'a>(self, cache: &ExpressionCache<'cache>) -> ExpressionT<Expression<'cache>> {
+    pub fn value(self, cache: &ExpressionCache<'cache>) -> ExpressionT<Expression<'cache>> {
         cache
             .expressions
             .borrow()

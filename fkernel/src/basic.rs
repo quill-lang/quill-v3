@@ -51,7 +51,7 @@ impl Provenance {
 ///
 /// It is common to create a newtype wrapper as follows.
 /// ```
-/// # use fexpr::basic::WithProvenance;
+/// # use fkernel::basic::WithProvenance;
 /// # use std::ops::{Deref, DerefMut};
 /// # use serde::{Serialize, Deserialize};
 ///
