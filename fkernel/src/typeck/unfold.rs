@@ -1,55 +1,64 @@
 //! Unfolds definitions.
 
-use crate::expr::{Apply, Expression, ExpressionT, Inst};
+use crate::{
+    expr::{Apply, Expression, ExpressionCache, ExpressionT, Inst},
+    Db,
+};
 
-use super::{definition::DefinitionHeight, get_certified_definition, Db, ReducibilityHints};
+use super::{definition::DefinitionHeight, get_certified_definition, ReducibilityHints};
 
-/// Returns a number if the head of this expression is a definition that we can unfold.
-/// Intuitively, the number returned is higher for more complicated definitions.
-///
-/// # Dependencies
-///
-/// If the head of this expression is a definition, this query depends on the certified definition.
-pub fn head_definition_height(e: Expression, db: &dyn Db) -> Option<DefinitionHeight> {
-    match e.value(db) {
-        ExpressionT::Inst(inst) => definition_height(db, inst),
-        ExpressionT::Apply(ap) => head_definition_height(db, ap.function),
-        _ => None,
+impl Inst {
+    /// Returns the height of the definition that this [`Inst`] refers to.
+    /// If this instance could not be resolved, was not a definition, or was not reducible, return [`None`].
+    pub fn definition_height(&self, db: &dyn Db) -> Option<DefinitionHeight> {
+        get_certified_definition(db, self.name.to_path(db)).and_then(|def| {
+            if let ReducibilityHints::Regular { height } = def.reducibility_hints() {
+                Some(*height)
+            } else {
+                None
+            }
+        })
     }
 }
 
-/// Returns the height of the definition that this [`Inst`] refers to.
-/// If this instance could not be resolved, was not a definition, or was not reducible, return [`None`].
-pub fn definition_height(db: &dyn Db, inst: &Inst) -> Option<DefinitionHeight> {
-    get_certified_definition(db, inst.name.to_path(db)).and_then(|def| {
-        if let ReducibilityHints::Regular { height } = def.reducibility_hints() {
-            Some(*height)
-        } else {
-            None
+impl<'cache> Expression<'cache> {
+    /// Returns a number if the head of this expression is a definition that we can unfold.
+    /// Intuitively, the number returned is higher for more complicated definitions.
+    pub fn head_definition_height(
+        self,
+        cache: &ExpressionCache<'cache>,
+    ) -> Option<DefinitionHeight> {
+        match self.value(cache) {
+            ExpressionT::Inst(inst) => inst.definition_height(cache.db()),
+            ExpressionT::Apply(ap) => ap.function.head_definition_height(cache),
+            _ => None,
         }
-    })
-}
+    }
 
-/// If the head of this expression is a definition, unfold it,
-/// even if it is marked as [`ReducibilityHints::Opaque`].
-/// This is sometimes called delta-reduction.
-///
-/// If we couldn't unfold anything, return [`None`].
-/// This will always return a value if [`head_definition_height`] returned a [`Some`] value.
-pub fn unfold_definition(db: &dyn Db, t: Term) -> Option<Term> {
-    match t.value(db) {
-        ExpressionT::Inst(inst) => get_certified_definition(db, inst.name.to_path(db))
-            .and_then(|def| def.def().contents.expr.as_ref())
-            .map(|e| e.clone().to_term(db)),
-        ExpressionT::Apply(ap) => unfold_definition(db, ap.function).map(|t| {
-            Term::new(
-                db,
-                ExpressionT::Apply(Apply {
-                    function: t,
-                    argument: ap.argument,
-                }),
-            )
-        }),
-        _ => None,
+    /// If the head of this expression is a definition, unfold it,
+    /// even if it is marked as [`ReducibilityHints::Opaque`].
+    /// This is sometimes called delta-reduction.
+    ///
+    /// If we couldn't unfold anything, return [`None`].
+    /// This will always return a value if [`head_definition_height`] returned a [`Some`] value.
+    pub fn unfold_definition(self, cache: &mut ExpressionCache<'cache>) -> Option<Self> {
+        match self.value(cache) {
+            ExpressionT::Inst(inst) => {
+                get_certified_definition(cache.db(), inst.name.to_path(cache.db()))
+                    .and_then(|def| def.def().contents.expr.as_ref())
+                    .map(|e| e.clone().from_heap(cache))
+            }
+            ExpressionT::Apply(ap) => ap.function.unfold_definition(cache).map(|e| {
+                Expression::new(
+                    cache,
+                    self.provenance(cache),
+                    ExpressionT::Apply(Apply {
+                        function: e,
+                        argument: ap.argument,
+                    }),
+                )
+            }),
+            _ => None,
+        }
     }
 }

@@ -1,23 +1,12 @@
-use fcommon::{LabelType, ReportKind};
-use fexpr::{
+use crate::{
     basic::{DeBruijnIndex, DeBruijnOffset, Provenance},
-    expr::{largest_unusable_metavariable, Expression, ExpressionT, MetavariableGenerator, Term},
+    expr::{Expression, ExpressionCache, ExpressionT, MetavariableGenerator},
     inductive::Variant,
     result::Dr,
+    typeck::{as_sort, check_no_local_or_metavariable},
+    universe::Universe,
 };
-
-use crate::{
-    expr::{
-        destructure_as_nary_application, find_inst, instantiate, local_is_bound,
-        nary_binder_to_pi_expression,
-    },
-    typeck::{
-        as_sort, check_no_local_or_metavariable, definitionally_equal, infer_type,
-        to_weak_head_normal_form,
-    },
-    universe::{is_zero, universe_at_most},
-    Db,
-};
+use fcommon::{LabelType, ReportKind};
 
 use super::check_type::InductiveTypeInformation;
 
@@ -27,16 +16,19 @@ use super::check_type::InductiveTypeInformation;
 /// - the type of all arguments live in universes at most the level of the corresponding data type,
 /// - occurences of the inductive data type inside the introduction rule occur strictly positively,
 /// - the introduction rule is type correct.
-pub(in crate::inductive) fn check_variant<'db>(
-    db: &'db dyn Db,
-    info: &InductiveTypeInformation<'db>,
-    variant: &Variant<Provenance, Box<Expression>>,
+pub(in crate::inductive) fn check_variant<'cache>(
+    cache: &mut ExpressionCache<'cache>,
+    info: &InductiveTypeInformation<'cache>,
+    variant: &Variant,
 ) -> Dr<()> {
-    let intro_rule_ty =
-        nary_binder_to_pi_expression(Provenance::Synthetic, variant.intro_rule.clone());
-    check_no_local_or_metavariable(db, &intro_rule_ty).bind(|()| {
+    let intro_rule_ty = Expression::nary_binder_to_pi(
+        cache,
+        Provenance::Synthetic,
+        variant.intro_rule.from_heap(cache),
+    );
+    check_no_local_or_metavariable(cache, intro_rule_ty).bind(|()| {
         // Ensure that the intro rule is type correct.
-        match infer_type(db, intro_rule_ty.to_term(db)) {
+        match intro_rule_ty.infer_type(cache) {
             Ok(_) => {
                 // The intro rule is type correct.
                 // Check that there are enough global parameters.
@@ -52,16 +44,16 @@ pub(in crate::inductive) fn check_variant<'db>(
                             .take(info.inductive.global_params as usize)
                             .zip(&info.inductive.ty.structures)
                             .map(|(from_intro_rule, from_ty)| {
-                                let result = definitionally_equal(
-                                    db,
-                                    from_intro_rule.region.to_term(db),
-                                    from_ty.region.to_term(db),
+                                let result = Expression::definitionally_equal(
+                                    cache,
+                                    from_intro_rule.region.from_heap(cache),
+                                    from_ty.region.from_heap(cache),
                                 )
                                 .and_then(|regions| {
-                                    definitionally_equal(
-                                        db,
-                                        from_intro_rule.bound.ty.to_term(db),
-                                        from_ty.bound.ty.to_term(db),
+                                    Expression::definitionally_equal(
+                                        cache,
+                                        from_intro_rule.bound.ty.from_heap(cache),
+                                        from_ty.bound.ty.from_heap(cache),
                                     )
                                     .map(|types| regions && types)
                                 });
@@ -82,15 +74,15 @@ pub(in crate::inductive) fn check_variant<'db>(
                             .enumerate()
                             .skip(info.inductive.global_params as usize)
                             .map(|(i, _)| {
-                                check_field(db, info, variant, i, &mut found_recursive_parameter)
+                                check_field(cache, info, variant, i, &mut found_recursive_parameter)
                             }),
                     );
 
                     check_global_params.bind(|_| check_fields).deny().bind(|_| {
                         is_valid_inductive_application(
-                            db,
+                            cache,
                             info,
-                            variant.intro_rule.result.to_term(db),
+                            variant.intro_rule.result.from_heap(cache),
                             variant.intro_rule.structures.len(),
                         )
                         .bind(
@@ -106,11 +98,14 @@ pub(in crate::inductive) fn check_variant<'db>(
                 }
             }
             Err(err) => {
-                tracing::error!("{:?} checking {}", err, info.inductive.name.0.text(db));
+                tracing::error!(
+                    "{:?} checking {}",
+                    err,
+                    info.inductive.name.0.text(cache.db())
+                );
                 Dr::fail(
                     intro_rule_ty
-                        .value
-                        .provenance
+                        .provenance(cache)
                         .report(ReportKind::Error)
                         .with_message("this introduction rule was not type correct".into()),
                 )
@@ -119,43 +114,45 @@ pub(in crate::inductive) fn check_variant<'db>(
     })
 }
 
-fn check_field<'db>(
-    db: &'db dyn Db,
-    info: &InductiveTypeInformation<'db>,
-    variant: &Variant<Provenance, Box<Expression>>,
+fn check_field<'cache>(
+    cache: &mut ExpressionCache<'cache>,
+    info: &InductiveTypeInformation<'cache>,
+    variant: &Variant,
     field_index: usize,
     found_recursive_parameter: &mut bool,
 ) -> Dr<()> {
-    let mut term = variant.intro_rule.structures[field_index]
+    let mut expr = variant.intro_rule.structures[field_index]
         .bound
         .ty
-        .to_term(db);
-    let mut meta_gen = MetavariableGenerator::new(largest_unusable_metavariable(db, term));
+        .from_heap(cache);
+    let mut meta_gen = MetavariableGenerator::new(expr.largest_unusable_metavariable(cache));
     for param in variant.intro_rule.structures.iter().take(field_index).rev() {
-        term = instantiate(
-            db,
-            term,
-            Term::new(
-                db,
+        expr = expr.instantiate(
+            cache,
+            Expression::new(
+                cache,
+                Provenance::Synthetic,
                 ExpressionT::LocalConstant(
                     param
-                        .without_provenance(db)
+                        .from_heap(cache)
                         .generate_local_with_gen(&mut meta_gen),
                 ),
             ),
         );
     }
-    match infer_type(db, term).and_then(|sort| as_sort(db, sort)) {
+    match expr.infer_type(cache).and_then(|sort| as_sort(cache, sort)) {
         Ok(sort) => {
             // The type of the type of this field is allowed if
             // - its level is at most the level of the inductive data type being declared, or
             // - the inductive data type has sort 0.
-            if !is_zero(&info.sort.0) && !universe_at_most(db, sort.0, info.sort.0.clone()) {
+            if !info.sort.0.is_zero()
+                && !Universe::universe_at_most(cache.db(), sort.0, info.sort.0.clone())
+            {
                 todo!()
             } else {
                 // Check that the inductive data type occurs strictly positively.
-                check_positivity(db, info, variant, field_index).bind(|()| {
-                    is_recursive_argument(db, info,term, field_index).bind(|is_recursive| {
+                check_positivity(cache, info, variant, field_index).bind(|()| {
+                    is_recursive_argument(cache, info,expr, field_index).bind(|is_recursive| {
                         if is_recursive {
                             *found_recursive_parameter = true;
                         }
@@ -163,7 +160,7 @@ fn check_field<'db>(
                             for (index, field) in variant.intro_rule.structures.iter().enumerate().skip(field_index) {
                                 // This is an invalid occurrence of a recursive argument
                                 // because later fields depend on it.
-                                if local_is_bound(db, field.bound.ty.to_term(db), DeBruijnIndex::zero() + DeBruijnOffset::new((index - field_index) as u32)) {
+                                if field.bound.ty.from_heap(cache).local_is_bound(cache, DeBruijnIndex::zero() + DeBruijnOffset::new((index - field_index) as u32)) {
                                         return Dr::fail(field.bound.ty.value.provenance.report(ReportKind::Error)
                                             .with_message("this is an invalid occurrence of a recursive argument, because a later field depends on it".into())
                                             .with_label(field.bound.ty.value.provenance.label(LabelType::Error)
@@ -171,7 +168,7 @@ fn check_field<'db>(
                                     );
                                 }
                             }
-                            if local_is_bound(db, variant.intro_rule.result.to_term(db), DeBruijnIndex::zero() + DeBruijnOffset::new((variant.intro_rule.structures.len() - field_index) as u32)) {
+                            if variant.intro_rule.result.from_heap(cache).local_is_bound(cache, DeBruijnIndex::zero() + DeBruijnOffset::new((variant.intro_rule.structures.len() - field_index) as u32)) {
                                 Dr::fail(variant.intro_rule.result.value.provenance.report(ReportKind::Error)
                                     .with_message("this is an invalid occurrence of a recursive argument, because the inductive type itself depends on it".into())
                                     .with_label(variant.intro_rule.result.value.provenance.label(LabelType::Error)
@@ -194,29 +191,32 @@ fn check_field<'db>(
 /// Check that the inductive data type being declared occurs strictly positively in the given expression.
 /// This means that the field's type must be `a -> b -> ... -> t` where the inductive cannot appear in `a`, `b` and so on,
 /// and `t` may either not reference the inductive, or is exactly `(I As t)`.
-fn check_positivity<'db>(
-    db: &'db dyn Db,
-    info: &InductiveTypeInformation<'db>,
-    variant: &Variant<Provenance, Box<Expression>>,
+fn check_positivity<'cache>(
+    cache: &mut ExpressionCache<'cache>,
+    info: &InductiveTypeInformation<'cache>,
+    variant: &Variant,
     field_index: usize,
 ) -> Dr<()> {
-    if find_inst(
-        db,
-        variant.intro_rule.structures[field_index]
-            .bound
-            .ty
-            .to_term(db),
-        &info.inst.name,
-    )
-    .is_some()
+    if variant.intro_rule.structures[field_index]
+        .bound
+        .ty
+        .from_heap(cache)
+        .find_inst(cache, &info.inst.name)
+        .is_some()
     {
         // This is a recursive argument, so we need to check for positivity.
         let mut t = variant.intro_rule.structures[field_index]
             .bound
             .ty
-            .to_term(db);
-        while let ExpressionT::Pi(pi) = t.value(db) {
-            if find_inst(db, pi.structure.bound.ty, &info.inst.name).is_some() {
+            .from_heap(cache);
+        while let ExpressionT::Pi(pi) = t.value(cache) {
+            if pi
+                .structure
+                .bound
+                .ty
+                .find_inst(cache, &info.inst.name)
+                .is_some()
+            {
                 // This is a non-positive occurence of the inductive type being declared.
                 todo!()
             } else {
@@ -225,12 +225,12 @@ fn check_positivity<'db>(
         }
 
         is_valid_inductive_application(
-            db,
+            cache,
             info,
             variant.intro_rule.structures[field_index]
                 .bound
                 .ty
-                .to_term(db),
+                .from_heap(cache),
             field_index,
         )
         .bind(|result| {
@@ -250,17 +250,21 @@ fn check_positivity<'db>(
 /// Returns true if the expression is a term of the form `(I As t)` where `I` is the inductive being
 /// defined, `As` are the global parameters, and `I` does not occur in the indices `t`.
 /// `field_index` is the field index, used for a de Bruijn offset.
-fn is_valid_inductive_application<'db>(
-    db: &'db dyn Db,
-    info: &InductiveTypeInformation<'db>,
-    t: Term,
+fn is_valid_inductive_application<'cache>(
+    cache: &mut ExpressionCache<'cache>,
+    info: &InductiveTypeInformation<'cache>,
+    expr: Expression<'cache>,
     field_index: usize,
 ) -> Dr<bool> {
-    let (function, arguments) = destructure_as_nary_application(db, t);
-    match definitionally_equal(
-        db,
+    let (function, arguments) = expr.destructure_as_nary_application(cache);
+    match Expression::definitionally_equal(
+        cache,
         function,
-        Term::new(db, ExpressionT::Inst(info.inst.clone())),
+        Expression::new(
+            cache,
+            Provenance::Synthetic,
+            ExpressionT::Inst(info.inst.clone()),
+        ),
     ) {
         Ok(defeq) => Dr::ok({
             if !defeq || arguments.len() != info.inductive.ty.structures.len() {
@@ -272,7 +276,7 @@ fn is_valid_inductive_application<'db>(
                     .iter()
                     .take(info.inductive.global_params as usize)
                     .enumerate()
-                    .all(|(index, field)| match field.value(db) {
+                    .all(|(index, field)| match field.value(cache) {
                         ExpressionT::Local(local) => {
                             local.index + DeBruijnOffset::zero().succ()
                                 == DeBruijnIndex::zero()
@@ -284,7 +288,7 @@ fn is_valid_inductive_application<'db>(
                 let inductive_not_in_index = arguments
                     .iter()
                     .skip(info.inductive.global_params as usize)
-                    .all(|arg| find_inst(db, *arg, &info.inst.name).is_none());
+                    .all(|arg| arg.find_inst(cache, &info.inst.name).is_none());
                 globals_match && inductive_not_in_index
             }
         }),
@@ -293,15 +297,15 @@ fn is_valid_inductive_application<'db>(
 }
 
 /// Returns true if the expression is a recursive argument.
-fn is_recursive_argument<'db>(
-    db: &'db dyn Db,
-    info: &InductiveTypeInformation<'db>,
-    mut t: Term,
+fn is_recursive_argument<'cache>(
+    cache: &mut ExpressionCache<'cache>,
+    info: &InductiveTypeInformation<'cache>,
+    mut expr: Expression<'cache>,
     field_index: usize,
 ) -> Dr<bool> {
-    t = to_weak_head_normal_form(db, t);
-    while let ExpressionT::Pi(pi) = t.value(db) {
-        t = pi.result;
+    expr = expr.to_weak_head_normal_form(cache);
+    while let ExpressionT::Pi(pi) = expr.value(cache) {
+        expr = pi.result;
     }
-    is_valid_inductive_application(db, info, t, field_index)
+    is_valid_inductive_application(cache, info, expr, field_index)
 }

@@ -5,9 +5,8 @@ use std::{cell::RefCell, cmp::Ordering};
 use crate::{
     basic::{DeBruijnIndex, DeBruijnOffset, Name, QualifiedName},
     expr::*,
-    typeck::{definition_height, DefinitionHeight},
+    typeck::DefinitionHeight,
     universe::{Universe, UniverseVariable},
-    Db,
 };
 
 pub enum ReplaceResult<'cache> {
@@ -36,7 +35,7 @@ impl<'cache> Expression<'cache> {
                 .chain(std::iter::once(e.motive))
                 .chain(e.minor_premises.iter().map(|premise| premise.result))
                 .collect(),
-            ExpressionT::Fix(e) => vec![e.argument, e.fixpoine.ty, e.body],
+            ExpressionT::Fix(e) => vec![e.argument, e.fixpoint.ty, e.body],
             ExpressionT::Sort(_)
             | ExpressionT::Region
             | ExpressionT::RegionT
@@ -152,7 +151,7 @@ impl<'cache> Expression<'cache> {
                                 ),
                                 ..e.structure
                             },
-                            result: e.resule.replace_in_expression_offset(
+                            result: e.result.replace_in_expression_offset(
                                 cache,
                                 replace_fn,
                                 offset.succ(),
@@ -179,7 +178,7 @@ impl<'cache> Expression<'cache> {
                                 ),
                                 ..e.structure
                             },
-                            result: e.resule.replace_in_expression_offset(
+                            result: e.result.replace_in_expression_offset(
                                 cache,
                                 replace_fn,
                                 offset.succ(),
@@ -220,7 +219,7 @@ impl<'cache> Expression<'cache> {
                                 offset,
                             ),
                             argument: e
-                                .argumene
+                                .argument
                                 .replace_in_expression_offset(cache, replace_fn, offset),
                         }),
                     ),
@@ -234,7 +233,7 @@ impl<'cache> Expression<'cache> {
                             parameters: e
                                 .parameters
                                 .iter()
-                                .map(|t| {
+                                .map(|e| {
                                     e.replace_in_expression_offset(
                                         cache,
                                         replace_fn.clone(),
@@ -521,7 +520,7 @@ impl<'cache> Expression<'cache> {
         let mut height = 0;
         self.for_each_expression(cache, |inner, _offset| {
             if let ExpressionT::Inst(inst) = inner.value(cache) {
-                if let Some(inner_height) = definition_height(cache, inst) {
+                if let Some(inner_height) = inst.definition_height(cache.db()) {
                     height = std::cmp::max(height, inner_height);
                 }
             }
@@ -554,6 +553,7 @@ impl<'cache> Expression<'cache> {
 
     /// Instantiate the first bound variable with the given substitution.
     /// This will subtract one from all higher de Bruijn indices.
+    /// TODO: Cache the results.
     #[must_use]
     pub fn instantiate(self, cache: &mut ExpressionCache<'cache>, substitution: Self) -> Self {
         self.replace_in_expression(cache, &|e, offset| {
@@ -605,10 +605,7 @@ impl<'cache> Expression<'cache> {
                 let mut inst = inst.clone();
                 for univ in &mut inst.universes {
                     for (param, replacement) in universe_params.iter().zip(universe_arguments) {
-                        univ.instantiate_universe_variable(
-                            &UniverseVariable(param.without_provenance()),
-                            replacement,
-                        );
+                        univ.instantiate_universe_variable(&UniverseVariable(*param), replacement);
                     }
                 }
                 ReplaceResult::ReplaceWith(Self::new(
@@ -620,10 +617,8 @@ impl<'cache> Expression<'cache> {
             ExpressionT::Sort(sort) => {
                 let mut sort = sort.clone();
                 for (param, replacement) in universe_params.iter().zip(universe_arguments) {
-                    sort.0.instantiate_universe_variable(
-                        &UniverseVariable(param.without_provenance()),
-                        replacement,
-                    );
+                    sort.0
+                        .instantiate_universe_variable(&UniverseVariable(*param), replacement);
                 }
                 ReplaceResult::ReplaceWith(Self::new(
                     cache,
@@ -665,30 +660,29 @@ impl<'cache> Expression<'cache> {
         })
     }
 
-    /// Create a lambda or pi binder where the parameter is the given local constane.
+    /// Create a lambda or pi binder where the parameter is the given local constant.
     #[must_use]
     pub fn abstract_binder(
-        cache: &dyn Db,
+        self,
+        cache: &mut ExpressionCache<'cache>,
         local: LocalConstant<Self>,
-        return_type: Self,
     ) -> Binder<Self> {
-        let return_type =
-            return_type.replace_in_expression(cache, &|e, offset| match e.value(cache) {
-                ExpressionT::LocalConstant(inner_local) => {
-                    if *inner_local == local {
-                        ReplaceResult::ReplaceWith(Self::new(
-                            cache,
-                            e.provenance(cache),
-                            ExpressionT::Local(Local {
-                                index: DeBruijnIndex::zero() + offset,
-                            }),
-                        ))
-                    } else {
-                        ReplaceResult::Skip
-                    }
+        let return_type = self.replace_in_expression(cache, &|e, offset| match e.value(cache) {
+            ExpressionT::LocalConstant(inner_local) => {
+                if *inner_local == local {
+                    ReplaceResult::ReplaceWith(Self::new(
+                        cache,
+                        e.provenance(cache),
+                        ExpressionT::Local(Local {
+                            index: DeBruijnIndex::zero() + offset,
+                        }),
+                    ))
+                } else {
+                    ReplaceResult::Skip
                 }
-                _ => ReplaceResult::Skip,
-            });
+            }
+            _ => ReplaceResult::Skip,
+        });
 
         Binder {
             structure: local.structure,
@@ -696,30 +690,29 @@ impl<'cache> Expression<'cache> {
         }
     }
 
-    /// Create a region binder where the parameter is the given local constane.
+    /// Create a region binder where the parameter is the given local constant.
     #[must_use]
     pub fn abstract_region_binder(
-        cache: &dyn Db,
+        self,
+        cache: &mut ExpressionCache<'cache>,
         local: LocalConstant<Self>,
-        return_type: Self,
     ) -> RegionBinder<Self> {
-        let return_type =
-            return_type.replace_in_expression(cache, &|e, offset| match e.value(cache) {
-                ExpressionT::LocalConstant(inner_local) => {
-                    if *inner_local == local {
-                        ReplaceResult::ReplaceWith(Self::new(
-                            cache,
-                            e.provenance(cache),
-                            ExpressionT::Local(Local {
-                                index: DeBruijnIndex::zero() + offset,
-                            }),
-                        ))
-                    } else {
-                        ReplaceResult::Skip
-                    }
+        let return_type = self.replace_in_expression(cache, &|e, offset| match e.value(cache) {
+            ExpressionT::LocalConstant(inner_local) => {
+                if *inner_local == local {
+                    ReplaceResult::ReplaceWith(Self::new(
+                        cache,
+                        e.provenance(cache),
+                        ExpressionT::Local(Local {
+                            index: DeBruijnIndex::zero() + offset,
+                        }),
+                    ))
+                } else {
+                    ReplaceResult::Skip
                 }
-                _ => ReplaceResult::Skip,
-            });
+            }
+            _ => ReplaceResult::Skip,
+        });
 
         RegionBinder {
             region_name: local.structure.bound.name,
@@ -757,7 +750,7 @@ impl<'cache> Expression<'cache> {
             ExpressionT::Inst(inst) => {
                 let mut inst = inst.clone();
                 for u in &mut inst.universes {
-                    u.instantiate_universe(var, replacement);
+                    u.instantiate_universe_variable(var, replacement);
                 }
                 ReplaceResult::ReplaceWith(Self::new(
                     cache,
@@ -767,7 +760,7 @@ impl<'cache> Expression<'cache> {
             }
             ExpressionT::Sort(sort) => {
                 let mut sort = sort.clone();
-                sort.0.instantiate_universe(var, replacement);
+                sort.0.instantiate_universe_variable(var, replacement);
                 ReplaceResult::ReplaceWith(Self::new(
                     cache,
                     e.provenance(cache),

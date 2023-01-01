@@ -1,36 +1,28 @@
-use fcommon::{Path, Report, ReportKind, Source, SourceType};
 use crate::{
     basic::Provenance,
-    expr::{largest_unusable_metavariable, Expression, ExpressionT, MetavariableGenerator, Term},
+    expr::{Expression, ExpressionCache, ExpressionT, MetavariableGenerator},
     inductive::Inductive,
     message,
-    module::module_from_feather_source,
+    module::{module_from_feather_source, Item},
     result::{Dr, Message},
-};
-
-use crate::{
-    expr::{apply_args, instantiate, nary_binder_to_pi},
-    typeck::{as_sort, infer_type, Ir},
-    universe::{is_nonzero, is_zero},
+    typeck::{as_sort, Ir},
     Db,
 };
+use fcommon::{Path, Report, ReportKind, Source, SourceType};
 
-use self::check_type::InductiveTypeInformation;
-
-mod check_type;
-mod check_variant;
+use super::check_type::InductiveTypeInformation;
 
 /// Retrieves the inductive with the given name.
 /// This inductive will not have been type checked.
 #[salsa::tracked(return_ref)]
-pub fn get_inductive(db: &dyn Db, path: Path) -> Dr<Inductive<Provenance, Box<Expression>>> {
+pub fn get_inductive(db: &dyn Db, path: Path) -> Dr<Inductive> {
     let (source, name) = path.split_last(db);
     module_from_feather_source(db, Source::new(db, source, SourceType::Feather))
         .as_ref()
         .map_messages(Message::new)
         .map(|module| {
             module.items.iter().find_map(|item| match item {
-                fexpr::module::Item::Inductive(ind) => {
+                Item::Inductive(ind) => {
                     if *ind.name == name {
                         Some(ind.clone())
                     } else {
@@ -54,14 +46,17 @@ pub fn get_inductive(db: &dyn Db, path: Path) -> Dr<Inductive<Provenance, Box<Ex
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CertifiedInductive {
-    pub inductive: Inductive<Provenance, Box<Expression>>,
+    pub inductive: Inductive,
     /// True if the motive for any match statement must be a proposition.
     pub eliminate_only_into_prop: bool,
 }
 
 /// Returns true if the the motive in match expressions can live in `Prop`.
-fn eliminate_only_into_prop(db: &dyn Db, info: &InductiveTypeInformation) -> Ir<bool> {
-    if is_nonzero(&info.sort.0) {
+fn eliminate_only_into_prop<'cache>(
+    cache: &mut ExpressionCache<'cache>,
+    info: &InductiveTypeInformation,
+) -> Ir<bool> {
+    if info.sort.0.is_nonzero() {
         // The resultant inductive datatype is never in `Prop`, so the recursor may return any type.
         return Ok(false);
     }
@@ -85,35 +80,45 @@ fn eliminate_only_into_prop(db: &dyn Db, info: &InductiveTypeInformation) -> Ir<
     // We can justify the second case by observing that the information that it is part of the type is not a secret.
     // By eliminating to a non-proposition, we would not be revealing anything that is not already known.
     let variant = info.inductive.variants.first().unwrap();
-    let mut ty = nary_binder_to_pi(db, variant.intro_rule.without_provenance(db));
+    let mut ty = Expression::nary_binder_to_pi(
+        cache,
+        Provenance::Synthetic,
+        variant.intro_rule.from_heap(cache),
+    );
     let mut args_to_check = Vec::new();
     let mut parameter_index = 0;
-    let mut meta_gen = MetavariableGenerator::new(largest_unusable_metavariable(db, ty));
-    while let ExpressionT::Pi(pi) = ty.value(db) {
+    let mut meta_gen = MetavariableGenerator::new(ty.largest_unusable_metavariable(cache));
+    while let ExpressionT::Pi(pi) = ty.value(cache) {
         let local = pi.structure.generate_local_with_gen(&mut meta_gen);
         if parameter_index >= info.inductive.global_params {
-            let parameter_ty = as_sort(db, infer_type(db, pi.structure.bound.ty)?)?;
-            if !is_zero(&parameter_ty.0) {
+            let parameter_ty = as_sort(cache, pi.structure.bound.ty.infer_type(cache)?)?;
+            if !parameter_ty.0.is_zero() {
                 // The current argument is not in `Prop`.
                 // Check it later.
                 args_to_check.push(local);
             }
         }
-        ty = instantiate(
-            db,
-            pi.result,
-            Term::new(db, ExpressionT::LocalConstant(local)),
+        ty = pi.result.instantiate(
+            cache,
+            Expression::new(
+                cache,
+                pi.result.provenance(cache),
+                ExpressionT::LocalConstant(local),
+            ),
         );
         parameter_index += 1;
     }
 
     // Every argument in `args_to_check` must occur in `ty_arguments`.
-    let ty_arguments = apply_args(db, ty);
+    let ty_arguments = ty.apply_args(cache);
     for arg_to_check in args_to_check {
-        if !ty_arguments
-            .iter()
-            .any(|arg| *arg == Term::new(db, ExpressionT::LocalConstant(arg_to_check)))
-        {
+        if !ty_arguments.iter().any(|arg| {
+            *arg == Expression::new(
+                cache,
+                arg_to_check.structure.bound.name.0.provenance,
+                ExpressionT::LocalConstant(arg_to_check),
+            )
+        }) {
             // The argument did not occur in `ty_arguments`.
             return Ok(true);
         }
@@ -132,20 +137,22 @@ fn eliminate_only_into_prop(db: &dyn Db, info: &InductiveTypeInformation) -> Ir<
 /// These should only be accessed using [`get_certified_inductive`], so that we don't double any error messages emitted.
 #[salsa::tracked(return_ref)]
 pub fn certify_inductive(db: &dyn Db, path: Path) -> Dr<CertifiedInductive> {
-    check_type::check_inductive_type(db, path).bind(|info| {
-        Dr::sequence_unfail(
-            info.inductive
-                .variants
-                .iter()
-                .map(|variant| check_variant::check_variant(db, &info, variant)),
-        )
-        .deny()
-        .bind(|_| match eliminate_only_into_prop(db, &info) {
-            Ok(eliminate_only_into_prop) => Dr::ok(CertifiedInductive {
-                inductive: info.inductive.clone(),
-                eliminate_only_into_prop,
-            }),
-            Err(_) => todo!(),
+    ExpressionCache::with_cache(db, |cache| {
+        super::check_type::check_inductive_type(&mut cache, path).bind(|info| {
+            Dr::sequence_unfail(
+                info.inductive
+                    .variants
+                    .iter()
+                    .map(|variant| super::check_variant::check_variant(&mut cache, &info, variant)),
+            )
+            .deny()
+            .bind(|_| match eliminate_only_into_prop(&mut cache, &info) {
+                Ok(eliminate_only_into_prop) => Dr::ok(CertifiedInductive {
+                    inductive: info.inductive.clone(),
+                    eliminate_only_into_prop,
+                }),
+                Err(_) => todo!(),
+            })
         })
     })
 }

@@ -14,13 +14,11 @@ pub mod universe;
 
 #[salsa::jar(db = Db)]
 pub struct Jar(
-    deps::dependencies,
+    module::module_from_feather_source,
     inductive::get_inductive,
     inductive::certify_inductive,
     typeck::certify_definition,
     typeck::get_definition,
-    typeck::infer_type,
-    typeck::to_weak_head_normal_form,
 );
 
 pub trait Db: fcommon::Db + salsa::DbWithJar<Jar> {}

@@ -101,7 +101,7 @@ pub struct BoundVariable<E> {
 }
 
 impl BoundVariable<HeapExpression> {
-    fn from_heap<'cache>(
+    pub fn from_heap<'cache>(
         &self,
         cache: &mut ExpressionCache<'cache>,
     ) -> BoundVariable<Expression<'cache>> {
@@ -114,7 +114,7 @@ impl BoundVariable<HeapExpression> {
 }
 
 impl<'cache> BoundVariable<Expression<'cache>> {
-    fn to_heap(self, cache: &ExpressionCache<'cache>) -> BoundVariable<HeapExpression> {
+    pub fn to_heap(self, cache: &ExpressionCache<'cache>) -> BoundVariable<HeapExpression> {
         BoundVariable {
             name: self.name,
             ty: self.ty.to_heap(cache),
@@ -525,7 +525,7 @@ pub struct Expression<'cache> {
 /// See also [`Expression`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeapExpression {
-    value: WithProvenance<Box<ExpressionT<HeapExpression>>>,
+    pub value: WithProvenance<Box<ExpressionT<HeapExpression>>>,
 }
 
 impl<'cache> Expression<'cache> {

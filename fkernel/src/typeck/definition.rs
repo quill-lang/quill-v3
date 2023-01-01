@@ -1,20 +1,16 @@
 use std::fmt::Display;
 
+use crate::{definition::Definition, expr::Sort};
 use fcommon::Path;
-use fexpr::{
-    basic::Provenance,
-    definition::Definition,
-    expr::{Expression, Sort},
-};
 use serde::{Deserialize, Serialize};
 
 /// A definition that has been verified by the type checker.
 /// No data inside a certified definition can be changed; this preserves the certification status.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct CertifiedDefinition {
-    def: Definition<Provenance, Box<Expression>>,
+    def: Definition,
     /// The type of the type of the definition, stored as a sort.
-    sort: Sort<()>,
+    sort: Sort,
     reducibility_hints: ReducibilityHints,
     /// Why this definition exists.
     origin: DefinitionOrigin,
@@ -32,8 +28,8 @@ pub enum DefinitionOrigin {
 
 impl CertifiedDefinition {
     pub(in crate::typeck) fn new(
-        def: Definition<Provenance, Box<Expression>>,
-        sort: Sort<()>,
+        def: Definition,
+        sort: Sort,
         reducibility_hints: ReducibilityHints,
         origin: DefinitionOrigin,
     ) -> Self {
@@ -45,11 +41,11 @@ impl CertifiedDefinition {
         }
     }
 
-    pub fn def(&self) -> &Definition<Provenance, Box<Expression>> {
+    pub fn def(&self) -> &Definition {
         &self.def
     }
 
-    pub fn sort(&self) -> &Sort<()> {
+    pub fn sort(&self) -> &Sort {
         &self.sort
     }
 

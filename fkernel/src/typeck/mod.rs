@@ -1,27 +1,21 @@
-use fcommon::{LabelType, Path, Report, ReportKind, Source, SourceType, Spanned};
-use fexpr::{
-    basic::Provenance,
-    definition::Definition,
-    expr::{Expression, Sort},
-    message,
-    module::module_from_feather_source,
-    result::{Dr, Message},
-};
-
 use crate::{
-    expr::{first_local_or_metavariable, get_max_height},
-    universe::normalise_universe,
+    definition::Definition,
+    expr::{Expression, ExpressionCache, Sort},
+    message,
+    module::{module_from_feather_source, Item},
+    result::{Dr, Message},
     Db,
 };
+use fcommon::{LabelType, Path, Report, ReportKind, Source, SourceType, Spanned};
 
-mod definition;
 mod defeq;
+mod definition;
 mod infer;
 mod unfold;
 mod whnf;
 
-pub use definition::*;
 pub use defeq::*;
+pub use definition::*;
 pub use infer::*;
 pub use unfold::*;
 pub use whnf::*;
@@ -29,14 +23,14 @@ pub use whnf::*;
 /// Retrieves the definition with the given name.
 /// This definition will not have been type checked.
 #[salsa::tracked(return_ref)]
-pub fn get_definition(db: &dyn Db, path: Path) -> Dr<Definition<Provenance, Box<Expression>>> {
+pub fn get_definition(db: &dyn Db, path: Path) -> Dr<Definition> {
     let (source, name) = path.split_last(db);
     module_from_feather_source(db, Source::new(db, source, SourceType::Feather))
         .as_ref()
         .map_messages(Message::new)
         .map(|module| {
             module.items.iter().find_map(|item| match item {
-                fexpr::module::Item::Definition(def) => {
+                Item::Definition(def) => {
                     if *def.name == name {
                         Some(def.clone())
                     } else {
@@ -58,10 +52,13 @@ pub fn get_definition(db: &dyn Db, path: Path) -> Dr<Definition<Provenance, Box<
         })
 }
 
-pub fn check_no_local_or_metavariable(db: &dyn Db, e: &Expression) -> Dr<()> {
-    if first_local_or_metavariable(db, e.to_term(db)).is_some() {
-        Dr::fail(e.value.provenance.report(ReportKind::Error).with_label(
-            e.value.provenance.label(LabelType::Error).with_message(
+pub(crate) fn check_no_local_or_metavariable<'cache>(
+    cache: &mut ExpressionCache<'cache>,
+    e: Expression,
+) -> Dr<()> {
+    if e.first_local_or_metavariable(cache).is_some() {
+        Dr::fail(e.provenance(cache).report(ReportKind::Error).with_label(
+            e.provenance(cache).label(LabelType::Error).with_message(
                 "could not certify definition as it contained an invalid expression".into(),
             ),
         ))
@@ -82,99 +79,126 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
     get_definition(db, path).as_ref().bind(|def| {
         let origin = DefinitionOrigin::Feather;
 
-        check_no_local_or_metavariable(db, &def.contents.ty).bind(|()| {
-            // Since we have no metavariables in the given expression,
-            // we can initialise the metavariable generator with any value.
-            // Check that the type of a definition is indeed a type.
-            let sort =
-                infer_type(db, def.contents.ty.to_term(db)).and_then(|sort| as_sort(db, sort));
+        ExpressionCache::with_cache(db, |cache| {
+            check_no_local_or_metavariable(&mut cache, def.contents.ty.from_heap(&mut cache)).bind(
+                |()| {
+                    // Since we have no metavariables in the given expression,
+                    // we can initialise the metavariable generator with any value.
+                    // Check that the type of a definition is indeed a type.
+                    let sort = def
+                        .contents
+                        .ty
+                        .from_heap(&mut cache)
+                        .infer_type(&mut cache)
+                        .and_then(|sort| as_sort(&mut cache, sort));
 
-            match sort {
-                Ok(sort) => {
-                    let sort = Sort(normalise_universe(db, sort.0));
-                    if let Some(expr) = &def.contents.expr {
-                        let expr = expr.clone();
-                        check_no_local_or_metavariable(db, &expr).bind(|()| {
-                            // Check that the type of the contents of the definition
-                            // match the type declared in the definition.
-                            let defeq = infer_type(db, expr.to_term(db)).and_then(|ty| {
-                                Ok((
-                                    ty,
-                                    definitionally_equal(db, ty, def.contents.ty.to_term(db))?,
-                                ))
-                            });
+                    match sort {
+                        Ok(sort) => {
+                            let sort = Sort(sort.0.normalise_universe(db));
+                            if let Some(expr) = &def.contents.expr {
+                                let expr = expr.clone();
+                                check_no_local_or_metavariable(
+                                    &mut cache,
+                                    expr.from_heap(&mut cache),
+                                )
+                                .bind(|()| {
+                                    // Check that the type of the contents of the definition
+                                    // match the type declared in the definition.
+                                    let defeq = expr
+                                        .from_heap(&mut cache)
+                                        .infer_type(&mut cache)
+                                        .and_then(|ty| {
+                                            Ok((
+                                                ty,
+                                                Expression::definitionally_equal(
+                                                    &mut cache,
+                                                    ty,
+                                                    def.contents.ty.from_heap(&mut cache),
+                                                )?,
+                                            ))
+                                        });
 
-                            match defeq {
-                                Ok((_, true)) => Dr::ok(CertifiedDefinition::new(
+                                    match defeq {
+                                        Ok((_, true)) => Dr::ok(CertifiedDefinition::new(
+                                            def.clone(),
+                                            sort,
+                                            ReducibilityHints::Regular {
+                                                height: expr
+                                                    .from_heap(&mut cache)
+                                                    .get_max_height(&mut cache)
+                                                    + 1,
+                                            },
+                                            origin,
+                                        )),
+                                        Ok((ty, false)) => {
+                                            tracing::error!(
+                                                "{} != {}",
+                                                ty.display(&mut cache),
+                                                def.contents
+                                                    .ty
+                                                    .from_heap(&mut cache)
+                                                    .display(&mut cache)
+                                            );
+                                            Dr::fail(
+                                                Report::new(
+                                                    ReportKind::Error,
+                                                    Source::new(
+                                                        db,
+                                                        path.split_last(db).0,
+                                                        SourceType::Feather,
+                                                    ),
+                                                    def.provenance.span().start,
+                                                )
+                                                .with_message(message![
+                                                    "body of definition ",
+                                                    def.name,
+                                                    " had incorrect type"
+                                                ]),
+                                            )
+                                        }
+                                        Err(e) => Dr::fail(
+                                            Report::new(
+                                                ReportKind::Error,
+                                                Source::new(
+                                                    db,
+                                                    path.split_last(db).0,
+                                                    SourceType::Feather,
+                                                ),
+                                                def.provenance.span().start,
+                                            )
+                                            .with_message(message![
+                                                "while checking definition ",
+                                                def.name,
+                                                ", kernel raised error: ",
+                                                &e
+                                            ]),
+                                        ),
+                                    }
+                                })
+                            } else {
+                                Dr::ok(CertifiedDefinition::new(
                                     def.clone(),
                                     sort,
-                                    ReducibilityHints::Regular {
-                                        height: get_max_height(db, expr.to_term(db)) + 1,
-                                    },
+                                    ReducibilityHints::Opaque,
                                     origin,
-                                )),
-                                Ok((ty, false)) => {
-                                    tracing::error!(
-                                        "{} != {}",
-                                        ty.display(db),
-                                        def.contents.ty.to_term(db).display(db)
-                                    );
-                                    Dr::fail(
-                                        Report::new(
-                                            ReportKind::Error,
-                                            Source::new(
-                                                db,
-                                                path.split_last(db).0,
-                                                SourceType::Feather,
-                                            ),
-                                            def.provenance.span().start,
-                                        )
-                                        .with_message(
-                                            message![
-                                                "body of definition ",
-                                                def.name,
-                                                " had incorrect type"
-                                            ],
-                                        ),
-                                    )
-                                }
-                                Err(e) => Dr::fail(
-                                    Report::new(
-                                        ReportKind::Error,
-                                        Source::new(db, path.split_last(db).0, SourceType::Feather),
-                                        def.provenance.span().start,
-                                    )
-                                    .with_message(message![
-                                        "while checking definition ",
-                                        def.name,
-                                        ", kernel raised error: ",
-                                        &e
-                                    ]),
-                                ),
+                                ))
                             }
-                        })
-                    } else {
-                        Dr::ok(CertifiedDefinition::new(
-                            def.clone(),
-                            sort,
-                            ReducibilityHints::Opaque,
-                            origin,
-                        ))
+                        }
+                        Err(_) => Dr::fail(
+                            Report::new(
+                                ReportKind::Error,
+                                Source::new(db, path.split_last(db).0, SourceType::Feather),
+                                def.provenance.span().start,
+                            )
+                            .with_message(message![
+                                "type of definition ",
+                                def.name,
+                                " was not a type"
+                            ]),
+                        ),
                     }
-                }
-                Err(_) => Dr::fail(
-                    Report::new(
-                        ReportKind::Error,
-                        Source::new(db, path.split_last(db).0, SourceType::Feather),
-                        def.provenance.span().start,
-                    )
-                    .with_message(message![
-                        "type of definition ",
-                        def.name,
-                        " was not a type"
-                    ]),
-                ),
-            }
+                },
+            )
         })
     })
 }
