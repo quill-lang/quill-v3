@@ -11,7 +11,7 @@ use crate::{
 
 impl<'cache> Expression<'cache> {
     /// Reduces an expression to weak head normal form.
-    pub fn to_weak_head_normal_form(mut self, cache: &mut ExpressionCache<'cache>) -> Self {
+    pub fn to_weak_head_normal_form(mut self, cache: &ExpressionCache<'cache>) -> Self {
         loop {
             self = whnf_core(cache, self);
             match self.unfold_definition(cache) {
@@ -24,10 +24,7 @@ impl<'cache> Expression<'cache> {
 }
 
 /// Does not perform delta reduction.
-fn whnf_core<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    e: Expression<'cache>,
-) -> Expression<'cache> {
+fn whnf_core<'cache>(cache: &ExpressionCache<'cache>, e: Expression<'cache>) -> Expression<'cache> {
     match e.value(cache) {
         ExpressionT::Dereference(deref) => {
             // Reduce the argument of the dereference to weak head normal form first.
@@ -145,7 +142,7 @@ fn whnf_core<'cache>(
                         ExpressionT::Apply(ap) => {
                             match ap.function.value(cache) {
                                 ExpressionT::Local(Local { index }) => {
-                                    if *index == DeBruijnIndex::zero() + offset {
+                                    if index == DeBruijnIndex::zero() + offset {
                                         // This is a recursive application of the fixed point function.
                                         ReplaceResult::ReplaceWith(Expression::new(
                                             cache,

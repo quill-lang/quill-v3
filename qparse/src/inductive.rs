@@ -1,6 +1,6 @@
 use fcommon::{Span, Spanned, Str};
-use fexpr::{
-    basic::{Name, Provenance, WithProvenance},
+use fkernel::{
+    basic::{Name,  WithProvenance},
     multiplicity::ParameterOwnership,
     result::Dr,
 };
@@ -14,7 +14,7 @@ use crate::{
 #[derive(Debug, PartialEq, Eq)]
 pub struct PField {
     /// The name given to the field.
-    pub name: Name<Provenance>,
+    pub name: Name,
     /// The type of the field.
     pub ty: PExpression,
     /// The multiplicity for which the field is stored.
@@ -25,7 +25,7 @@ pub struct PField {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PVariant {
     /// The name of the variant.
-    pub name: Name<Provenance>,
+    pub name: Name,
     /// The fields of the variant.
     pub fields: Vec<PField>,
     /// If the type of this variant was given explicitly, it is stored here.

@@ -65,7 +65,7 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn create_nary_application(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         arguments: impl Iterator<Item = (Provenance, Self)>,
     ) -> Self {
         arguments.fold(self, |function, (provenance, argument)| {
@@ -82,7 +82,7 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn abstract_nary_lambda(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         locals: impl DoubleEndedIterator<Item = (Provenance, LocalConstant<Self>)>,
     ) -> Self {
         locals.rev().fold(self, |result, (provenance, local)| {
@@ -99,7 +99,7 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn abstract_nary_pi(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         locals: impl DoubleEndedIterator<Item = (Provenance, LocalConstant<Self>)>,
     ) -> Self {
         locals.rev().fold(self, |result, (provenance, local)| {
@@ -114,7 +114,7 @@ impl<'cache> Expression<'cache> {
     /// Converts an [`NaryBinder`] into a [`ExpressionT::Lambda`] expression that represents the same binders.
     #[must_use]
     pub fn nary_binder_to_lambda(
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         provenance: Provenance,
         nary_binder: NaryBinder<Self>,
     ) -> Self {
@@ -133,7 +133,7 @@ impl<'cache> Expression<'cache> {
     /// Converts an [`NaryBinder`] into a [`ExpressionT::Pi`] expression that represents the same binders.
     #[must_use]
     pub fn nary_binder_to_pi(
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         provenance: Provenance,
         nary_binder: NaryBinder<Self>,
     ) -> Self {

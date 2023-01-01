@@ -53,7 +53,7 @@ pub struct CertifiedInductive {
 
 /// Returns true if the the motive in match expressions can live in `Prop`.
 fn eliminate_only_into_prop<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     info: &InductiveTypeInformation,
 ) -> Ir<bool> {
     if info.sort.0.is_nonzero() {
@@ -138,15 +138,15 @@ fn eliminate_only_into_prop<'cache>(
 #[salsa::tracked(return_ref)]
 pub fn certify_inductive(db: &dyn Db, path: Path) -> Dr<CertifiedInductive> {
     ExpressionCache::with_cache(db, |cache| {
-        super::check_type::check_inductive_type(&mut cache, path).bind(|info| {
+        super::check_type::check_inductive_type(&cache, path).bind(|info| {
             Dr::sequence_unfail(
                 info.inductive
                     .variants
                     .iter()
-                    .map(|variant| super::check_variant::check_variant(&mut cache, &info, variant)),
+                    .map(|variant| super::check_variant::check_variant(&cache, &info, variant)),
             )
             .deny()
-            .bind(|_| match eliminate_only_into_prop(&mut cache, &info) {
+            .bind(|_| match eliminate_only_into_prop(&cache, &info) {
                 Ok(eliminate_only_into_prop) => Dr::ok(CertifiedInductive {
                     inductive: info.inductive.clone(),
                     eliminate_only_into_prop,

@@ -6,8 +6,8 @@
 use std::iter::Peekable;
 
 use fcommon::{Label, LabelType, Report, ReportKind, Span, Spanned, Str};
-use fexpr::{
-    basic::{Name, Provenance, QualifiedName, WithProvenance},
+use fkernel::{
+    basic::{Name, QualifiedName, WithProvenance},
     expr::BinderAnnotation,
     message,
     multiplicity::ParameterOwnership,
@@ -24,7 +24,7 @@ use crate::{
 #[derive(Debug, PartialEq, Eq)]
 pub enum PUniverse {
     /// A universe variable.
-    Variable(Name<Provenance>),
+    Variable(Name),
 }
 
 impl Spanned for PUniverse {
@@ -40,7 +40,7 @@ impl Spanned for PUniverse {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PLetBinder {
     /// The name given to the bound variable.
-    pub name: Name<Provenance>,
+    pub name: Name,
     /// The type, if explicitly given.
     /// If it is not given, it must be inferred by the elaborator.
     pub ty: Option<PExpression>,
@@ -52,7 +52,7 @@ pub struct PLetBinder {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PLambdaBinder {
     /// The name given to the bound variable.
-    pub name: Name<Provenance>,
+    pub name: Name,
     /// The annotation on the associated lambda abstraction.
     pub annotation: BinderAnnotation,
     /// If brackets were given explicitly, their spans are here.
@@ -69,7 +69,7 @@ pub struct PLambdaBinder {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PFunctionBinder {
     /// The name given to the bound variable, if present.
-    pub name: Option<Name<Provenance>>,
+    pub name: Option<Name>,
     /// The annotation on the associated lambda abstraction.
     pub annotation: BinderAnnotation,
     /// If brackets were given explicitly, their spans are here.
@@ -83,18 +83,18 @@ pub struct PFunctionBinder {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PMatchReturn {
-    index_params: Option<Vec<Name<Provenance>>>,
+    index_params: Option<Vec<Name>>,
     motive: PExpression,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PMinorPremiseFields {
-    fields: Vec<(Name<Provenance>, Option<Name<Provenance>>)>,
+    fields: Vec<(Name, Option<Name>)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct PMinorPremise {
-    variant: Name<Provenance>,
+    variant: Name,
     fields: Option<(Span, PMinorPremiseFields, Span)>,
     result: PExpression,
 }
@@ -104,7 +104,7 @@ pub struct PMinorPremise {
 pub enum PExpression {
     /// A local variable or an instantiated constant.
     Variable {
-        name: QualifiedName<Provenance>,
+        name: QualifiedName,
         /// If present, the spans are the opening and closing brackets,
         /// and the universes are the universe parameters.
         /// This is somewhat like Rust's turbofish syntax,
@@ -125,12 +125,12 @@ pub enum PExpression {
     },
     Intro {
         /// The inductive and variant.
-        inductive: QualifiedName<Provenance>,
+        inductive: QualifiedName,
         /// If present, the spans are the opening and closing brackets,
         /// and the universes are the universe parameters.
         universe_ascription: Option<(Span, Vec<PUniverse>, Span)>,
         /// The fields assigned to the new value.
-        fields: Vec<(Name<Provenance>, PExpression)>,
+        fields: Vec<(Name, PExpression)>,
         /// The opening brace.
         open: Span,
         /// The closing brace.
@@ -138,14 +138,14 @@ pub enum PExpression {
     },
     Match {
         major_premise: Box<PExpression>,
-        major_premise_name: Option<Name<Provenance>>,
+        major_premise_name: Option<Name>,
         motive: Option<Box<PMatchReturn>>,
         minor_premises: Vec<PMinorPremise>,
     },
     Fix {
-        function_name: Name<Provenance>,
+        function_name: Name,
         argument: Box<PExpression>,
-        argument_name: Name<Provenance>,
+        argument_name: Name,
         body: Box<PExpression>,
     },
     Let {
@@ -403,7 +403,7 @@ where
         }
     }
 
-    fn parse_intro_fields(&mut self) -> Dr<Vec<(Name<Provenance>, PExpression)>> {
+    fn parse_intro_fields(&mut self) -> Dr<Vec<(Name, PExpression)>> {
         let mut fields = Vec::new();
         while self.peek().is_some() {
             let newline = self.require_newline();

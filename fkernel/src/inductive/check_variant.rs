@@ -17,8 +17,8 @@ use super::check_type::InductiveTypeInformation;
 /// - occurences of the inductive data type inside the introduction rule occur strictly positively,
 /// - the introduction rule is type correct.
 pub(in crate::inductive) fn check_variant<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    info: &InductiveTypeInformation<'cache>,
+    cache: &ExpressionCache<'cache>,
+    info: &InductiveTypeInformation,
     variant: &Variant,
 ) -> Dr<()> {
     let intro_rule_ty = Expression::nary_binder_to_pi(
@@ -115,8 +115,8 @@ pub(in crate::inductive) fn check_variant<'cache>(
 }
 
 fn check_field<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    info: &InductiveTypeInformation<'cache>,
+    cache: &ExpressionCache<'cache>,
+    info: &InductiveTypeInformation,
     variant: &Variant,
     field_index: usize,
     found_recursive_parameter: &mut bool,
@@ -192,8 +192,8 @@ fn check_field<'cache>(
 /// This means that the field's type must be `a -> b -> ... -> t` where the inductive cannot appear in `a`, `b` and so on,
 /// and `t` may either not reference the inductive, or is exactly `(I As t)`.
 fn check_positivity<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    info: &InductiveTypeInformation<'cache>,
+    cache: &ExpressionCache<'cache>,
+    info: &InductiveTypeInformation,
     variant: &Variant,
     field_index: usize,
 ) -> Dr<()> {
@@ -251,8 +251,8 @@ fn check_positivity<'cache>(
 /// defined, `As` are the global parameters, and `I` does not occur in the indices `t`.
 /// `field_index` is the field index, used for a de Bruijn offset.
 fn is_valid_inductive_application<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    info: &InductiveTypeInformation<'cache>,
+    cache: &ExpressionCache<'cache>,
+    info: &InductiveTypeInformation,
     expr: Expression<'cache>,
     field_index: usize,
 ) -> Dr<bool> {
@@ -298,8 +298,8 @@ fn is_valid_inductive_application<'cache>(
 
 /// Returns true if the expression is a recursive argument.
 fn is_recursive_argument<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    info: &InductiveTypeInformation<'cache>,
+    cache: &ExpressionCache<'cache>,
+    info: &InductiveTypeInformation,
     mut expr: Expression<'cache>,
     field_index: usize,
 ) -> Dr<bool> {

@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use fcommon::{Span, Str};
-use fexpr::{
+use fkernel::{
     basic::Provenance,
-    expr::{Expression, LocalConstant, MetavariableGenerator},
+    expr::{Expression, ExpressionCache, LocalConstant, MetavariableGenerator},
     result::Dr,
 };
 use qparse::expr::PExpression;
@@ -16,24 +16,24 @@ use crate::Db;
 /// When all necessary expressions have been passed through the elaborator, it can be *finalised*,
 /// making a final decision on what terms metavariables should map to, ensuring that all metavariables
 /// actually have an assignment, and that the result is type-correct.
-pub struct Elaborator<'db> {
-    db: &'db dyn Db,
-    meta_gen: MetavariableGenerator<Box<Expression>>,
+pub struct Elaborator<'cache> {
+    cache: &'cache ExpressionCache<'cache>,
+    meta_gen: MetavariableGenerator<Expression<'cache>>,
 }
 
 #[derive(Default)]
-pub struct Context {
+pub struct Context<'cache> {
     /// A map from local variable names to the span at which they were defined, and
     /// local constants representing these local variables.
-    local_variables: BTreeMap<Str, (Span, LocalConstant<Provenance, Box<Expression>>)>,
+    local_variables: BTreeMap<Str, (Span, LocalConstant<Expression<'cache>>)>,
 }
 
-impl<'db> Elaborator<'db> {
+impl<'cache> Elaborator<'cache> {
     /// Creates a new elaborator.
     /// `largest_unusable` is used to instantiate the metavariable generator.
-    pub fn new(db: &'db dyn Db, largest_unusable: Option<u32>) -> Self {
+    pub fn new(cache: &'cache ExpressionCache<'cache>, largest_unusable: Option<u32>) -> Self {
         Self {
-            db,
+            cache,
             meta_gen: MetavariableGenerator::new(largest_unusable),
         }
     }

@@ -319,17 +319,17 @@ enum ReplaceResult {
 
 impl Universe {
     fn replace(&mut self, replace_fn: &impl Fn(&Universe) -> ReplaceResult) {
-        match replace_fn.clone()(self) {
+        match replace_fn(self) {
             ReplaceResult::Skip => match &mut self.contents {
                 UniverseContents::UniverseZero => {}
                 UniverseContents::UniverseVariable(_) => {}
                 UniverseContents::UniverseSucc(inner) => inner.0.replace(replace_fn),
                 UniverseContents::UniverseMax(max) => {
-                    max.left.replace(replace_fn.clone());
+                    max.left.replace(replace_fn);
                     max.right.replace(replace_fn);
                 }
                 UniverseContents::UniverseImpredicativeMax(imax) => {
-                    imax.left.replace(replace_fn.clone());
+                    imax.left.replace(replace_fn);
                     imax.right.replace(replace_fn);
                 }
                 UniverseContents::Metauniverse(_) => {}
@@ -339,7 +339,11 @@ impl Universe {
     }
 
     /// Replace the given universe variable with the provided replacement.
-    pub fn instantiate_universe_variable(&mut self, var: &UniverseVariable, replacement: &Universe) {
+    pub fn instantiate_universe_variable(
+        &mut self,
+        var: &UniverseVariable,
+        replacement: &Universe,
+    ) {
         self.replace(&|inner| match &inner.contents {
             UniverseContents::UniverseVariable(inner_var) => {
                 if inner_var == var {

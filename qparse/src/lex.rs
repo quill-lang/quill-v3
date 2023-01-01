@@ -1,8 +1,8 @@
 use std::{fmt::Display, iter::Peekable};
 
 use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
-use fexpr::{
-    basic::{Provenance, QualifiedName},
+use fkernel::{
+    basic::{ QualifiedName},
     expr::BinderAnnotation,
     result::{Dr, Message, Style},
 };
@@ -37,13 +37,13 @@ pub struct OperatorInfo {
     ///
     /// Special case: for the builtin operators `&` and `*`,
     /// there is no function associated with the operator.
-    pub prefix: Option<(i32, QualifiedName<Provenance>)>,
+    pub prefix: Option<(i32, QualifiedName)>,
     /// The left and right binding power for this operator used as an infix operator.
     /// and the function represented by this infix operator.
-    pub infix: Option<(i32, i32, QualifiedName<Provenance>)>,
+    pub infix: Option<(i32, i32, QualifiedName)>,
     /// The binding power for this operator used as a postfix operator.
     /// and the function represented by this postfix operator.
-    pub postfix: Option<(i32, QualifiedName<Provenance>)>,
+    pub postfix: Option<(i32, QualifiedName)>,
 }
 
 /// The reserved operators and keywords.

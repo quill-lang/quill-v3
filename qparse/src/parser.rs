@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
-use fexpr::{
+use fkernel::{
     basic::{Provenance, QualifiedName, WithProvenance},
     message,
     result::{Dr, Message},

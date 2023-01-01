@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use fcommon::{MessageFormatter, Path, Source, SourceType, Str};
-use fexpr::{
+use fkernel::{
+    expr::ExpressionCache,
     message,
     result::{ConsoleFormatter, Delaborator},
 };
@@ -13,8 +14,8 @@ use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 struct DebugDelaborator<'a>(&'a QuillDatabase);
 
 impl<'a> Delaborator for DebugDelaborator<'a> {
-    fn delaborate(&self, term: fexpr::expr::Term) -> fexpr::result::Message {
-        term.display(self.0).into()
+    fn delaborate(&self, expr: &fkernel::expr::HeapExpression) -> fkernel::result::Message {
+        expr.display(self.0).into()
     }
 }
 
@@ -58,75 +59,24 @@ fn main() {
 
     if let Some(result) = result {
         for def in result {
-            if let Some(ty) = &def.ty {
-                let mut elab = Elaborator::new(&db, None);
-                let result = elab.elaborate(ty, None, &Context::default());
-                for report in result.reports() {
-                    report.render(&db, &formatter, &mut stderr);
+            ExpressionCache::with_cache(&db, |cache| {
+                if let Some(ty) = &def.ty {
+                    todo!("elaborate");
+                    // let mut elab = Elaborator::new(cache, None);
+                    // let result = elab.elaborate(ty, None, &Context::default());
+                    // for report in result.reports() {
+                    //     report.render(&db, &formatter, &mut stderr);
+                    // }
+                    // if let Some(result) = result.value() {
+                    //     tracing::info!(
+                    //         "elaborated {}: {}",
+                    //         def.name.text(&db),
+                    //         formatter.format(&message![result.to_heap(cache)])
+                    //     );
+                    // }
                 }
-                if let Some(result) = result.value() {
-                    tracing::info!(
-                        "elaborated {}: {}",
-                        def.name.text(&db),
-                        formatter.format(&message![result.to_term(&db)])
-                    );
-                }
-            }
+            })
         }
-        // for def in &result.items {
-        //     match def {
-        //         fexpr::module::Item::Definition(def) => {
-        //             let result = fkernel::typeck::certify_definition(
-        //                 &db,
-        //                 Path::new(
-        //                     &db,
-        //                     vec![
-        //                         Str::new(&db, "test".to_string()),
-        //                         Str::new(&db, "test".to_string()),
-        //                         *def.name,
-        //                     ],
-        //                 ),
-        //             );
-
-        //             for report in result.reports() {
-        //                 report.render(&db, &mut stderr);
-        //             }
-
-        //             if result.value().is_some() {
-        //                 tracing::info!(
-        //                     "certified {} (has body: {})",
-        //                     def.name.text(&db),
-        //                     def.contents.expr.is_some()
-        //                 );
-        //             }
-        //         }
-        //         fexpr::module::Item::Inductive(ind) => {
-        //             let result = fkernel::inductive::certify_inductive(
-        //                 &db,
-        //                 Path::new(
-        //                     &db,
-        //                     vec![
-        //                         Str::new(&db, "test".to_string()),
-        //                         Str::new(&db, "test".to_string()),
-        //                         *ind.name,
-        //                     ],
-        //                 ),
-        //             );
-
-        //             for report in result.reports() {
-        //                 report.render(&db, &mut stderr);
-        //             }
-
-        //             if let Some(result) = result.value() {
-        //                 tracing::info!(
-        //                     "certified {} (eliminate only into Prop: {})",
-        //                     ind.name.text(&db),
-        //                     result.eliminate_only_into_prop
-        //                 );
-        //             }
-        //         }
-        //     }
-        // }
     }
 
     // TODO: <https://github.com/salsa-rs/salsa/blob/master/examples-2022/lazy-input/src/main.rs>

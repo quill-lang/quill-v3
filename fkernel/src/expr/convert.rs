@@ -4,7 +4,7 @@ impl<'cache> Expression<'cache> {
     pub fn to_heap(&self, cache: &ExpressionCache<'cache>) -> HeapExpression {
         match self.value(cache) {
             ExpressionT::Local(e) => {
-                HeapExpression::new(self.provenance(cache), ExpressionT::Local(*e))
+                HeapExpression::new(self.provenance(cache), ExpressionT::Local(e))
             }
             ExpressionT::Borrow(e) => HeapExpression::new(
                 self.provenance(cache),
@@ -153,7 +153,7 @@ impl<'cache> Expression<'cache> {
 }
 
 impl HeapExpression {
-    pub fn from_heap<'cache>(&self, cache: &mut ExpressionCache<'cache>) -> Expression<'cache> {
+    pub fn from_heap<'cache>(&self, cache: &ExpressionCache<'cache>) -> Expression<'cache> {
         let body = match &*self.value.contents {
             ExpressionT::Local(e) => ExpressionT::Local(*e),
             ExpressionT::Borrow(e) => ExpressionT::Borrow(Borrow {

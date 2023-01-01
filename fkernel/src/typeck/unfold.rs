@@ -41,7 +41,7 @@ impl<'cache> Expression<'cache> {
     ///
     /// If we couldn't unfold anything, return [`None`].
     /// This will always return a value if [`head_definition_height`] returned a [`Some`] value.
-    pub fn unfold_definition(self, cache: &mut ExpressionCache<'cache>) -> Option<Self> {
+    pub fn unfold_definition(self, cache: &ExpressionCache<'cache>) -> Option<Self> {
         match self.value(cache) {
             ExpressionT::Inst(inst) => {
                 get_certified_definition(cache.db(), inst.name.to_path(cache.db()))

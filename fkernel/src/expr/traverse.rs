@@ -52,7 +52,7 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn replace_in_expression(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         replace_fn: &impl Fn(Self, DeBruijnOffset) -> ReplaceResult<'cache>,
     ) -> Self {
         self.replace_in_expression_offset(cache, replace_fn, DeBruijnOffset::zero())
@@ -62,7 +62,7 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     fn replace_in_expression_offset(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         replace_fn: &impl Fn(Self, DeBruijnOffset) -> ReplaceResult<'cache>,
         offset: DeBruijnOffset,
     ) -> Self {
@@ -76,11 +76,9 @@ impl<'cache> Expression<'cache> {
                         cache,
                         self.provenance(cache),
                         ExpressionT::Borrow(Borrow {
-                            region: e.region.replace_in_expression_offset(
-                                cache,
-                                replace_fn.clone(),
-                                offset,
-                            ),
+                            region: e
+                                .region
+                                .replace_in_expression_offset(cache, replace_fn, offset),
                             value: e
                                 .value
                                 .replace_in_expression_offset(cache, replace_fn, offset),
@@ -99,11 +97,9 @@ impl<'cache> Expression<'cache> {
                         cache,
                         self.provenance(cache),
                         ExpressionT::Delta(Delta {
-                            region: e.region.replace_in_expression_offset(
-                                cache,
-                                replace_fn.clone(),
-                                offset,
-                            ),
+                            region: e
+                                .region
+                                .replace_in_expression_offset(cache, replace_fn, offset),
                             ty: e.ty.replace_in_expression_offset(cache, replace_fn, offset),
                         }),
                     ),
@@ -112,18 +108,15 @@ impl<'cache> Expression<'cache> {
                         self.provenance(cache),
                         ExpressionT::Let(Let {
                             bound: BoundVariable {
-                                ty: e.bound.ty.replace_in_expression_offset(
-                                    cache,
-                                    replace_fn.clone(),
-                                    offset,
-                                ),
+                                ty: e
+                                    .bound
+                                    .ty
+                                    .replace_in_expression_offset(cache, replace_fn, offset),
                                 ..e.bound
                             },
-                            to_assign: e.to_assign.replace_in_expression_offset(
-                                cache,
-                                replace_fn.clone(),
-                                offset,
-                            ),
+                            to_assign: e
+                                .to_assign
+                                .replace_in_expression_offset(cache, replace_fn, offset),
                             body: e.body.replace_in_expression_offset(
                                 cache,
                                 replace_fn,
@@ -131,60 +124,58 @@ impl<'cache> Expression<'cache> {
                             ),
                         }),
                     ),
-                    ExpressionT::Lambda(e) => Self::new(
-                        cache,
-                        self.provenance(cache),
-                        ExpressionT::Lambda(Binder {
-                            structure: BinderStructure {
-                                bound: BoundVariable {
-                                    ty: e.structure.bound.ty.replace_in_expression_offset(
-                                        cache,
-                                        replace_fn.clone(),
-                                        offset,
-                                    ),
-                                    ..e.structure.bound
+                    ExpressionT::Lambda(e) => {
+                        Self::new(
+                            cache,
+                            self.provenance(cache),
+                            ExpressionT::Lambda(Binder {
+                                structure: BinderStructure {
+                                    bound: BoundVariable {
+                                        ty: e.structure.bound.ty.replace_in_expression_offset(
+                                            cache, replace_fn, offset,
+                                        ),
+                                        ..e.structure.bound
+                                    },
+                                    region: e
+                                        .structure
+                                        .region
+                                        .replace_in_expression_offset(cache, replace_fn, offset),
+                                    ..e.structure
                                 },
-                                region: e.structure.region.replace_in_expression_offset(
+                                result: e.result.replace_in_expression_offset(
                                     cache,
-                                    replace_fn.clone(),
-                                    offset,
+                                    replace_fn,
+                                    offset.succ(),
                                 ),
-                                ..e.structure
-                            },
-                            result: e.result.replace_in_expression_offset(
-                                cache,
-                                replace_fn,
-                                offset.succ(),
-                            ),
-                        }),
-                    ),
-                    ExpressionT::Pi(e) => Self::new(
-                        cache,
-                        self.provenance(cache),
-                        ExpressionT::Pi(Binder {
-                            structure: BinderStructure {
-                                bound: BoundVariable {
-                                    ty: e.structure.bound.ty.replace_in_expression_offset(
-                                        cache,
-                                        replace_fn.clone(),
-                                        offset,
-                                    ),
-                                    ..e.structure.bound
+                            }),
+                        )
+                    }
+                    ExpressionT::Pi(e) => {
+                        Self::new(
+                            cache,
+                            self.provenance(cache),
+                            ExpressionT::Pi(Binder {
+                                structure: BinderStructure {
+                                    bound: BoundVariable {
+                                        ty: e.structure.bound.ty.replace_in_expression_offset(
+                                            cache, replace_fn, offset,
+                                        ),
+                                        ..e.structure.bound
+                                    },
+                                    region: e
+                                        .structure
+                                        .region
+                                        .replace_in_expression_offset(cache, replace_fn, offset),
+                                    ..e.structure
                                 },
-                                region: e.structure.region.replace_in_expression_offset(
+                                result: e.result.replace_in_expression_offset(
                                     cache,
-                                    replace_fn.clone(),
-                                    offset,
+                                    replace_fn,
+                                    offset.succ(),
                                 ),
-                                ..e.structure
-                            },
-                            result: e.result.replace_in_expression_offset(
-                                cache,
-                                replace_fn,
-                                offset.succ(),
-                            ),
-                        }),
-                    ),
+                            }),
+                        )
+                    }
                     ExpressionT::RegionLambda(e) => Self::new(
                         cache,
                         self.provenance(cache),
@@ -213,11 +204,9 @@ impl<'cache> Expression<'cache> {
                         cache,
                         self.provenance(cache),
                         ExpressionT::Apply(Apply {
-                            function: e.function.replace_in_expression_offset(
-                                cache,
-                                replace_fn.clone(),
-                                offset,
-                            ),
+                            function: e
+                                .function
+                                .replace_in_expression_offset(cache, replace_fn, offset),
                             argument: e
                                 .argument
                                 .replace_in_expression_offset(cache, replace_fn, offset),
@@ -233,13 +222,7 @@ impl<'cache> Expression<'cache> {
                             parameters: e
                                 .parameters
                                 .iter()
-                                .map(|e| {
-                                    e.replace_in_expression_offset(
-                                        cache,
-                                        replace_fn.clone(),
-                                        offset,
-                                    )
-                                })
+                                .map(|e| e.replace_in_expression_offset(cache, replace_fn, offset))
                                 .collect(),
                         }),
                     ),
@@ -247,15 +230,13 @@ impl<'cache> Expression<'cache> {
                         cache,
                         self.provenance(cache),
                         ExpressionT::Match(Match {
-                            major_premise: e.major_premise.replace_in_expression_offset(
-                                cache,
-                                replace_fn.clone(),
-                                offset,
-                            ),
+                            major_premise: e
+                                .major_premise
+                                .replace_in_expression_offset(cache, replace_fn, offset),
                             index_params: e.index_params,
                             motive: e.motive.replace_in_expression_offset(
                                 cache,
-                                replace_fn.clone(),
+                                replace_fn,
                                 offset.succ() + DeBruijnOffset::new(e.index_params),
                             ),
                             minor_premises: e
@@ -266,7 +247,7 @@ impl<'cache> Expression<'cache> {
                                     fields: premise.fields,
                                     result: premise.result.replace_in_expression_offset(
                                         cache,
-                                        replace_fn.clone(),
+                                        replace_fn,
                                         offset + DeBruijnOffset::new(premise.fields),
                                     ),
                                 })
@@ -277,16 +258,14 @@ impl<'cache> Expression<'cache> {
                         cache,
                         self.provenance(cache),
                         ExpressionT::Fix(Fix {
-                            argument: e.argument.replace_in_expression_offset(
-                                cache,
-                                replace_fn.clone(),
-                                offset,
-                            ),
+                            argument: e
+                                .argument
+                                .replace_in_expression_offset(cache, replace_fn, offset),
                             argument_name: e.argument_name,
                             fixpoint: BoundVariable {
                                 ty: e.fixpoint.ty.replace_in_expression_offset(
                                     cache,
-                                    replace_fn.clone(),
+                                    replace_fn,
                                     offset.succ(),
                                 ),
                                 ..e.fixpoint
@@ -324,11 +303,10 @@ impl<'cache> Expression<'cache> {
                             ExpressionT::LocalConstant(LocalConstant {
                                 metavariable: Metavariable {
                                     index: e.metavariable.index,
-                                    ty: e.metavariable.ty.replace_in_expression_offset(
-                                        cache,
-                                        replace_fn.clone(),
-                                        offset,
-                                    ),
+                                    ty: e
+                                        .metavariable
+                                        .ty
+                                        .replace_in_expression_offset(cache, replace_fn, offset),
                                 },
                                 structure: BinderStructure {
                                     bound: BoundVariable {
@@ -530,11 +508,7 @@ impl<'cache> Expression<'cache> {
 
     /// Finds the first instance of the given [`Inst`] in the expression.
     #[must_use]
-    pub fn find_inst<'a>(
-        self,
-        cache: &'a ExpressionCache<'cache>,
-        name: &QualifiedName,
-    ) -> Option<&'a Inst> {
+    pub fn find_inst(self, cache: &ExpressionCache<'cache>, name: &QualifiedName) -> Option<Inst> {
         self.find_in_expression(cache, &|inner, _offset| {
             if let ExpressionT::Inst(inst) = inner.value(cache) {
                 inst.name == *name
@@ -555,7 +529,7 @@ impl<'cache> Expression<'cache> {
     /// This will subtract one from all higher de Bruijn indices.
     /// TODO: Cache the results.
     #[must_use]
-    pub fn instantiate(self, cache: &mut ExpressionCache<'cache>, substitution: Self) -> Self {
+    pub fn instantiate(self, cache: &ExpressionCache<'cache>, substitution: Self) -> Self {
         self.replace_in_expression(cache, &|e, offset| {
             match e.value(cache) {
                 ExpressionT::Local(Local { index }) => {
@@ -596,7 +570,7 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn instantiate_universe_parameters(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         universe_params: &[Name],
         universe_arguments: &[Universe],
     ) -> Self {
@@ -635,20 +609,20 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn lift_free_vars(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         bias: DeBruijnOffset,
         shift: DeBruijnOffset,
     ) -> Self {
         self.replace_in_expression(cache, &|e, offset| {
             match e.value(cache) {
                 ExpressionT::Local(Local { index }) => {
-                    if *index >= DeBruijnIndex::zero() + offset + bias {
+                    if index >= DeBruijnIndex::zero() + offset + bias {
                         // The variable is free.
                         ReplaceResult::ReplaceWith(Self::new(
                             cache,
                             e.provenance(cache),
                             ExpressionT::Local(Local {
-                                index: *index + shift,
+                                index: index + shift,
                             }),
                         ))
                     } else {
@@ -664,12 +638,12 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn abstract_binder(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         local: LocalConstant<Self>,
     ) -> Binder<Self> {
         let return_type = self.replace_in_expression(cache, &|e, offset| match e.value(cache) {
             ExpressionT::LocalConstant(inner_local) => {
-                if *inner_local == local {
+                if inner_local == local {
                     ReplaceResult::ReplaceWith(Self::new(
                         cache,
                         e.provenance(cache),
@@ -694,12 +668,12 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn abstract_region_binder(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         local: LocalConstant<Self>,
     ) -> RegionBinder<Self> {
         let return_type = self.replace_in_expression(cache, &|e, offset| match e.value(cache) {
             ExpressionT::LocalConstant(inner_local) => {
-                if *inner_local == local {
+                if inner_local == local {
                     ReplaceResult::ReplaceWith(Self::new(
                         cache,
                         e.provenance(cache),
@@ -724,7 +698,7 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn replace_local(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         local: &LocalConstant<Self>,
         replacement: Self,
     ) -> Self {
@@ -742,7 +716,7 @@ impl<'cache> Expression<'cache> {
     #[must_use]
     pub fn replace_universe_variable(
         self,
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         var: &UniverseVariable,
         replacement: &Universe,
     ) -> Self {

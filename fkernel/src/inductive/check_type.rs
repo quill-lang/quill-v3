@@ -13,8 +13,8 @@ use crate::typeck::as_sort;
 use super::get_inductive;
 
 /// Some information used when creating things to do with inductives, such as match expressions.
-pub(in crate::inductive) struct InductiveTypeInformation<'db> {
-    pub inductive: &'db Inductive,
+pub(in crate::inductive) struct InductiveTypeInformation {
+    pub inductive: Inductive,
     /// The type yielded after all parameters have been applied to the inductive type.
     pub sort: Sort,
     /// An [`Inst`] node which will instantiate the type of the inductive, with the given universe parameters.
@@ -22,9 +22,9 @@ pub(in crate::inductive) struct InductiveTypeInformation<'db> {
 }
 
 pub(super) fn check_inductive_type<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     path: Path,
-) -> Dr<InductiveTypeInformation<'cache>> {
+) -> Dr<InductiveTypeInformation> {
     get_inductive(cache.db(), path).as_ref().bind(|ind| {
         let ind_ty = Expression::nary_binder_to_pi(cache, ind.provenance, ind.contents.ty.from_heap(cache));
         check_no_local_or_metavariable(cache, ind_ty).bind(|()| {
@@ -45,7 +45,7 @@ pub(super) fn check_inductive_type<'cache>(
                             Ok(sort) => {
                                 let sort = Sort(sort.0.normalise_universe(cache.db()));
                                 Dr::ok(InductiveTypeInformation {
-                                    inductive: ind,
+                                    inductive: ind.clone(),
                                     sort,
                                     inst: Inst {
                                         name: QualifiedName::from_path(cache.db(), path),

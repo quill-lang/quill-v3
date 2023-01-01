@@ -1,6 +1,6 @@
 use fcommon::{Label, LabelType, Report, ReportKind, Spanned, Str};
-use fexpr::{
-    basic::{Name, Provenance, WithProvenance},
+use fkernel::{
+    basic::{Name, WithProvenance},
     message,
     result::Dr,
 };
@@ -15,7 +15,7 @@ use crate::{
 #[derive(Debug, PartialEq, Eq)]
 pub struct PDefinition {
     /// The name given to the definition.
-    pub name: Name<Provenance>,
+    pub name: Name,
     /// The type, if explicitly given.
     /// If it is not given, it must be inferred by the elaborator.
     pub ty: Option<PExpression>,

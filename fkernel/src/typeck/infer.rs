@@ -37,15 +37,15 @@ pub enum InferenceError {
     MinorPremiseCountMismatch,
 }
 
-impl From<&InferenceError> for Message {
-    fn from(value: &InferenceError) -> Message {
+impl From<InferenceError> for Message {
+    fn from(value: InferenceError) -> Message {
         match value {
-            InferenceError::ExpressionNotClosed(term) => {
-                message!["term ", *term, " had free variables"]
+            InferenceError::ExpressionNotClosed(expr) => {
+                message!["expression ", expr, " had free variables"]
             }
             InferenceError::IncorrectUniverseArity => todo!(),
             InferenceError::DefinitionNotFound(path) => {
-                message!["definition ", *path, " not found"]
+                message!["definition ", path, " not found"]
             }
             InferenceError::LetTypeMismatch => todo!(),
             InferenceError::ApplyTypeMismatch {
@@ -55,16 +55,16 @@ impl From<&InferenceError> for Message {
                 argument_type,
             } => message![
                 "cannot apply function ",
-                *function,
+                function,
                 " of type ",
-                *function_type,
+                function_type,
                 " to term ",
-                *argument,
+                argument,
                 " of type ",
-                *argument_type
+                argument_type
             ],
             InferenceError::FunctionOwnershipMismatch => todo!(),
-            InferenceError::ExpectedSort(t) => message!["term ", *t, " was not a sort"],
+            InferenceError::ExpectedSort(expr) => message!["expression ", expr, " was not a sort"],
             InferenceError::ExpectedPi => todo!(),
             InferenceError::ExpectedDelta => todo!(),
             InferenceError::UnexpectedMetauniverse => todo!(),
@@ -86,7 +86,7 @@ pub type Ir<T> = Result<T, InferenceError>;
 impl<'cache> Expression<'cache> {
     /// Infers the type of a (closed) term.
     /// If we return [`Ok`], the provided term is type-correct and has the given type.
-    pub fn infer_type(self, cache: &mut ExpressionCache<'cache>) -> Ir<Self> {
+    pub fn infer_type(self, cache: &ExpressionCache<'cache>) -> Ir<Self> {
         if self.has_free_variables(cache) {
             Err(InferenceError::ExpressionNotClosed(self.to_heap(cache)))
         } else {
@@ -101,7 +101,7 @@ impl<'cache> Expression<'cache> {
 /// The returned type will have synthetic provenance.
 /// TODO: Cache the results.
 pub(crate) fn infer_type_core<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     e: Expression<'cache>,
 ) -> Ir<Expression<'cache>> {
     match e.value(cache) {
@@ -139,8 +139,8 @@ pub(crate) fn infer_type_core<'cache>(
 }
 
 fn infer_type_borrow<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    borrow: &Borrow<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    borrow: Borrow<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     infer_type_core(cache, borrow.value).map(|ty| {
         Expression::new(
@@ -155,8 +155,8 @@ fn infer_type_borrow<'cache>(
 }
 
 fn infer_type_deref<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    deref: &Dereference<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    deref: Dereference<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     infer_type_core(cache, deref.value)
         .and_then(|ty| as_delta(cache, ty))
@@ -164,8 +164,8 @@ fn infer_type_deref<'cache>(
 }
 
 fn infer_type_delta<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    delta: &Delta<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    delta: Delta<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     let ty_type = infer_type_core(cache, delta.ty)?;
     Ok(Expression::new(
@@ -175,10 +175,7 @@ fn infer_type_delta<'cache>(
     ))
 }
 
-fn infer_type_inst<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    inst: &Inst,
-) -> Ir<Expression<'cache>> {
+fn infer_type_inst<'cache>(cache: &ExpressionCache<'cache>, inst: Inst) -> Ir<Expression<'cache>> {
     let path = inst.name.to_path(cache.db());
     match get_definition(cache.db(), path).value() {
         Some(def) => {
@@ -231,8 +228,8 @@ fn infer_type_inst<'cache>(
 }
 
 fn infer_type_let<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    inner: &Let<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    inner: Let<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     // The type of the value to assign must be a type.
     // That is, its type must be a sort.
@@ -252,8 +249,8 @@ fn infer_type_let<'cache>(
 }
 
 fn infer_type_lambda<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    lambda: &Binder<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    lambda: Binder<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     // The argument type must be a type.
     let argument_type_type = infer_type_core(cache, lambda.structure.bound.ty)?;
@@ -278,8 +275,8 @@ fn infer_type_lambda<'cache>(
 }
 
 fn infer_type_pi<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    pi: &Binder<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    pi: Binder<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     // The argument type must be a type.
     let parameter_type = infer_type_core(cache, pi.structure.bound.ty)?;
@@ -309,8 +306,8 @@ fn infer_type_pi<'cache>(
 }
 
 fn infer_type_region_lambda<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    lambda: &RegionBinder<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    lambda: RegionBinder<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     let new_local = lambda.generate_local(cache, lambda.body);
     let body = lambda.body.instantiate(
@@ -330,8 +327,8 @@ fn infer_type_region_lambda<'cache>(
 }
 
 fn infer_type_region_pi<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    pi: &RegionBinder<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    pi: RegionBinder<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     // TODO: Check that the region variable occurs simply in the term.
     let new_local = pi.generate_local(cache, pi.body);
@@ -354,8 +351,8 @@ fn infer_type_region_pi<'cache>(
 }
 
 fn infer_type_apply<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    apply: &Apply<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    apply: Apply<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     let function_type = infer_type_core(cache, apply.function)?;
     match as_delta(cache, function_type) {
@@ -440,8 +437,8 @@ fn infer_type_apply<'cache>(
 }
 
 fn infer_type_intro<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    intro: &Intro<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    intro: Intro<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     match get_inductive(cache.db(), intro.inductive.to_path(cache.db())).value() {
         Some(inductive) => {
@@ -487,11 +484,6 @@ fn infer_type_intro<'cache>(
                             param_instantiated.infer_type(cache)?,
                             expected_type,
                         )? {
-                            tracing::error!(
-                                "{} != {}",
-                                param_instantiated.infer_type(cache).unwrap().display(cache),
-                                expected_type.display(cache)
-                            );
                             todo!()
                         }
                     }
@@ -520,7 +512,7 @@ fn infer_type_intro<'cache>(
 fn process_match<'cache>(
     match_expr: &Match<Expression<'cache>>,
     inductive: &CertifiedInductive,
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     inductive_term: Expression<'cache>,
     parameters: Vec<Expression<'cache>>,
     inst: &Inst,
@@ -644,8 +636,7 @@ fn process_match<'cache>(
             todo!()
         }
 
-        // let mut binders = variant.intro_rule;
-        let structures = variant
+        let mut structures = variant
             .intro_rule
             .structures
             .iter()
@@ -782,11 +773,6 @@ fn process_match<'cache>(
                 |expr, param| expr.instantiate(cache, param),
             );
         if !Expression::definitionally_equal(cache, minor_premise_type, specialised_motive)? {
-            tracing::error!(
-                "{} != {}",
-                minor_premise_type.display(cache),
-                specialised_motive.display(cache)
-            );
             todo!()
         }
     }
@@ -807,10 +793,6 @@ fn process_match<'cache>(
     if inductive.eliminate_only_into_prop {
         let sort = as_sort(cache, result.infer_type(cache)?)?;
         if !sort.0.is_zero() {
-            tracing::error!(
-                "can't eliminate into {}",
-                result.infer_type(cache)?.display(cache)
-            );
             todo!()
         }
     }
@@ -820,8 +802,8 @@ fn process_match<'cache>(
 }
 
 fn infer_type_match<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    match_expr: &Match<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    match_expr: Match<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     let major_premise_type = match_expr.major_premise.infer_type(cache)?;
     match major_premise_type.value(cache) {
@@ -831,12 +813,12 @@ fn infer_type_match<'cache>(
                 ExpressionT::Inst(inst) => {
                     match get_certified_inductive(cache.db(), inst.name.to_path(cache.db())) {
                         Some(inductive) => process_match(
-                            match_expr,
+                            &match_expr,
                             inductive,
                             cache,
                             inductive_term,
                             parameters,
-                            inst,
+                            &inst,
                             Some(delta.region),
                         ),
                         None => todo!(),
@@ -852,12 +834,12 @@ fn infer_type_match<'cache>(
                 ExpressionT::Inst(inst) => {
                     match get_certified_inductive(cache.db(), inst.name.to_path(cache.db())) {
                         Some(inductive) => process_match(
-                            match_expr,
+                            &match_expr,
                             inductive,
                             cache,
                             inductive_term,
                             parameters,
-                            inst,
+                            &inst,
                             None,
                         ),
                         None => todo!(),
@@ -873,7 +855,7 @@ fn infer_type_match<'cache>(
 /// `structurally_smaller` is a set of metavariables that we know are structurally smaller than `local`.
 /// TODO: Fixed point expressions for borrowed inductive types.
 fn check_decreasing<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     meta_gen: &mut MetavariableGenerator<Expression<'cache>>,
     expr: Expression<'cache>,
     local: LocalConstant<Expression<'cache>>,
@@ -975,9 +957,9 @@ fn check_decreasing<'cache>(
 
 /// If `borrowed` is `Some(t)`, then `t` is the region for which the major premise is borrowed.
 fn process_fix<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     argument_type: Expression<'cache>,
-    fix: &Fix<Expression<'cache>>,
+    fix: Fix<Expression<'cache>>,
     borrowed: Option<Expression<'cache>>,
 ) -> Result<Expression<'cache>, InferenceError> {
     let inductive_term = argument_type.leftmost_function(cache);
@@ -1109,8 +1091,8 @@ fn process_fix<'cache>(
 }
 
 fn infer_type_fix<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    fix: &Fix<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    fix: Fix<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     let argument_type = fix.argument.infer_type(cache)?;
     match argument_type.value(cache) {
@@ -1119,10 +1101,7 @@ fn infer_type_fix<'cache>(
     }
 }
 
-fn infer_type_sort<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    sort: &Sort,
-) -> Ir<Expression<'cache>> {
+fn infer_type_sort<'cache>(cache: &ExpressionCache<'cache>, sort: Sort) -> Ir<Expression<'cache>> {
     check_valid_universe(&sort.0)?;
 
     Ok(Expression::new(
@@ -1136,7 +1115,7 @@ fn infer_type_sort<'cache>(
 
 /// Expands the given term until it is a [`Sort`].
 /// If the term was not a sort, returns [`Err`].
-pub fn as_sort<'cache>(cache: &mut ExpressionCache<'cache>, expr: Expression<'cache>) -> Ir<Sort> {
+pub fn as_sort<'cache>(cache: &ExpressionCache<'cache>, expr: Expression<'cache>) -> Ir<Sort> {
     if let ExpressionT::Sort(sort) = expr.value(cache) {
         Ok(sort.clone())
     } else if let ExpressionT::Sort(sort) = expr.to_weak_head_normal_form(cache).value(cache) {
@@ -1149,13 +1128,13 @@ pub fn as_sort<'cache>(cache: &mut ExpressionCache<'cache>, expr: Expression<'ca
 /// Expands the given term until it is a [`ExpressionT::Pi`].
 /// If the term was not a function type, returns [`Err`].
 fn as_pi<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     expr: Expression<'cache>,
 ) -> Ir<Binder<Expression<'cache>>> {
     if let ExpressionT::Pi(pi) = expr.value(cache) {
-        Ok(*pi)
+        Ok(pi)
     } else if let ExpressionT::Pi(pi) = expr.to_weak_head_normal_form(cache).value(cache) {
-        Ok(*pi)
+        Ok(pi)
     } else {
         Err(InferenceError::ExpectedPi)
     }
@@ -1166,13 +1145,13 @@ fn as_pi<'cache>(
 /// The error this returns is [`InferenceError::ExpectedPi`] because
 /// this function is called when we expect either a region pi or a normal pi.
 fn as_region_pi<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     expr: Expression<'cache>,
 ) -> Ir<RegionBinder<Expression<'cache>>> {
     if let ExpressionT::RegionPi(pi) = expr.value(cache) {
-        Ok(*pi)
+        Ok(pi)
     } else if let ExpressionT::RegionPi(pi) = expr.to_weak_head_normal_form(cache).value(cache) {
-        Ok(*pi)
+        Ok(pi)
     } else {
         Err(InferenceError::ExpectedPi)
     }
@@ -1181,13 +1160,13 @@ fn as_region_pi<'cache>(
 /// Expands the given term until it is a [`ExpressionT::Delta`].
 /// If the term was not a function type, returns [`Err`].
 fn as_delta<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     expr: Expression<'cache>,
 ) -> Ir<Delta<Expression<'cache>>> {
     if let ExpressionT::Delta(delta) = expr.value(cache) {
-        Ok(*delta)
+        Ok(delta)
     } else if let ExpressionT::Delta(delta) = expr.to_weak_head_normal_form(cache).value(cache) {
-        Ok(*delta)
+        Ok(delta)
     } else {
         Err(InferenceError::ExpectedDelta)
     }

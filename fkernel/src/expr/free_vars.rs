@@ -9,8 +9,8 @@ impl<'cache> Expression<'cache> {
     /// Returns the largest metavariable index that was referenced in the given term, or [`None`] if none were referenced.
     /// We are free to use metavariables with strictly higher indices than what is returned here without name clashing.
     #[must_use]
-    pub fn largest_unusable_metavariable(self, cache: &mut ExpressionCache<'cache>) -> Option<u32> {
-        if let Some(result) = cache.largest_unusable_metavariable.get(&self) {
+    pub fn largest_unusable_metavariable(self, cache: &ExpressionCache<'cache>) -> Option<u32> {
+        if let Some(result) = cache.largest_unusable_metavariable.borrow().get(&self) {
             *result
         } else {
             let result = match self.value(cache).clone() {
@@ -78,7 +78,10 @@ impl<'cache> Expression<'cache> {
                 ExpressionT::Metavariable(t) => Some(t.index),
                 ExpressionT::LocalConstant(t) => Some(t.metavariable.index),
             };
-            cache.largest_unusable_metavariable.insert(self, result);
+            cache
+                .largest_unusable_metavariable
+                .borrow_mut()
+                .insert(self, result);
             result
         }
     }
@@ -89,8 +92,8 @@ impl<'cache> Expression<'cache> {
     /// If the term is `let x = _ in #1`, we return `#0`, because the `#1` inside the `let` body
     /// refers to what we would call `#0` from outside the term.
     #[must_use]
-    pub fn first_free_variable_index(self, cache: &mut ExpressionCache<'cache>) -> DeBruijnIndex {
-        if let Some(result) = cache.first_free_variable_index.get(&self) {
+    pub fn first_free_variable_index(self, cache: &ExpressionCache<'cache>) -> DeBruijnIndex {
+        if let Some(result) = cache.first_free_variable_index.borrow().get(&self) {
             *result
         } else {
             let result = match self.value(cache).clone() {
@@ -160,7 +163,10 @@ impl<'cache> Expression<'cache> {
                 ExpressionT::Metavariable(_) => DeBruijnIndex::zero(),
                 ExpressionT::LocalConstant(_) => DeBruijnIndex::zero(),
             };
-            cache.first_free_variable_index.insert(self, result);
+            cache
+                .first_free_variable_index
+                .borrow_mut()
+                .insert(self, result);
             result
         }
     }
@@ -171,14 +177,14 @@ impl<'cache> Expression<'cache> {
     /// now contain free variables.
     /// The opposite of [`Expression::has_free_variables`].
     #[must_use]
-    pub fn closed(self, cache: &mut ExpressionCache<'cache>) -> bool {
+    pub fn closed(self, cache: &ExpressionCache<'cache>) -> bool {
         self.first_free_variable_index(cache) == DeBruijnIndex::zero()
     }
 
     /// An expression has *free variables* if there are any de Bruijn indices pointing outside the expression.
     /// The opposite of [`Expression::closed`].
     #[must_use]
-    pub fn has_free_variables(self, cache: &mut ExpressionCache<'cache>) -> bool {
+    pub fn has_free_variables(self, cache: &ExpressionCache<'cache>) -> bool {
         !self.closed(cache)
     }
 }

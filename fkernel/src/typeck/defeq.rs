@@ -15,7 +15,7 @@ impl<'cache> Expression<'cache> {
     /// TODO: This doesn't work with [`RegionBinder`] or [`Lifespan`] expressions yet.
     /// We also don't yet check all the parameters of binder structure.
     pub fn definitionally_equal(
-        cache: &mut ExpressionCache<'cache>,
+        cache: &ExpressionCache<'cache>,
         mut left: Self,
         mut right: Self,
     ) -> Ir<bool> {
@@ -120,7 +120,7 @@ impl<'cache> Expression<'cache> {
 ///
 /// In particular, this function will return a value when both parameters are lambda, pi, or sort expressions.
 fn quick_definitionally_equal<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     left: Expression<'cache>,
     right: Expression<'cache>,
 ) -> Option<Ir<bool>> {
@@ -144,9 +144,9 @@ fn quick_definitionally_equal<'cache>(
 
 /// Borrows are definitionally equal if their values and regions are equal.
 fn borrow_definitionally_equal<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    left: &Borrow<Expression<'cache>>,
-    right: &Borrow<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    left: Borrow<Expression<'cache>>,
+    right: Borrow<Expression<'cache>>,
 ) -> Ir<bool> {
     Ok(
         Expression::definitionally_equal(cache, left.region, right.region)?
@@ -156,9 +156,9 @@ fn borrow_definitionally_equal<'cache>(
 
 /// Lambda and pi expressions are definitionally equal if their parameter types are equal and their bodies are equal.
 fn binder_definitionally_equal<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    left: &Binder<Expression<'cache>>,
-    right: &Binder<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    left: Binder<Expression<'cache>>,
+    right: Binder<Expression<'cache>>,
 ) -> Ir<bool> {
     if left.structure.ownership != right.structure.ownership {
         return Ok(false);
@@ -192,9 +192,9 @@ fn binder_definitionally_equal<'cache>(
 
 /// Delta types are definitionally equal if their types and regions are definitionally equal.
 fn delta_definitionally_equal<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    left: &Delta<Expression<'cache>>,
-    right: &Delta<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    left: Delta<Expression<'cache>>,
+    right: Delta<Expression<'cache>>,
 ) -> Ir<bool> {
     Ok(
         Expression::definitionally_equal(cache, left.region, right.region)?
@@ -203,7 +203,7 @@ fn delta_definitionally_equal<'cache>(
 }
 
 fn universe_definitionally_equal<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     left: &Universe,
     right: &Universe,
 ) -> bool {
@@ -213,7 +213,7 @@ fn universe_definitionally_equal<'cache>(
 /// Returns true if `left` and `right` are proofs of the same proposition.
 /// Any two proofs of the same proposition are equal by definition; this property of our type system is called proof irrelevance.
 fn equal_propositions<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     left: Expression<'cache>,
     right: Expression<'cache>,
 ) -> Ir<bool> {
@@ -235,7 +235,7 @@ fn equal_propositions<'cache>(
 /// to try to check if two expressions are definitionally equal.
 /// While executing this check, `left` and `right` will be unfolded, so they are passed mutably.
 fn lazy_delta_reduction<'cache>(
-    cache: &mut ExpressionCache<'cache>,
+    cache: &ExpressionCache<'cache>,
     left: &mut Expression<'cache>,
     right: &mut Expression<'cache>,
 ) -> Option<Ir<bool>> {
@@ -303,8 +303,8 @@ fn lazy_delta_reduction<'cache>(
 /// Tries to check if the lambda and `t` are definitionally equal by eta-expanding `t`.
 /// `t` should not be a lambda.
 fn try_eta_expansion<'cache>(
-    cache: &mut ExpressionCache<'cache>,
-    lambda: &Binder<Expression<'cache>>,
+    cache: &ExpressionCache<'cache>,
+    lambda: Binder<Expression<'cache>>,
     t: Expression<'cache>,
 ) -> Option<Ir<bool>> {
     let t_type = match infer_type_core(cache, t) {
@@ -340,7 +340,7 @@ fn try_eta_expansion<'cache>(
         );
         Some(Expression::definitionally_equal(
             cache,
-            Expression::new(cache, Provenance::Synthetic, ExpressionT::Lambda(*lambda)),
+            Expression::new(cache, Provenance::Synthetic, ExpressionT::Lambda(lambda)),
             new_expr,
         ))
     } else {

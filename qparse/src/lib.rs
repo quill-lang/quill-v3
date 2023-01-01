@@ -14,7 +14,7 @@ mod parser;
 
 use def::PDefinition;
 use fcommon::Source;
-use fexpr::result::{Dr, Message};
+use fkernel::result::{Dr, Message};
 
 #[salsa::jar(db = Db)]
 pub struct Jar(module_from_quill_source);
