@@ -6,7 +6,7 @@
 //! separately, and when new notation is introduced, add this to the parser that will be used with
 //! subsequent items.
 
-mod def;
+pub mod def;
 pub mod expr;
 pub mod inductive;
 mod lex;

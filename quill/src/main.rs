@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::StderrLock, path::PathBuf};
 
 use fcommon::{MessageFormatter, Path, Source, SourceType, Str};
 use fkernel::{
@@ -61,19 +61,18 @@ fn main() {
         for def in result {
             ExpressionCache::with_cache(&db, |cache| {
                 if let Some(ty) = &def.ty {
-                    todo!("elaborate");
-                    // let mut elab = Elaborator::new(cache, None);
-                    // let result = elab.elaborate(ty, None, &Context::default());
-                    // for report in result.reports() {
-                    //     report.render(&db, &formatter, &mut stderr);
-                    // }
-                    // if let Some(result) = result.value() {
-                    //     tracing::info!(
-                    //         "elaborated {}: {}",
-                    //         def.name.text(&db),
-                    //         formatter.format(&message![result.to_heap(cache)])
-                    //     );
-                    // }
+                    let mut elab = Elaborator::new(cache, None);
+                    let result = elab.elaborate(ty, None, &Context::default());
+                    for report in result.reports() {
+                        report.render(&db, &formatter, &mut stderr);
+                    }
+                    if let Some(result) = result.value() {
+                        tracing::info!(
+                            "elaborated {}: {}",
+                            def.name.text(&db),
+                            formatter.format(&message![result.to_heap(cache)])
+                        );
+                    }
                 }
             })
         }

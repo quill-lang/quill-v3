@@ -16,8 +16,8 @@ use crate::Db;
 /// When all necessary expressions have been passed through the elaborator, it can be *finalised*,
 /// making a final decision on what terms metavariables should map to, ensuring that all metavariables
 /// actually have an assignment, and that the result is type-correct.
-pub struct Elaborator<'cache> {
-    cache: &'cache ExpressionCache<'cache>,
+pub struct Elaborator<'a, 'cache> {
+    cache: &'a ExpressionCache<'cache>,
     meta_gen: MetavariableGenerator<Expression<'cache>>,
 }
 
@@ -28,10 +28,10 @@ pub struct Context<'cache> {
     local_variables: BTreeMap<Str, (Span, LocalConstant<Expression<'cache>>)>,
 }
 
-impl<'cache> Elaborator<'cache> {
+impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// Creates a new elaborator.
     /// `largest_unusable` is used to instantiate the metavariable generator.
-    pub fn new(cache: &'cache ExpressionCache<'cache>, largest_unusable: Option<u32>) -> Self {
+    pub fn new(cache: &'a ExpressionCache<'cache>, largest_unusable: Option<u32>) -> Self {
         Self {
             cache,
             meta_gen: MetavariableGenerator::new(largest_unusable),
@@ -43,9 +43,9 @@ impl<'cache> Elaborator<'cache> {
     pub fn elaborate(
         &mut self,
         e: &PExpression,
-        expected_type: Option<&Expression>,
+        expected_type: Option<&Expression<'cache>>,
         context: &Context,
-    ) -> Dr<Expression> {
+    ) -> Dr<Expression<'cache>> {
         match e {
             PExpression::Variable { .. } => todo!(),
             PExpression::Borrow { .. } => todo!(),
@@ -65,5 +65,13 @@ impl<'cache> Elaborator<'cache> {
             PExpression::RegionT(_) => todo!(),
             PExpression::Inductive(_) => todo!(),
         }
+    }
+
+    pub fn cache(&self) -> &ExpressionCache<'cache> {
+        self.cache
+    }
+
+    pub fn db(&self) -> &'a dyn fkernel::Db {
+        self.cache.db()
     }
 }
