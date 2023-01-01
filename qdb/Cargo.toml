@@ -9,6 +9,7 @@ edition = "2021"
 fcommon = { path = "../fcommon" }
 fexpr = { path = "../fexpr" }
 fkernel = { path = "../fkernel" }
+qelab = { path = "../qelab" }
 qparse = { path = "../qparse" }
 notify-debouncer-mini = { version = "0.2", default-features = false }
 salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }

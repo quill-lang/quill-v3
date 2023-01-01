@@ -11,7 +11,7 @@ use notify_debouncer_mini::notify::RecursiveMode;
 use salsa::Snapshot;
 
 /// The main database that manages all the compiler's queries.
-#[salsa::db(fcommon::Jar, fexpr::Jar, fkernel::Jar, qparse::Jar)]
+#[salsa::db(fcommon::Jar, fexpr::Jar, fkernel::Jar, qparse::Jar, qelab::Jar)]
 pub struct QuillDatabase {
     storage: salsa::Storage<Self>,
     project_root: PathBuf,

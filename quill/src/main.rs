@@ -1,8 +1,12 @@
 use std::path::PathBuf;
 
-use fcommon::{Path, Source, SourceType, Str};
-use fexpr::result::{ConsoleFormatter, Delaborator};
+use fcommon::{MessageFormatter, Path, Source, SourceType, Str};
+use fexpr::{
+    message,
+    result::{ConsoleFormatter, Delaborator},
+};
 use qdb::QuillDatabase;
+use qelab::elaborator::{Context, Elaborator};
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
@@ -37,23 +41,38 @@ fn main() {
     );
     let source = Source::new(&db, path, SourceType::Quill);
 
-    let result = qparse::module_from_quill_source(&db, source);
+    let formatter = ConsoleFormatter {
+        db: &db,
+        delaborator: DebugDelaborator(&db),
+    };
+
+    let (result, reports) = qparse::module_from_quill_source(&db, source)
+        .as_ref()
+        .destructure();
     // Use a locked version of `stderr`, so that reports are not interspersed
     // with other things such as tracing messages from other threads.
     let mut stderr = std::io::stderr().lock();
-    for report in result.reports() {
-        report.render(
-            &db,
-            &ConsoleFormatter {
-                db: &db,
-                delaborator: DebugDelaborator(&db),
-            },
-            &mut stderr,
-        );
+    for report in reports {
+        report.render(&db, &formatter, &mut stderr);
     }
 
-    if let Some(result) = result.value() {
-        tracing::info!("success");
+    if let Some(result) = result {
+        for def in result {
+            if let Some(ty) = &def.ty {
+                let mut elab = Elaborator::new(&db, None);
+                let result = elab.elaborate(ty, None, &Context::default());
+                for report in result.reports() {
+                    report.render(&db, &formatter, &mut stderr);
+                }
+                if let Some(result) = result.value() {
+                    tracing::info!(
+                        "elaborated {}: {}",
+                        def.name.text(&db),
+                        formatter.format(&message![result.to_term(&db)])
+                    );
+                }
+            }
+        }
         // for def in &result.items {
         //     match def {
         //         fexpr::module::Item::Definition(def) => {

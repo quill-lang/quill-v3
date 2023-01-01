@@ -205,16 +205,8 @@ impl Spanned for PExpression {
             },
             PExpression::Match { .. } => todo!(),
             PExpression::Fix { .. } => todo!(),
-            PExpression::Let {
-                let_token,
-                binders,
-                body,
-            } => todo!(),
-            PExpression::Lambda {
-                fn_token,
-                binders,
-                result,
-            } => todo!(),
+            PExpression::Let { .. } => todo!(),
+            PExpression::Lambda { .. } => todo!(),
             PExpression::FunctionType { binder, result, .. } => Span {
                 start: binder
                     .brackets

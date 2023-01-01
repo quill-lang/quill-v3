@@ -7,8 +7,8 @@
 //! subsequent items.
 
 mod def;
-mod expr;
-mod inductive;
+pub mod expr;
+pub mod inductive;
 mod lex;
 mod parser;
 

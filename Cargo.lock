@@ -518,6 +518,18 @@ dependencies = [
  "fexpr",
  "fkernel",
  "notify-debouncer-mini",
+ "qelab",
+ "qparse",
+ "salsa-2022",
+]
+
+[[package]]
+name = "qelab"
+version = "0.0.0"
+dependencies = [
+ "fcommon",
+ "fexpr",
+ "fkernel",
  "qparse",
  "salsa-2022",
 ]
@@ -540,6 +552,7 @@ dependencies = [
  "fexpr",
  "fkernel",
  "qdb",
+ "qelab",
  "qparse",
  "ron",
  "salsa-2022",
