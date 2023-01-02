@@ -202,8 +202,8 @@ fn delta_definitionally_equal<'cache>(
     )
 }
 
-fn universe_definitionally_equal<'cache>(
-    cache: &ExpressionCache<'cache>,
+fn universe_definitionally_equal(
+    cache: &ExpressionCache<'_>,
     left: &Universe,
     right: &Universe,
 ) -> bool {

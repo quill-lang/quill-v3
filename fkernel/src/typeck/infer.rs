@@ -655,9 +655,9 @@ fn process_match<'cache>(
                     }),
                 );
                 // Update later binders to dereference this field instead of using it directly.
-                for j in (i + 1)..structures.len() {
-                    structures[j].bound.ty =
-                        structures[j]
+                for (j, structure) in structures.iter_mut().enumerate().skip(i + 1) {
+                    structure.bound.ty =
+                        structure
                             .bound
                             .ty
                             .replace_in_expression(cache, &|e, offset| {
@@ -972,7 +972,7 @@ fn process_fix<'cache>(
                 // The argument is indeed of an inductive type, and the inductive type exists.
                 // Check that the body of the fixed point expression is of the correct type.
                 let mut meta_gen = MetavariableGenerator::new(
-                    Expression::new(cache, Provenance::Synthetic, ExpressionT::Fix(fix.clone()))
+                    Expression::new(cache, Provenance::Synthetic, ExpressionT::Fix(fix))
                         .largest_unusable_metavariable(cache),
                 );
 
@@ -1108,7 +1108,7 @@ fn infer_type_sort<'cache>(cache: &ExpressionCache<'cache>, sort: Sort) -> Ir<Ex
         cache,
         Provenance::Synthetic,
         ExpressionT::Sort(Sort(Universe::new_synthetic(
-            UniverseContents::UniverseSucc(UniverseSucc(Box::new(sort.0.clone()))),
+            UniverseContents::UniverseSucc(UniverseSucc(Box::new(sort.0))),
         ))),
     ))
 }
@@ -1117,9 +1117,9 @@ fn infer_type_sort<'cache>(cache: &ExpressionCache<'cache>, sort: Sort) -> Ir<Ex
 /// If the term was not a sort, returns [`Err`].
 pub fn as_sort<'cache>(cache: &ExpressionCache<'cache>, expr: Expression<'cache>) -> Ir<Sort> {
     if let ExpressionT::Sort(sort) = expr.value(cache) {
-        Ok(sort.clone())
+        Ok(sort)
     } else if let ExpressionT::Sort(sort) = expr.to_weak_head_normal_form(cache).value(cache) {
-        Ok(sort.clone())
+        Ok(sort)
     } else {
         Err(InferenceError::ExpectedSort(expr.to_heap(cache)))
     }

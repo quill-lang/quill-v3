@@ -1,4 +1,4 @@
-use std::{io::StderrLock, path::PathBuf};
+use std::path::PathBuf;
 
 use fcommon::{MessageFormatter, Path, Source, SourceType, Str};
 use fkernel::{

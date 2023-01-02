@@ -30,7 +30,7 @@ impl<'cache> Expression<'cache> {
             }
             ExpressionT::RegionLambda(e) | ExpressionT::RegionPi(e) => vec![e.body],
             ExpressionT::Apply(e) => vec![e.function, e.argument],
-            ExpressionT::Intro(e) => e.parameters.clone(),
+            ExpressionT::Intro(e) => e.parameters,
             ExpressionT::Match(e) => std::iter::once(e.major_premise)
                 .chain(std::iter::once(e.motive))
                 .chain(e.minor_premises.iter().map(|premise| premise.result))
@@ -576,7 +576,7 @@ impl<'cache> Expression<'cache> {
     ) -> Self {
         self.replace_in_expression(cache, &|e, _offset| match e.value(cache) {
             ExpressionT::Inst(inst) => {
-                let mut inst = inst.clone();
+                let mut inst = inst;
                 for univ in &mut inst.universes {
                     for (param, replacement) in universe_params.iter().zip(universe_arguments) {
                         univ.instantiate_universe_variable(&UniverseVariable(*param), replacement);
@@ -589,7 +589,7 @@ impl<'cache> Expression<'cache> {
                 ))
             }
             ExpressionT::Sort(sort) => {
-                let mut sort = sort.clone();
+                let mut sort = sort;
                 for (param, replacement) in universe_params.iter().zip(universe_arguments) {
                     sort.0
                         .instantiate_universe_variable(&UniverseVariable(*param), replacement);
@@ -722,7 +722,7 @@ impl<'cache> Expression<'cache> {
     ) -> Self {
         self.replace_in_expression(cache, &|e, _offset| match e.value(cache) {
             ExpressionT::Inst(inst) => {
-                let mut inst = inst.clone();
+                let mut inst = inst;
                 for u in &mut inst.universes {
                     u.instantiate_universe_variable(var, replacement);
                 }
@@ -733,7 +733,7 @@ impl<'cache> Expression<'cache> {
                 ))
             }
             ExpressionT::Sort(sort) => {
-                let mut sort = sort.clone();
+                let mut sort = sort;
                 sort.0.instantiate_universe_variable(var, replacement);
                 ReplaceResult::ReplaceWith(Self::new(
                     cache,

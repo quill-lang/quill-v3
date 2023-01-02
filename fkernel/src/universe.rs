@@ -106,9 +106,9 @@ impl Universe {
 
     /// Factors out the outermost sequence of [`UniverseSucc`] instances.
     /// If the input is `u + k` where `k` is an integer, we remove the `+ k` from the input and return `k`.
-    fn to_universe_with_offset(&mut self) -> UniverseLevel {
+    fn remove_offset(&mut self) -> UniverseLevel {
         if let UniverseContents::UniverseSucc(UniverseSucc(inner)) = &mut self.contents {
-            let result = inner.to_universe_with_offset();
+            let result = inner.remove_offset();
             let inner = std::mem::replace(
                 inner.deref_mut(),
                 Universe::new_with_provenance(self.provenance, UniverseContents::UniverseZero),
@@ -121,7 +121,7 @@ impl Universe {
     }
 
     /// Reverses [`to_universe_with_offset`] by adding iterated `+ 1` operations to this universe.
-    fn from_universe_with_offset(&mut self, levels_to_raise: UniverseLevel) {
+    fn add_offset(&mut self, levels_to_raise: UniverseLevel) {
         let mut contents = std::mem::replace(&mut self.contents, UniverseContents::UniverseZero);
         for _ in 0..levels_to_raise {
             contents = UniverseContents::UniverseSucc(UniverseSucc(Box::new(
@@ -156,7 +156,7 @@ impl Universe {
     /// TODO: There may be a normalisation issue here still.
     pub fn normalise_universe(mut self, db: &dyn Db) -> Universe {
         // First, factor out the outermost `+ k` chain.
-        let levels = self.to_universe_with_offset();
+        let levels = self.remove_offset();
         match self.contents {
             UniverseContents::UniverseZero => {}
             UniverseContents::UniverseVariable(_) => {}
@@ -174,7 +174,7 @@ impl Universe {
             }
             UniverseContents::Metauniverse(_) => {}
         }
-        self.from_universe_with_offset(levels);
+        self.add_offset(levels);
         self
     }
 
@@ -289,21 +289,21 @@ impl Universe {
         *max.right
     } else {
         // Try to factor out `+ k` chains from the left and right arguments.
-        let left_levels = max.left.to_universe_with_offset();
-        let right_levels = max.right.to_universe_with_offset();
+        let left_levels = max.left.remove_offset();
+        let right_levels = max.right.remove_offset();
         if max.left == max.right {
             // We can now compare levels directly.
             if left_levels >= right_levels {
-                max.left.from_universe_with_offset(left_levels);
+                max.left.add_offset(left_levels);
                 *max.left
             } else {
-                max.right.from_universe_with_offset( right_levels);
+                max.right.add_offset( right_levels);
                 *max.right
             }
         } else {
             // Couldn't simplify. Revert the `+ k` chains for now.
-            max.left.from_universe_with_offset( left_levels);
-            max.right.from_universe_with_offset( right_levels);
+            max.left.add_offset( left_levels);
+            max.right.add_offset( right_levels);
             Universe::new_with_provenance(provenance, UniverseContents::UniverseMax(max))
         }
     }
@@ -393,8 +393,8 @@ impl Universe {
         // We only need to check the right hand side of an impredicative max in this case.
         Self::universe_at_most(db, left, *imax.right)
     } else {
-        let left_offset = left.to_universe_with_offset();
-        let right_offset = right.to_universe_with_offset();
+        let left_offset = left.remove_offset();
+        let right_offset = right.remove_offset();
         if left == right {
             left_offset <= right_offset
         } else if left.is_zero() {

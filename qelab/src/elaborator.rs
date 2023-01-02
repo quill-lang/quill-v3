@@ -2,13 +2,10 @@ use std::collections::BTreeMap;
 
 use fcommon::{Span, Str};
 use fkernel::{
-    basic::Provenance,
     expr::{Expression, ExpressionCache, LocalConstant, MetavariableGenerator},
     result::Dr,
 };
 use qparse::expr::PExpression;
-
-use crate::Db;
 
 /// The elaborator converts parsed quill expressions into feather expressions.
 /// An elaborator keeps track of metavariable assignments and performs unification tasks.
@@ -43,8 +40,8 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     pub fn elaborate(
         &mut self,
         e: &PExpression,
-        expected_type: Option<&Expression<'cache>>,
-        context: &Context,
+        _expected_type: Option<&Expression<'cache>>,
+        _context: &Context,
     ) -> Dr<Expression<'cache>> {
         match e {
             PExpression::Variable { .. } => todo!(),

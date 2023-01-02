@@ -1,6 +1,6 @@
 use fcommon::{Span, Spanned, Str};
 use fkernel::{
-    basic::{Name,  WithProvenance},
+    basic::{Name, WithProvenance},
     multiplicity::ParameterOwnership,
     result::Dr,
 };

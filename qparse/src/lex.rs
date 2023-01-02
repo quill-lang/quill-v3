@@ -2,7 +2,7 @@ use std::{fmt::Display, iter::Peekable};
 
 use fcommon::{Label, LabelType, Report, ReportKind, Source, Span, Spanned};
 use fkernel::{
-    basic::{ QualifiedName},
+    basic::QualifiedName,
     expr::BinderAnnotation,
     result::{Dr, Message, Style},
 };

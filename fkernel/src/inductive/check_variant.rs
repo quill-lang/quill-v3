@@ -16,8 +16,8 @@ use super::check_type::InductiveTypeInformation;
 /// - the type of all arguments live in universes at most the level of the corresponding data type,
 /// - occurences of the inductive data type inside the introduction rule occur strictly positively,
 /// - the introduction rule is type correct.
-pub(in crate::inductive) fn check_variant<'cache>(
-    cache: &ExpressionCache<'cache>,
+pub(in crate::inductive) fn check_variant(
+    cache: &ExpressionCache<'_>,
     info: &InductiveTypeInformation,
     variant: &Variant,
 ) -> Dr<()> {
@@ -114,8 +114,8 @@ pub(in crate::inductive) fn check_variant<'cache>(
     })
 }
 
-fn check_field<'cache>(
-    cache: &ExpressionCache<'cache>,
+fn check_field(
+    cache: &ExpressionCache<'_>,
     info: &InductiveTypeInformation,
     variant: &Variant,
     field_index: usize,
@@ -191,8 +191,8 @@ fn check_field<'cache>(
 /// Check that the inductive data type being declared occurs strictly positively in the given expression.
 /// This means that the field's type must be `a -> b -> ... -> t` where the inductive cannot appear in `a`, `b` and so on,
 /// and `t` may either not reference the inductive, or is exactly `(I As t)`.
-fn check_positivity<'cache>(
-    cache: &ExpressionCache<'cache>,
+fn check_positivity(
+    cache: &ExpressionCache<'_>,
     info: &InductiveTypeInformation,
     variant: &Variant,
     field_index: usize,

@@ -80,34 +80,34 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
         let origin = DefinitionOrigin::Feather;
 
         ExpressionCache::with_cache(db, |cache| {
-            check_no_local_or_metavariable(&cache, def.contents.ty.from_heap(&cache)).bind(|()| {
+            check_no_local_or_metavariable(cache, def.contents.ty.from_heap(cache)).bind(|()| {
                 // Since we have no metavariables in the given expression,
                 // we can initialise the metavariable generator with any value.
                 // Check that the type of a definition is indeed a type.
                 let sort = def
                     .contents
                     .ty
-                    .from_heap(&cache)
-                    .infer_type(&cache)
-                    .and_then(|sort| as_sort(&cache, sort));
+                    .from_heap(cache)
+                    .infer_type(cache)
+                    .and_then(|sort| as_sort(cache, sort));
 
                 match sort {
                     Ok(sort) => {
                         let sort = Sort(sort.0.normalise_universe(db));
                         if let Some(expr) = &def.contents.expr {
                             let expr = expr.clone();
-                            check_no_local_or_metavariable(&cache, expr.from_heap(&cache)).bind(
+                            check_no_local_or_metavariable(cache, expr.from_heap(cache)).bind(
                                 |()| {
                                     // Check that the type of the contents of the definition
                                     // match the type declared in the definition.
                                     let defeq =
-                                        expr.from_heap(&cache).infer_type(&cache).and_then(|ty| {
+                                        expr.from_heap(cache).infer_type(cache).and_then(|ty| {
                                             Ok((
                                                 ty,
                                                 Expression::definitionally_equal(
-                                                    &cache,
+                                                    cache,
                                                     ty,
-                                                    def.contents.ty.from_heap(&cache),
+                                                    def.contents.ty.from_heap(cache),
                                                 )?,
                                             ))
                                         });
@@ -118,13 +118,13 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
                                             sort,
                                             ReducibilityHints::Regular {
                                                 height: expr
-                                                    .from_heap(&cache)
-                                                    .get_max_height(&cache)
+                                                    .from_heap(cache)
+                                                    .get_max_height(cache)
                                                     + 1,
                                             },
                                             origin,
                                         )),
-                                        Ok((ty, false)) => Dr::fail(
+                                        Ok((_ty, false)) => Dr::fail(
                                             Report::new(
                                                 ReportKind::Error,
                                                 Source::new(

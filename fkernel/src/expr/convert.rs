@@ -30,7 +30,7 @@ impl<'cache> Expression<'cache> {
                 self.provenance(cache),
                 ExpressionT::Inst(Inst {
                     name: e.name.clone(),
-                    universes: e.universes.clone(),
+                    universes: e.universes,
                 }),
             ),
             ExpressionT::Let(e) => HeapExpression::new(
@@ -116,7 +116,7 @@ impl<'cache> Expression<'cache> {
                 }),
             ),
             ExpressionT::Sort(e) => {
-                HeapExpression::new(self.provenance(cache), ExpressionT::Sort(e.clone()))
+                HeapExpression::new(self.provenance(cache), ExpressionT::Sort(e))
             }
             ExpressionT::Region => HeapExpression::new(self.provenance(cache), ExpressionT::Region),
             ExpressionT::RegionT => {

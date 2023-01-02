@@ -21,8 +21,8 @@ pub(in crate::inductive) struct InductiveTypeInformation {
     pub inst: Inst,
 }
 
-pub(super) fn check_inductive_type<'cache>(
-    cache: &ExpressionCache<'cache>,
+pub(super) fn check_inductive_type(
+    cache: &ExpressionCache<'_>,
     path: Path,
 ) -> Dr<InductiveTypeInformation> {
     get_inductive(cache.db(), path).as_ref().bind(|ind| {
