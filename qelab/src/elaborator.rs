@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 
-use fcommon::{Span, Str};
+use fcommon::{Source, SourceSpan, Span, Str};
 use fkernel::{
-    expr::{Expression, ExpressionCache, LocalConstant, MetavariableGenerator},
+    basic::{Provenance, WithProvenance},
+    expr::*,
     result::Dr,
+    universe::{MetauniverseGenerator, UniverseContents},
 };
 use qparse::expr::PExpression;
 
@@ -15,23 +17,43 @@ use qparse::expr::PExpression;
 /// actually have an assignment, and that the result is type-correct.
 pub struct Elaborator<'a, 'cache> {
     cache: &'a ExpressionCache<'cache>,
+    source: Source,
     meta_gen: MetavariableGenerator<Expression<'cache>>,
+    metauniverse_gen: MetauniverseGenerator,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Context<'cache> {
-    /// A map from local variable names to the span at which they were defined, and
-    /// local constants representing these local variables.
-    local_variables: BTreeMap<Str, (Span, LocalConstant<Expression<'cache>>)>,
+    /// A map from local variable names to the local constants representing these local variables.
+    local_variables: BTreeMap<Str, LocalConstant<Expression<'cache>>>,
+}
+
+impl<'cache> Context<'cache> {
+    pub fn with(mut self, local: LocalConstant<Expression<'cache>>) -> Self {
+        self.local_variables
+            .insert(*local.structure.bound.name, local);
+        self
+    }
+
+    pub fn get(&self, name: Str) -> Option<&LocalConstant<Expression<'cache>>> {
+        self.local_variables.get(&name)
+    }
 }
 
 impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// Creates a new elaborator.
     /// `largest_unusable` is used to instantiate the metavariable generator.
-    pub fn new(cache: &'a ExpressionCache<'cache>, largest_unusable: Option<u32>) -> Self {
+    pub fn new(
+        cache: &'a ExpressionCache<'cache>,
+        source: Source,
+        largest_unusable: Option<u32>,
+        largest_unusable_metauniverse: Option<u32>,
+    ) -> Self {
         Self {
             cache,
+            source,
             meta_gen: MetavariableGenerator::new(largest_unusable),
+            metauniverse_gen: MetauniverseGenerator::new(largest_unusable_metauniverse),
         }
     }
 
@@ -40,35 +62,86 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     pub fn elaborate(
         &mut self,
         e: &PExpression,
-        _expected_type: Option<&Expression<'cache>>,
-        _context: &Context,
+        expected_type: Option<Expression<'cache>>,
+        context: &Context<'cache>,
     ) -> Dr<Expression<'cache>> {
-        match e {
-            PExpression::Variable { .. } => todo!(),
-            PExpression::Borrow { .. } => todo!(),
-            PExpression::Dereference { .. } => todo!(),
-            PExpression::Apply { .. } => todo!(),
-            PExpression::Intro { .. } => todo!(),
-            PExpression::Match { .. } => todo!(),
-            PExpression::Fix { .. } => todo!(),
-            PExpression::Let { .. } => todo!(),
-            PExpression::Lambda { .. } => todo!(),
-            PExpression::FunctionType { .. } => todo!(),
-            PExpression::Sort { .. } => todo!(),
-            PExpression::Type { .. } => todo!(),
-            PExpression::Prop(_) => todo!(),
-            PExpression::StaticRegion(_) => todo!(),
-            PExpression::Region(_) => todo!(),
-            PExpression::RegionT(_) => todo!(),
-            PExpression::Inductive(_) => todo!(),
-        }
+        self.preprocess(e, expected_type, context)
     }
 
-    pub fn cache(&self) -> &ExpressionCache<'cache> {
+    pub fn cache(&self) -> &'a ExpressionCache<'cache> {
         self.cache
     }
 
     pub fn db(&self) -> &'a dyn fkernel::Db {
         self.cache.db()
+    }
+
+    pub fn meta_gen(&mut self) -> &mut MetavariableGenerator<Expression<'cache>> {
+        &mut self.meta_gen
+    }
+
+    pub fn metauniverse_gen(&mut self) -> &mut MetauniverseGenerator {
+        &mut self.metauniverse_gen
+    }
+
+    pub fn provenance(&self, span: Span) -> Provenance {
+        Provenance::Quill(SourceSpan {
+            source: self.source,
+            span,
+        })
+    }
+
+    /// Creates a new hole: a metavariable with a given type, in a given context.
+    /// If the expected type is unknown, it is created as another hole.
+    ///
+    /// Since only closed expressions can be assigned to metavariables, creating a hole of type `C` inside a context `x: A, y: B`
+    /// actually creates the metavariable `m: (x: A) -> (y: B) -> C` and returns `m x y`.
+    pub fn hole(
+        &mut self,
+        ctx: &Context<'cache>,
+        provenance: Provenance,
+        ty: Option<Expression<'cache>>,
+    ) -> Expression<'cache> {
+        let ty = ty.unwrap_or_else(|| {
+            let ty_ty = Some(Expression::new(
+                self.cache(),
+                provenance,
+                ExpressionT::Sort(Sort(WithProvenance::new_with_provenance(
+                    provenance,
+                    UniverseContents::Metauniverse(self.metauniverse_gen().gen()),
+                ))),
+            ));
+            self.hole(ctx, provenance, ty_ty)
+        });
+
+        // TODO: `create_nary_application` and `abstract_nary_pi` work strangely with local constants
+        // introduced by function types invoked from behind a borrow.
+        Expression::new(
+            self.cache(),
+            provenance,
+            ExpressionT::Metavariable(
+                self.meta_gen.gen(
+                    ty.abstract_nary_pi(
+                        self.cache(),
+                        ctx.local_variables
+                            .values()
+                            .map(|constant| (provenance, *constant)),
+                    ),
+                ),
+            ),
+        )
+        .create_nary_application(
+            self.cache(),
+            ctx.local_variables.values().map(|constant| {
+                (
+                    provenance,
+                    Expression::new(
+                        self.cache(),
+                        constant.structure.bound.name.0.provenance,
+                        ExpressionT::LocalConstant(*constant),
+                    ),
+                )
+            }),
+        )
     }
 }

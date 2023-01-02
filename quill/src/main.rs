@@ -58,23 +58,31 @@ fn main() {
     }
 
     if let Some(result) = result {
+        // Just for testing, only process the first definition.
+        #[allow(clippy::never_loop)]
         for def in result {
             ExpressionCache::with_cache(&db, |cache| {
                 if let Some(ty) = &def.ty {
-                    let mut elab = Elaborator::new(cache, None);
-                    let result = elab.elaborate(ty, None, &Context::default());
+                    let mut elab = Elaborator::new(cache, source, None, None);
+                    let result = elab.elaborate(ty, None, &Context::default()).bind(|ty| {
+                        elab.elaborate(&def.body, Some(ty), &Context::default())
+                            .map(|body| (ty, body))
+                    });
                     for report in result.reports() {
                         report.render(&db, &formatter, &mut stderr);
                     }
-                    if let Some(result) = result.value() {
+                    if let Some((ty, body)) = result.value() {
                         tracing::info!(
-                            "elaborated {}: {}",
+                            "elaborated {}: {}\n{}",
                             def.name.text(&db),
-                            formatter.format(&message![result.to_heap(cache)])
+                            formatter.format(&message![ty.to_heap(cache)]),
+                            formatter.format(&message![body.to_heap(cache)]),
                         );
                     }
                 }
-            })
+            });
+            // Only process the first definition for now.
+            break;
         }
     }
 

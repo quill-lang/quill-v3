@@ -635,6 +635,7 @@ impl<'cache> Expression<'cache> {
     }
 
     /// Create a lambda or pi binder where the parameter is the given local constant.
+    /// Invoke this with a closed expression.
     #[must_use]
     pub fn abstract_binder(
         self,
@@ -665,6 +666,7 @@ impl<'cache> Expression<'cache> {
     }
 
     /// Create a region binder where the parameter is the given local constant.
+    /// Invoke this with a closed expression.
     #[must_use]
     pub fn abstract_region_binder(
         self,
@@ -706,7 +708,7 @@ impl<'cache> Expression<'cache> {
             if let ExpressionT::LocalConstant(inner) = e.value(cache)
             && inner.metavariable.index == local.metavariable.index {
             // We should replace this local variable.
-            ReplaceResult::ReplaceWith( replacement.lift_free_vars(cache, DeBruijnOffset::zero(), offset))
+            ReplaceResult::ReplaceWith(replacement.lift_free_vars(cache, DeBruijnOffset::zero(), offset))
         } else {
             ReplaceResult::Skip
         }

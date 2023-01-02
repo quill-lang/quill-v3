@@ -85,6 +85,29 @@ impl Universe {
     }
 }
 
+/// Generates unique metauniverse names.
+#[derive(Default)]
+pub struct MetauniverseGenerator {
+    next_var: u32,
+}
+
+impl MetauniverseGenerator {
+    /// Creates a new metauniverse generator.
+    /// Its universe variables will all be greater than the provided "largest unusable" variable name.
+    /// If one was not provided, no guarantees are made about name clashing.
+    pub fn new(largest_unusable: Option<u32>) -> Self {
+        Self {
+            next_var: largest_unusable.map_or(0, |x| x + 1),
+        }
+    }
+
+    pub fn gen(&mut self) -> Metauniverse {
+        let result = self.next_var;
+        self.next_var += 1;
+        Metauniverse(result)
+    }
+}
+
 impl Universe {
     /// Returns a dummy universe.
     /// Should not be used for anything.

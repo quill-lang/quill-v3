@@ -78,7 +78,7 @@ impl<'cache> Expression<'cache> {
     }
 
     /// Creates a [`ExpressionT::Lambda`] expression that can be evaluated with the given local constants in `arguments`
-    /// to produce the expression `self`.
+    /// to produce the *closed* expression `self`.
     #[must_use]
     pub fn abstract_nary_lambda(
         self,
@@ -95,7 +95,7 @@ impl<'cache> Expression<'cache> {
     }
 
     /// Creates a [`ExpressionT::Pi`] expression that can be evaluated with the given local constants in `arguments`
-    /// to produce the expression `self`.
+    /// to produce the *closed* expression `self`.
     #[must_use]
     pub fn abstract_nary_pi(
         self,

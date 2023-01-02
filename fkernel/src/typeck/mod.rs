@@ -117,9 +117,7 @@ pub fn certify_definition(db: &dyn Db, path: Path) -> Dr<CertifiedDefinition> {
                                             def.clone(),
                                             sort,
                                             ReducibilityHints::Regular {
-                                                height: expr
-                                                    .from_heap(cache)
-                                                    .get_max_height(cache)
+                                                height: expr.from_heap(cache).get_max_height(cache)
                                                     + 1,
                                             },
                                             origin,

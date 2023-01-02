@@ -1,4 +1,7 @@
+#![feature(trait_upcasting)]
+
 pub mod elaborator;
+mod preprocess;
 
 #[salsa::jar(db = Db)]
 pub struct Jar();

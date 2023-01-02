@@ -358,7 +358,7 @@ fn infer_type_apply<'cache>(
     match as_delta(cache, function_type) {
         Ok(function_type_delta) => match as_pi(cache, function_type_delta.ty) {
             Ok(function_type_binder) => {
-                if function_type_binder.structure.ownership != FunctionOwnership::Many {
+                if function_type_binder.structure.function_ownership != FunctionOwnership::Many {
                     return Err(InferenceError::FunctionOwnershipMismatch);
                 }
 
@@ -390,7 +390,7 @@ fn infer_type_apply<'cache>(
         },
         Err(_) => match as_pi(cache, function_type) {
             Ok(function_type_binder) => {
-                if function_type_binder.structure.ownership != FunctionOwnership::Once {
+                if function_type_binder.structure.function_ownership != FunctionOwnership::Once {
                     return Err(InferenceError::FunctionOwnershipMismatch);
                 }
 
@@ -582,7 +582,7 @@ fn process_match<'cache>(
                 },
                 ownership: ParameterOwnership::POwned,
             },
-            ownership: FunctionOwnership::Once,
+            function_ownership: FunctionOwnership::Once,
             binder_annotation: BinderAnnotation::Explicit,
             region: Expression::new(cache, Provenance::Synthetic, ExpressionT::StaticRegion),
         }))
@@ -1000,7 +1000,7 @@ fn process_fix<'cache>(
                         ownership: ParameterOwnership::POwned,
                     },
                     binder_annotation: BinderAnnotation::Explicit,
-                    ownership: FunctionOwnership::Once,
+                    function_ownership: FunctionOwnership::Once,
                     region: Expression::new(
                         cache,
                         Provenance::Synthetic,
@@ -1037,7 +1037,7 @@ fn process_fix<'cache>(
                             ownership: ParameterOwnership::POwned,
                         },
                         binder_annotation: BinderAnnotation::Explicit,
-                        ownership: FunctionOwnership::Once,
+                        function_ownership: FunctionOwnership::Once,
                         region: Expression::new(
                             cache,
                             Provenance::Synthetic,

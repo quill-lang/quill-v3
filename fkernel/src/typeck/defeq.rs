@@ -160,7 +160,7 @@ fn binder_definitionally_equal<'cache>(
     left: Binder<Expression<'cache>>,
     right: Binder<Expression<'cache>>,
 ) -> Ir<bool> {
-    if left.structure.ownership != right.structure.ownership {
+    if left.structure.function_ownership != right.structure.function_ownership {
         return Ok(false);
     }
 
@@ -312,7 +312,7 @@ fn try_eta_expansion<'cache>(
         Err(err) => return Some(Err(err)),
     };
 
-    if lambda.structure.ownership == FunctionOwnership::Many {
+    if lambda.structure.function_ownership == FunctionOwnership::Many {
         todo!()
     }
 
