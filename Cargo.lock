@@ -517,6 +517,7 @@ dependencies = [
  "fkernel",
  "qparse",
  "salsa-2022",
+ "tracing",
 ]
 
 [[package]]

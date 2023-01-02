@@ -9,6 +9,8 @@ use fkernel::{
 };
 use qparse::expr::PExpression;
 
+use crate::constraint::{Justification, UnificationConstraint};
+
 /// The elaborator converts parsed quill expressions into feather expressions.
 /// An elaborator keeps track of metavariable assignments and performs unification tasks.
 ///
@@ -20,6 +22,9 @@ pub struct Elaborator<'a, 'cache> {
     source: Source,
     meta_gen: MetavariableGenerator<Expression<'cache>>,
     metauniverse_gen: MetauniverseGenerator,
+    /// TODO: This probably shouldn't be a [`Vec`].
+    /// The API is designed so that changing this type should be easy.
+    unification_constraints: Vec<UnificationConstraint<'cache>>,
 }
 
 #[derive(Default, Clone)]
@@ -54,6 +59,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             source,
             meta_gen: MetavariableGenerator::new(largest_unusable),
             metauniverse_gen: MetauniverseGenerator::new(largest_unusable_metauniverse),
+            unification_constraints: Vec::new(),
         }
     }
 
@@ -142,6 +148,25 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                     ),
                 )
             }),
+        )
+    }
+
+    /// Adds a unification constraint.
+    pub fn add_unification_constraint(
+        &mut self,
+        expected: Expression<'cache>,
+        actual: Expression<'cache>,
+        justification: Justification,
+    ) {
+        self.unification_constraints.push(UnificationConstraint {
+            expected,
+            actual,
+            justification,
+        });
+        tracing::info!(
+            "unifying {} with {}",
+            expected.to_heap(self.cache()).display(self.db()),
+            actual.to_heap(self.cache()).display(self.db())
         )
     }
 }

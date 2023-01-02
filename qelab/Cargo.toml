@@ -10,3 +10,4 @@ fcommon = { path = "../fcommon" }
 fkernel = { path = "../fkernel" }
 qparse = { path = "../qparse" }
 salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
+tracing = "0.1"

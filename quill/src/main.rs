@@ -72,12 +72,12 @@ fn main() {
                         report.render(&db, &formatter, &mut stderr);
                     }
                     if let Some((ty, body)) = result.value() {
-                        tracing::info!(
-                            "elaborated {}: {}\n{}",
-                            def.name.text(&db),
-                            formatter.format(&message![ty.to_heap(cache)]),
-                            formatter.format(&message![body.to_heap(cache)]),
-                        );
+                        // tracing::info!(
+                        //     "elaborated {}: {}\n{}",
+                        //     def.name.text(&db),
+                        //     formatter.format(&message![ty.to_heap(cache)]),
+                        //     formatter.format(&message![body.to_heap(cache)]),
+                        // );
                     }
                 }
             });

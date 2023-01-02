@@ -1,5 +1,9 @@
+//! Converts parsed quill expressions into fully elaborated feather expressions.
+//! <https://doi.org/10.48550/arXiv.1505.04324>
+
 #![feature(trait_upcasting)]
 
+mod constraint;
 pub mod elaborator;
 mod preprocess;
 
