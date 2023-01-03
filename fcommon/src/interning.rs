@@ -243,6 +243,18 @@ impl Path {
         (Path::new(db, Vec::from(source_file)), *last_element)
     }
 
+    pub fn with(self, db: &dyn Db, segment: Str) -> Path {
+        let mut segments = self.segments(db).clone();
+        segments.push(segment);
+        Path::new(db, segments)
+    }
+
+    pub fn append(self, db: &dyn Db, segments: impl IntoIterator<Item = Str>) -> Path {
+        let mut original_segments = self.segments(db).clone();
+        original_segments.extend(segments);
+        Path::new(db, original_segments)
+    }
+
     pub fn to_path_buf(&self, db: &dyn Db) -> PathBuf {
         self.segments(db).iter().map(|s| s.text(db)).collect()
     }

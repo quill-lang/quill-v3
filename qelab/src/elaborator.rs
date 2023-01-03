@@ -5,8 +5,11 @@ use fkernel::{
     basic::{Provenance, WithProvenance},
     expr::*,
     result::Dr,
+    typeck::Ir,
     universe::{MetauniverseGenerator, UniverseContents},
 };
+use qdelab::delaborate;
+use qformat::pexpression_to_document;
 use qparse::expr::PExpression;
 
 use crate::constraint::{Justification, UnificationConstraint};
@@ -76,6 +79,10 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
     pub fn cache(&self) -> &'a ExpressionCache<'cache> {
         self.cache
+    }
+
+    pub fn source(&self) -> Source {
+        self.source
     }
 
     pub fn db(&self) -> &'a dyn fkernel::Db {
@@ -151,6 +158,74 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         )
     }
 
+    /// Infers the type of this expression.
+    /// Use this instead of the method from `fkernel` while we are in the elaborator.
+    ///
+    /// If the expression was found to have a function type where the argument is given implicitly,
+    /// fill the implicit argument with a new hole of the required type.
+    /// If `apply_weak` is true, we also apply weak implicit parameters.
+    ///
+    /// Returns the expression with implicit parameters substituted, and its type.
+    pub fn infer_type(
+        &mut self,
+        mut expr: Expression<'cache>,
+        ctx: &Context<'cache>,
+        apply_weak: bool,
+    ) -> Ir<(Expression<'cache>, Expression<'cache>)> {
+        let mut ty = expr.infer_type(self.cache())?;
+        while let ExpressionT::Pi(pi) = ty.value(self.cache()) {
+            match pi.structure.binder_annotation {
+                BinderAnnotation::Explicit => break,
+                BinderAnnotation::ImplicitEager => {
+                    let hole = self.hole(
+                        ctx,
+                        expr.provenance(self.cache()),
+                        Some(pi.structure.bound.ty),
+                    );
+                    expr = Expression::new(
+                        self.cache(),
+                        expr.provenance(self.cache()),
+                        ExpressionT::Apply(Apply {
+                            function: expr,
+                            argument: hole,
+                        }),
+                    );
+                    ty = pi.result.instantiate(self.cache(), hole);
+                }
+                BinderAnnotation::ImplicitWeak => {
+                    if apply_weak {
+                        let hole = self.hole(
+                            ctx,
+                            expr.provenance(self.cache()),
+                            Some(pi.structure.bound.ty),
+                        );
+                        expr = Expression::new(
+                            self.cache(),
+                            expr.provenance(self.cache()),
+                            ExpressionT::Apply(Apply {
+                                function: expr,
+                                argument: hole,
+                            }),
+                        );
+                        ty = pi.result.instantiate(self.cache(), hole);
+                    } else {
+                        break;
+                    }
+                }
+                BinderAnnotation::ImplicitTypeclass => todo!("TODO: typeclass resolution"),
+            }
+        }
+        Ok((expr, ty))
+    }
+
+    pub fn pretty_print(&self, expr: Expression<'cache>) -> String {
+        pexpression_to_document(
+            self.db(),
+            &delaborate(self.cache(), expr, &Default::default()),
+        )
+        .pretty_print(100)
+    }
+
     /// Adds a unification constraint.
     pub fn add_unification_constraint(
         &mut self,
@@ -158,6 +233,12 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         actual: Expression<'cache>,
         justification: Justification,
     ) {
+        tracing::trace!(
+            "unifying {} =?= {} because {}",
+            self.pretty_print(expected),
+            self.pretty_print(actual),
+            justification.display(self),
+        );
         self.unification_constraints.push(UnificationConstraint {
             expected,
             actual,

@@ -1,15 +1,9 @@
 use std::path::PathBuf;
 
 use fcommon::{Path, Source, SourceType, Str};
-use fkernel::{
-    expr::ExpressionCache,
-    result::{ConsoleFormatter, Delaborator},
-};
+use fkernel::result::{ConsoleFormatter, Delaborator};
 use qdb::QuillDatabase;
-use qdelab::delaborate;
-use qelab::elaborator::{Context, Elaborator};
-use qformat::pexpression_to_document;
-use tracing::info;
+use qelab::definition::elaborate_definition;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
 struct DebugDelaborator<'a>(&'a QuillDatabase);
@@ -31,7 +25,7 @@ fn main() {
         .finish();
     tracing::subscriber::set_global_default(subscriber)
         .expect("could not set default tracing subscriber");
-    info!("initialised logging with verbosity level {}", log_level);
+    tracing::info!("initialised logging with verbosity level {}", log_level);
 
     let (db, _rx) = QuillDatabase::new(PathBuf::new());
     let path = Path::new(
@@ -59,57 +53,11 @@ fn main() {
     }
 
     if let Some(result) = result {
-        // Just for testing, only process the first definition.
-        #[allow(clippy::never_loop)]
         for def in result {
-            ExpressionCache::with_cache(&db, |cache| {
-                if let Some(ty) = &def.ty {
-                    tracing::debug!(
-                        "Type:\n    {}",
-                        pexpression_to_document(&db, ty).pretty_print(15)
-                    );
-                    tracing::debug!(
-                        "Body:\n    {}",
-                        pexpression_to_document(&db, &def.body).pretty_print(15)
-                    );
-                    let mut elab = Elaborator::new(cache, source, None, None);
-                    let result = elab.elaborate(ty, None, &Context::default()).bind(|ty| {
-                        elab.elaborate(&def.body, Some(ty), &Context::default())
-                            .map(|body| {
-                                tracing::debug!(
-                                    "Elaborated type:\n    {}",
-                                    pexpression_to_document(
-                                        &db,
-                                        &delaborate(cache, ty, &Default::default())
-                                    )
-                                    .pretty_print(15)
-                                );
-                                tracing::debug!(
-                                    "Elaborated body:\n    {}",
-                                    pexpression_to_document(
-                                        &db,
-                                        &delaborate(cache, body, &Default::default())
-                                    )
-                                    .pretty_print(15)
-                                );
-                                (ty, body)
-                            })
-                    });
-                    for report in result.reports() {
-                        report.render(&db, &formatter, &mut stderr);
-                    }
-                    // if let Some((ty, body)) = result.value() {
-                    //     tracing::info!(
-                    //         "elaborated {}: {}\n{}",
-                    //         def.name.text(&db),
-                    //         formatter.format(&message![ty.to_heap(cache)]),
-                    //         formatter.format(&message![body.to_heap(cache)]),
-                    //     );
-                    // }
-                }
-            });
-            // Only process the first definition for now.
-            // break;
+            let result = elaborate_definition(&db, source, def);
+            for report in result.reports() {
+                report.render(&db, &formatter, &mut stderr);
+            }
         }
     }
 

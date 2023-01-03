@@ -4,6 +4,7 @@ use fkernel::{
     expr::*,
     multiplicity::ParameterOwnership,
     result::Dr,
+    typeck::get_certified_definition,
     universe::{Universe, UniverseContents, UniverseVariable},
 };
 use qparse::expr::*;
@@ -34,7 +35,9 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             } => self.preprocess_variable(expected_type, ctx, name, universe_ascription),
             PExpression::Borrow { .. } => todo!(),
             PExpression::Dereference { .. } => todo!(),
-            PExpression::Apply { .. } => todo!(),
+            PExpression::Apply { function, argument } => {
+                self.preprocess_apply(expected_type, ctx, function, argument)
+            }
             PExpression::Intro { .. } => todo!(),
             PExpression::Match { .. } => todo!(),
             PExpression::Fix { .. } => todo!(),
@@ -75,21 +78,90 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             if let Some(local) = ctx.get(*name[0]) {
                 // The associated local variable exists.
                 assert!(universe_ascription.is_none());
+                let (result, result_ty) = self
+                    .infer_type(
+                        Expression::new(
+                            self.cache(),
+                            name.0.provenance,
+                            ExpressionT::LocalConstant(*local),
+                        ),
+                        ctx,
+                        false,
+                    )
+                    .expect("local not type correct");
                 if let Some(expected_type) = expected_type {
                     self.add_unification_constraint(
                         expected_type,
-                        local.metavariable.ty,
+                        result_ty,
                         Justification::Variable,
                     );
                 }
-                return Dr::ok(Expression::new(
-                    self.cache(),
-                    name.0.provenance,
-                    ExpressionT::LocalConstant(*local),
-                ));
+                return Dr::ok(result);
             }
         }
+
+        // Search for a definition with this name.
+        // For now, just search in the source file.
+        // This implementation is very bad for cycle detection, but it works for now.
+        let def = get_certified_definition(
+            self.db(),
+            self.source()
+                .path(self.db())
+                .append(self.db(), name.iter().map(|name| **name)),
+        );
+        tracing::debug!("found: {:?}", def);
+
         todo!()
+    }
+
+    fn preprocess_apply(
+        &mut self,
+        expected_type: Option<Expression<'cache>>,
+        ctx: &Context<'cache>,
+        function: &PExpression,
+        argument: &PExpression,
+    ) -> Dr<Expression<'cache>> {
+        let span = Span {
+            start: function.span().start,
+            end: argument.span().end,
+        };
+        self.preprocess(function, None, ctx).bind(|function| {
+            let (function, function_ty) = self
+                .infer_type(function, ctx, true)
+                .expect("function not type correct");
+            // The `function_ty` should be a function type.
+            match function_ty.value(self.cache()) {
+                ExpressionT::Pi(pi) => {
+                    // This invariant should be upheld by `infer_type`.
+                    assert_eq!(pi.structure.binder_annotation, BinderAnnotation::Explicit);
+                    self.preprocess(argument, Some(pi.structure.bound.ty), ctx)
+                        .map(|argument| {
+                            let (result, result_ty) = self
+                                .infer_type(
+                                    Expression::new(
+                                        self.cache(),
+                                        self.provenance(span),
+                                        ExpressionT::Apply(Apply { function, argument }),
+                                    ),
+                                    ctx,
+                                    false,
+                                )
+                                .expect("application not type correct");
+                            if let Some(expected_type) = expected_type {
+                                self.add_unification_constraint(
+                                    expected_type,
+                                    result_ty,
+                                    Justification::Apply,
+                                );
+                            }
+                            result
+                        })
+                }
+                ExpressionT::RegionPi(_) => todo!(),
+                ExpressionT::Metavariable(_) => todo!(),
+                _ => todo!(),
+            }
+        })
     }
 
     fn preprocess_lambda(

@@ -4,7 +4,7 @@ use std::collections::VecDeque;
 
 use fcommon::{Span, Str};
 use fkernel::{
-    basic::{Name, QualifiedName, WithProvenance},
+    basic::{DeBruijnIndex, Name, QualifiedName, WithProvenance},
     expr::{Expression, ExpressionCache, ExpressionT},
     universe::{Universe, UniverseContents},
 };
@@ -27,9 +27,9 @@ pub fn delaborate<'cache>(
         ExpressionT::Delta(_) => todo!(),
         ExpressionT::Inst(_) => todo!(),
         ExpressionT::Let(_) => todo!(),
-        ExpressionT::Lambda(lambda) => {
-            let mut structures = vec![lambda.structure];
-            let mut result = lambda.result;
+        ExpressionT::Lambda(_) => {
+            let mut structures = Vec::new();
+            let mut result = expr;
             while let ExpressionT::Lambda(lambda) = result.value(cache) {
                 structures.push(lambda.structure);
                 result = lambda.result;
@@ -53,11 +53,16 @@ pub fn delaborate<'cache>(
             }
         }
         ExpressionT::Pi(pi) => {
+            let name_needed = pi.result.local_is_bound(cache, DeBruijnIndex::zero());
             let mut new_locals = locals.clone();
             new_locals.push_front(*pi.structure.bound.name);
             PExpression::FunctionType {
                 binder: PFunctionBinder {
-                    name: Some(pi.structure.bound.name),
+                    name: if name_needed {
+                        Some(pi.structure.bound.name)
+                    } else {
+                        None
+                    },
                     annotation: pi.structure.binder_annotation,
                     brackets: None,
                     ownership: Some((pi.structure.bound.ownership, Span::default())),
@@ -69,7 +74,10 @@ pub fn delaborate<'cache>(
         }
         ExpressionT::RegionLambda(_) => todo!(),
         ExpressionT::RegionPi(_) => todo!(),
-        ExpressionT::Apply(_) => todo!(),
+        ExpressionT::Apply(apply) => PExpression::Apply {
+            function: Box::new(delaborate(cache, apply.function, locals)),
+            argument: Box::new(delaborate(cache, apply.argument, locals)),
+        },
         ExpressionT::Intro(_) => todo!(),
         ExpressionT::Match(_) => todo!(),
         ExpressionT::Fix(_) => todo!(),

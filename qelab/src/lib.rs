@@ -4,6 +4,7 @@
 #![feature(trait_upcasting)]
 
 mod constraint;
+pub mod definition;
 pub mod elaborator;
 mod preprocess;
 
