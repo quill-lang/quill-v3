@@ -1,48 +1,15 @@
+use fcommon::Path;
+
 use crate::{
     basic::Provenance,
     expr::{Expression, ExpressionCache, ExpressionT, MetavariableGenerator},
     inductive::Inductive,
-    message,
-    module::{module_from_feather_source, Item},
-    result::{Dr, Message},
+    result::Dr,
     typeck::{as_sort, Ir},
     Db,
 };
-use fcommon::{Path, Report, ReportKind, Source, SourceType};
 
 use super::check_type::InductiveTypeInformation;
-
-/// Retrieves the inductive with the given name.
-/// This inductive will not have been type checked.
-#[salsa::tracked(return_ref)]
-pub fn get_inductive(db: &dyn Db, path: Path) -> Dr<Inductive> {
-    let (source, name) = path.split_last(db);
-    module_from_feather_source(db, Source::new(db, source, SourceType::Feather))
-        .as_ref()
-        .map_messages(Message::new)
-        .map(|module| {
-            module.items.iter().find_map(|item| match item {
-                Item::Inductive(ind) => {
-                    if *ind.name == name {
-                        Some(ind.clone())
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            })
-        })
-        .bind(|ind| match ind {
-            Some(ind) => Dr::ok(ind),
-            None => Dr::fail(
-                Report::new_in_file(
-                    ReportKind::Error,
-                    Source::new(db, source, SourceType::Feather),
-                )
-                .with_message(message!["inductive ", name, " could not be found"]),
-            ),
-        })
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CertifiedInductive {
@@ -133,12 +100,12 @@ fn eliminate_only_into_prop(
 ///
 /// # Usage
 ///
-/// When certifying a definition or inductive, we may depend on previously certified inductives.
-/// These should only be accessed using [`get_certified_inductive`], so that we don't double any error messages emitted.
-#[salsa::tracked(return_ref)]
-pub fn certify_inductive(db: &dyn Db, path: Path) -> Dr<CertifiedInductive> {
+/// Instead of calling this method directly, which takes an [`Inductive`] as well as its [`Path`],
+/// in most instances you should call [`crate::DbExt::certify_inductive`] or [`crate::DbExt::get_certified_inductive`].
+/// These functions are able to parse and certify both feather and quill definitions of inductives.
+pub fn certify_inductive(db: &dyn Db, path: Path, ind: &Inductive) -> Dr<CertifiedInductive> {
     ExpressionCache::with_cache(db, |cache| {
-        super::check_type::check_inductive_type(cache, path).bind(|info| {
+        super::check_type::check_inductive_type(cache, path, ind).bind(|info| {
             Dr::sequence_unfail(
                 info.inductive
                     .variants
@@ -155,11 +122,4 @@ pub fn certify_inductive(db: &dyn Db, path: Path) -> Dr<CertifiedInductive> {
             })
         })
     })
-}
-
-/// Type checks the definition with the given name, or retrieves it from the database if it was already type checked.
-/// This function returns a [`CertifiedDefinition`], a definition that has been verified by the type checker.
-/// This function will discard any diagnostic messages produced by type checking the definition.
-pub fn get_certified_inductive(db: &dyn Db, path: Path) -> Option<&CertifiedInductive> {
-    certify_inductive(db, path).value().as_ref()
 }

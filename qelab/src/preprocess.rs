@@ -1,12 +1,13 @@
-use fcommon::{Span, Spanned, Str};
+use fcommon::{Report, ReportKind, Span, Spanned, Str};
 use fkernel::{
     basic::{Name, QualifiedName, WithProvenance},
     expr::*,
+    get_certified_definition,
     multiplicity::ParameterOwnership,
     result::Dr,
-    typeck::get_certified_definition,
     universe::{Universe, UniverseContents, UniverseVariable},
 };
+use qdelab::print_inference_error;
 use qparse::expr::*;
 
 use crate::{
@@ -61,6 +62,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             PExpression::Region(_) => todo!(),
             PExpression::RegionT(_) => todo!(),
             PExpression::Inductive(_) => todo!(),
+            PExpression::Metavariable { .. } => todo!(),
         }
     }
 
@@ -103,15 +105,43 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         // Search for a definition with this name.
         // For now, just search in the source file.
         // This implementation is very bad for cycle detection, but it works for now.
-        let def = get_certified_definition(
-            self.db(),
-            self.source()
-                .path(self.db())
-                .append(self.db(), name.iter().map(|name| **name)),
-        );
-        tracing::debug!("found: {:?}", def);
+        let def_path = self
+            .source()
+            .path(self.db())
+            .append(self.db(), name.iter().map(|name| **name));
+        let def = get_certified_definition(self.db(), def_path);
 
-        todo!()
+        match def {
+            Some(def) => {
+                // We will instantiate this definition.
+                assert!(universe_ascription.is_none(), "deal with this later");
+                Dr::ok(Expression::new(
+                    self.cache(),
+                    name.0.provenance,
+                    ExpressionT::Inst(Inst {
+                        name: QualifiedName(WithProvenance::new_with_provenance(
+                            name.0.provenance,
+                            self.source()
+                                .path(self.db())
+                                .segments(self.db())
+                                .iter()
+                                .map(|s| {
+                                    Name(WithProvenance::new_with_provenance(name.0.provenance, *s))
+                                })
+                                .chain(name.iter().copied())
+                                .collect(),
+                        )),
+                        universes: def
+                            .def()
+                            .universe_params
+                            .iter()
+                            .map(|_| self.universe_hole(name.0.provenance))
+                            .collect(),
+                    }),
+                ))
+            }
+            None => todo!(),
+        }
     }
 
     fn preprocess_apply(
@@ -129,24 +159,32 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             let (function, function_ty) = self
                 .infer_type(function, ctx, true)
                 .expect("function not type correct");
+            tracing::trace!("function type {}", self.pretty_print(function_ty));
             // The `function_ty` should be a function type.
             match function_ty.value(self.cache()) {
                 ExpressionT::Pi(pi) => {
                     // This invariant should be upheld by `infer_type`.
                     assert_eq!(pi.structure.binder_annotation, BinderAnnotation::Explicit);
                     self.preprocess(argument, Some(pi.structure.bound.ty), ctx)
-                        .map(|argument| {
-                            let (result, result_ty) = self
-                                .infer_type(
-                                    Expression::new(
-                                        self.cache(),
-                                        self.provenance(span),
-                                        ExpressionT::Apply(Apply { function, argument }),
-                                    ),
-                                    ctx,
-                                    false,
-                                )
-                                .expect("application not type correct");
+                        .bind(|argument| {
+                            let (result, result_ty) = match self.infer_type(
+                                Expression::new(
+                                    self.cache(),
+                                    self.provenance(span),
+                                    ExpressionT::Apply(Apply { function, argument }),
+                                ),
+                                ctx,
+                                false,
+                            ) {
+                                Ok(result) => result,
+                                Err(err) => {
+                                    return Dr::fail(
+                                        Report::new(ReportKind::Error, self.source(), span.start)
+                                            .with_message(print_inference_error(self.db(), err)),
+                                    );
+                                }
+                            };
+
                             if let Some(expected_type) = expected_type {
                                 self.add_unification_constraint(
                                     expected_type,
@@ -154,7 +192,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                                     Justification::Apply,
                                 );
                             }
-                            result
+                            Dr::ok(result)
                         })
                 }
                 ExpressionT::RegionPi(_) => todo!(),
@@ -381,6 +419,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 self.provenance(variable.0.provenance.span()),
                 UniverseContents::UniverseVariable(UniverseVariable(*variable)),
             ),
+            PUniverse::Metauniverse { .. } => todo!(),
         }
     }
 }

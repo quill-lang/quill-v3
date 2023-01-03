@@ -138,6 +138,13 @@ impl<'cache> Expression<'cache> {
                     ty: (e.ty.to_heap(cache)),
                 }),
             ),
+            ExpressionT::Metaregion(e) => HeapExpression::new(
+                self.provenance(cache),
+                ExpressionT::Metaregion(Metavariable {
+                    index: e.index,
+                    ty: (e.ty.to_heap(cache)),
+                }),
+            ),
             ExpressionT::LocalConstant(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::LocalConstant(LocalConstant {
@@ -239,12 +246,14 @@ impl HeapExpression {
             ExpressionT::Lifespan(e) => ExpressionT::Lifespan(Lifespan {
                 ty: e.ty.from_heap(cache),
             }),
-
             ExpressionT::Metavariable(e) => ExpressionT::Metavariable(Metavariable {
                 index: e.index,
                 ty: e.ty.from_heap(cache),
             }),
-
+            ExpressionT::Metaregion(e) => ExpressionT::Metaregion(Metavariable {
+                index: e.index,
+                ty: e.ty.from_heap(cache),
+            }),
             ExpressionT::LocalConstant(e) => ExpressionT::LocalConstant(LocalConstant {
                 metavariable: Metavariable {
                     index: e.metavariable.index,

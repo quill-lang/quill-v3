@@ -5,15 +5,14 @@ use std::collections::HashSet;
 use crate::{
     basic::{DeBruijnIndex, Name, Provenance, WithProvenance},
     expr::*,
-    inductive::{get_certified_inductive, get_inductive, CertifiedInductive},
+    get_certified_inductive, get_definition, get_inductive,
+    inductive::CertifiedInductive,
     message,
     multiplicity::ParameterOwnership,
     result::Message,
     universe::*,
 };
 use fcommon::{Path, Str};
-
-use super::get_definition;
 
 /// An error emitted by the kernel when performing type inference or definitional equality checking.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +133,13 @@ pub(crate) fn infer_type_core<'cache>(
         )),
         ExpressionT::Lifespan(_) => todo!(),
         ExpressionT::Metavariable(var) => Ok(var.ty),
+        ExpressionT::Metaregion(var) => {
+            if var.ty.value(cache) == ExpressionT::Region {
+                Ok(var.ty)
+            } else {
+                todo!()
+            }
+        }
         ExpressionT::LocalConstant(local) => Ok(local.metavariable.ty),
     }
 }

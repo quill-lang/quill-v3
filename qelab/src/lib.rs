@@ -3,6 +3,10 @@
 
 #![feature(trait_upcasting)]
 
+//! Contains implementations of functions from [`fkernel::Db`].
+//! The crate `qdb` uses these implementations to construct the database.
+pub mod db_impls;
+
 mod constraint;
 pub mod definition;
 pub mod elaborator;

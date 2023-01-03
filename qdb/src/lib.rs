@@ -7,6 +7,12 @@ use std::{
 };
 
 use fcommon::*;
+use fkernel::{
+    definition::Definition,
+    inductive::{CertifiedInductive, Inductive},
+    result::Dr,
+    typeck::CertifiedDefinition,
+};
 use notify_debouncer_mini::notify::RecursiveMode;
 use salsa::Snapshot;
 
@@ -51,6 +57,24 @@ impl fcommon::Db for QuillDatabase {
                 *entry.insert(InputFile::new(self, path, contents))
             }
         })
+    }
+}
+
+impl fkernel::Db for QuillDatabase {
+    fn get_definition_impl(&self, path: Path) -> Dr<Definition> {
+        qelab::db_impls::get_definition_impl(self, path)
+    }
+
+    fn get_inductive_impl(&self, path: Path) -> Dr<Inductive> {
+        qelab::db_impls::get_inductive_impl(self, path)
+    }
+
+    fn certify_definition_impl(&self, path: Path) -> Dr<CertifiedDefinition> {
+        qelab::db_impls::certify_definition_impl(self, path)
+    }
+
+    fn certify_inductive_impl(&self, path: Path) -> Dr<CertifiedInductive> {
+        qelab::db_impls::certify_inductive_impl(self, path)
     }
 }
 

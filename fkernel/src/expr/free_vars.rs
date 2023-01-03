@@ -74,7 +74,8 @@ impl<'cache> Expression<'cache> {
             ExpressionT::Sort(_)
             | ExpressionT::Region
             | ExpressionT::RegionT
-            | ExpressionT::StaticRegion => None,
+            | ExpressionT::StaticRegion
+            | ExpressionT::Metaregion(_) => None,
             ExpressionT::Lifespan(t) => t.ty.largest_unusable_metavariable(cache),
             ExpressionT::Metavariable(t) => Some(t.index),
             ExpressionT::LocalConstant(t) => Some(t.metavariable.index),
@@ -157,12 +158,13 @@ impl<'cache> Expression<'cache> {
                 fix.body.first_free_variable_index(cache).pred().pred(),
             ),
             ExpressionT::Sort(_) => DeBruijnIndex::zero(),
-            ExpressionT::Region | ExpressionT::RegionT | ExpressionT::StaticRegion => {
-                DeBruijnIndex::zero()
-            }
+            ExpressionT::Region
+            | ExpressionT::RegionT
+            | ExpressionT::StaticRegion
+            | ExpressionT::Metavariable(_)
+            | ExpressionT::Metaregion(_)
+            | ExpressionT::LocalConstant(_) => DeBruijnIndex::zero(),
             ExpressionT::Lifespan(lifespan) => lifespan.ty.first_free_variable_index(cache),
-            ExpressionT::Metavariable(_) => DeBruijnIndex::zero(),
-            ExpressionT::LocalConstant(_) => DeBruijnIndex::zero(),
         };
         cache
             .first_free_variable_index

@@ -40,7 +40,7 @@ pub struct UniverseImpredicativeMax {
 /// An inference variable for universes.
 /// May represent any universe.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct Metauniverse(u32);
+pub struct Metauniverse(pub u32);
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UniverseContents {

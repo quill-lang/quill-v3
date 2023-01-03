@@ -133,14 +133,24 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
                 .then(Document::Text(" -> ".to_owned()))
                 .then(to_doc(db, result, true))
         }
-        PExpression::Sort { universe, .. } => match universe {
-            PUniverse::Variable(name) => Document::Text(format!("Sort::{{{}}}", name.text(db))),
-        },
+        PExpression::Sort { universe, .. } => Document::Concat(vec![
+            Document::Text("Sort::{".to_owned()),
+            puniverse_to_document(db, universe),
+            Document::Text("}".to_owned()),
+        ]),
         PExpression::Type { .. } => todo!(),
         PExpression::Prop(_) => todo!(),
         PExpression::StaticRegion(_) => todo!(),
         PExpression::Region(_) => todo!(),
         PExpression::RegionT(_) => todo!(),
         PExpression::Inductive(_) => todo!(),
+        PExpression::Metavariable { index, .. } => Document::Text(format!("?{index}")),
+    }
+}
+
+pub fn puniverse_to_document(db: &dyn Db, puniverse: &PUniverse) -> Document {
+    match puniverse {
+        PUniverse::Variable(var) => Document::Text(var.text(db).to_owned()),
+        PUniverse::Metauniverse { index, .. } => Document::Text(format!("?u{index}")),
     }
 }

@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 
 use fcommon::{Path, Source, SourceType, Str};
-use fkernel::result::{ConsoleFormatter, Delaborator};
+use fkernel::{
+    certify_definition,
+    result::{ConsoleFormatter, Delaborator},
+};
 use qdb::QuillDatabase;
-use qelab::definition::elaborate_definition;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
 struct DebugDelaborator<'a>(&'a QuillDatabase);
@@ -54,7 +56,7 @@ fn main() {
 
     if let Some(result) = result {
         for def in result {
-            let result = elaborate_definition(&db, source, def);
+            let result = certify_definition(&db, path.with(&db, *def.name));
             for report in result.reports() {
                 report.render(&db, &formatter, &mut stderr);
             }

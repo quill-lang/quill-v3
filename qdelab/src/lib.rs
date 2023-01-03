@@ -6,8 +6,12 @@ use fcommon::{Span, Str};
 use fkernel::{
     basic::{DeBruijnIndex, Name, QualifiedName, WithProvenance},
     expr::{Expression, ExpressionCache, ExpressionT},
+    message,
+    result::Message,
+    typeck::InferenceError,
     universe::{Universe, UniverseContents},
 };
+use qformat::pexpression_to_document;
 use qparse::expr::{PExpression, PFunctionBinder, PLambdaBinder, PUniverse};
 
 pub fn delaborate<'cache>(
@@ -25,7 +29,21 @@ pub fn delaborate<'cache>(
         ExpressionT::Borrow(_) => todo!(),
         ExpressionT::Dereference(_) => todo!(),
         ExpressionT::Delta(_) => todo!(),
-        ExpressionT::Inst(_) => todo!(),
+        ExpressionT::Inst(inst) => PExpression::Variable {
+            name: inst.name,
+            universe_ascription: if inst.universes.is_empty() {
+                None
+            } else {
+                Some((
+                    Span::default(),
+                    inst.universes
+                        .iter()
+                        .map(|universe| delaborate_universe(universe))
+                        .collect(),
+                    Span::default(),
+                ))
+            },
+        },
         ExpressionT::Let(_) => todo!(),
         ExpressionT::Lambda(_) => {
             let mut structures = Vec::new();
@@ -83,13 +101,17 @@ pub fn delaborate<'cache>(
         ExpressionT::Fix(_) => todo!(),
         ExpressionT::Sort(sort) => PExpression::Sort {
             span: Span::default(),
-            universe: delaborate_universe(sort.0),
+            universe: delaborate_universe(&sort.0),
         },
         ExpressionT::Region => todo!(),
         ExpressionT::RegionT => todo!(),
         ExpressionT::StaticRegion => todo!(),
         ExpressionT::Lifespan(_) => todo!(),
-        ExpressionT::Metavariable(_) => todo!(),
+        ExpressionT::Metavariable(var) => PExpression::Metavariable {
+            span: Span::default(),
+            index: var.index,
+        },
+        ExpressionT::Metaregion(_) => todo!(),
         ExpressionT::LocalConstant(local) => PExpression::Variable {
             name: QualifiedName(WithProvenance::new_synthetic(vec![
                 local.structure.bound.name,
@@ -99,13 +121,52 @@ pub fn delaborate<'cache>(
     }
 }
 
-pub fn delaborate_universe(universe: Universe) -> PUniverse {
-    match universe.contents {
+pub fn delaborate_universe(universe: &Universe) -> PUniverse {
+    match &universe.contents {
         UniverseContents::UniverseZero => todo!(),
         UniverseContents::UniverseVariable(name) => PUniverse::Variable(name.0),
         UniverseContents::UniverseSucc(_) => todo!(),
         UniverseContents::UniverseMax(_) => todo!(),
         UniverseContents::UniverseImpredicativeMax(_) => todo!(),
-        UniverseContents::Metauniverse(_) => todo!(),
+        UniverseContents::Metauniverse(meta) => PUniverse::Metauniverse {
+            span: Span::default(),
+            index: meta.0,
+        },
     }
+}
+
+fn pretty_print<'cache>(cache: &ExpressionCache<'cache>, expr: Expression<'cache>) -> Message {
+    Message::String(
+        pexpression_to_document(cache.db(), &delaborate(cache, expr, &Default::default()))
+            .pretty_print(100),
+    )
+}
+
+pub fn print_inference_error(db: &dyn fkernel::Db, err: InferenceError) -> Message {
+    ExpressionCache::with_cache(db, |cache| match err {
+        InferenceError::ExpressionNotClosed(_) => todo!(),
+        InferenceError::IncorrectUniverseArity => todo!(),
+        InferenceError::DefinitionNotFound(_) => todo!(),
+        InferenceError::LetTypeMismatch => todo!(),
+        InferenceError::ApplyTypeMismatch {
+            function,
+            function_type,
+            argument,
+            argument_type,
+        } => {
+            message![
+                "could not apply function ",
+                pretty_print(cache, function.from_heap(cache)),
+                " to argument ",
+                pretty_print(cache, argument.from_heap(cache))
+            ]
+        }
+        InferenceError::FunctionOwnershipMismatch => todo!(),
+        InferenceError::ExpectedSort(_) => todo!(),
+        InferenceError::ExpectedPi => todo!(),
+        InferenceError::ExpectedDelta => todo!(),
+        InferenceError::UnexpectedMetauniverse => todo!(),
+        InferenceError::IncorrectIntroParameters => todo!(),
+        InferenceError::MinorPremiseCountMismatch => todo!(),
+    })
 }

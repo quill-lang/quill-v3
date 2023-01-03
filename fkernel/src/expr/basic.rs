@@ -470,6 +470,9 @@ pub enum ExpressionT<E> {
     StaticRegion,
     Lifespan(Lifespan<E>),
     Metavariable(Metavariable<E>),
+    /// A metavariable that has type `Region`.
+    /// These are allowed to be left and not unified until the borrow checking stage.
+    Metaregion(Metavariable<E>),
     LocalConstant(LocalConstant<E>),
 }
 

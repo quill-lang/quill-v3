@@ -10,8 +10,6 @@ use fcommon::{LabelType, Path, ReportKind};
 
 use crate::typeck::as_sort;
 
-use super::get_inductive;
-
 /// Some information used when creating things to do with inductives, such as match expressions.
 pub(in crate::inductive) struct InductiveTypeInformation {
     pub inductive: Inductive,
@@ -24,10 +22,11 @@ pub(in crate::inductive) struct InductiveTypeInformation {
 pub(super) fn check_inductive_type(
     cache: &ExpressionCache<'_>,
     path: Path,
+    ind: &Inductive,
 ) -> Dr<InductiveTypeInformation> {
-    get_inductive(cache.db(), path).as_ref().bind(|ind| {
-        let ind_ty = Expression::nary_binder_to_pi(cache, ind.provenance, ind.contents.ty.from_heap(cache));
-        check_no_local_or_metavariable(cache, ind_ty).bind(|()| {
+    let ind_ty =
+        Expression::nary_binder_to_pi(cache, ind.provenance, ind.contents.ty.from_heap(cache));
+    check_no_local_or_metavariable(cache, ind_ty).bind(|()| {
             match ind_ty.infer_type(cache) {
                 Ok(_) => {
                     // The type of the inductive is type-correct.
@@ -66,5 +65,4 @@ pub(super) fn check_inductive_type(
                 Err(_) => todo!(),
             }
         })
-    })
 }

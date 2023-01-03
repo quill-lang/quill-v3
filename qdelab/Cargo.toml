@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 fcommon = { path = "../fcommon" }
 fkernel = { path = "../fkernel" }
+qformat = { path = "../qformat" }
 qparse = { path = "../qparse" }
 tracing = "0.1"

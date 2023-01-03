@@ -25,12 +25,17 @@ use crate::{
 pub enum PUniverse {
     /// A universe variable.
     Variable(Name),
+    Metauniverse {
+        span: Span,
+        index: u32,
+    },
 }
 
 impl Spanned for PUniverse {
     fn span(&self) -> Span {
         match self {
             PUniverse::Variable(name) => name.0.provenance.span(),
+            PUniverse::Metauniverse { span, .. } => *span,
         }
     }
 }
@@ -179,6 +184,10 @@ pub enum PExpression {
     Region(Span),
     RegionT(Span),
     Inductive(PInductive),
+    Metavariable {
+        span: Span,
+        index: u32,
+    },
 }
 
 impl Spanned for PExpression {
@@ -232,6 +241,7 @@ impl Spanned for PExpression {
             | PExpression::Region(span)
             | PExpression::RegionT(span) => *span,
             PExpression::Inductive(inductive) => inductive.span(),
+            PExpression::Metavariable { span, .. } => *span,
         }
     }
 }

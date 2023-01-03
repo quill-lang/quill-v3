@@ -2,22 +2,24 @@
 
 use crate::{
     expr::{Apply, Expression, ExpressionCache, ExpressionT, Inst},
-    Db,
+    get_certified_definition, Db,
 };
 
-use super::{definition::DefinitionHeight, get_certified_definition, ReducibilityHints};
+use super::{definition::DefinitionHeight, ReducibilityHints};
 
 impl Inst {
     /// Returns the height of the definition that this [`Inst`] refers to.
     /// If this instance could not be resolved, was not a definition, or was not reducible, return [`None`].
     pub fn definition_height(&self, db: &dyn Db) -> Option<DefinitionHeight> {
-        get_certified_definition(db, self.name.to_path(db)).and_then(|def| {
-            if let ReducibilityHints::Regular { height } = def.reducibility_hints() {
-                Some(*height)
-            } else {
-                None
-            }
-        })
+        get_certified_definition(db, self.name.to_path(db))
+            .as_ref()
+            .and_then(|def| {
+                if let ReducibilityHints::Regular { height } = def.reducibility_hints() {
+                    Some(*height)
+                } else {
+                    None
+                }
+            })
     }
 }
 
@@ -45,6 +47,7 @@ impl<'cache> Expression<'cache> {
         match self.value(cache) {
             ExpressionT::Inst(inst) => {
                 get_certified_definition(cache.db(), inst.name.to_path(cache.db()))
+                    .as_ref()
                     .and_then(|def| def.def().contents.expr.as_ref())
                     .map(|e| e.clone().from_heap(cache))
             }

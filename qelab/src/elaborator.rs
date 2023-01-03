@@ -6,7 +6,7 @@ use fkernel::{
     expr::*,
     result::Dr,
     typeck::Ir,
-    universe::{MetauniverseGenerator, UniverseContents},
+    universe::{MetauniverseGenerator, Universe, UniverseContents},
 };
 use qdelab::delaborate;
 use qformat::pexpression_to_document;
@@ -106,6 +106,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
     /// Creates a new hole: a metavariable with a given type, in a given context.
     /// If the expected type is unknown, it is created as another hole.
+    /// If the expected type is (syntactically) `Region`, we will create a metaregion hole instead of a metavariable hole.
     ///
     /// Since only closed expressions can be assigned to metavariables, creating a hole of type `C` inside a context `x: A, y: B`
     /// actually creates the metavariable `m: (x: A) -> (y: B) -> C` and returns `m x y`.
@@ -129,19 +130,22 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
         // TODO: `create_nary_application` and `abstract_nary_pi` work strangely with local constants
         // introduced by function types invoked from behind a borrow.
+        let metavariable = self.meta_gen.gen(
+            ty.abstract_nary_pi(
+                self.cache(),
+                ctx.local_variables
+                    .values()
+                    .map(|constant| (provenance, *constant)),
+            ),
+        );
         Expression::new(
             self.cache(),
             provenance,
-            ExpressionT::Metavariable(
-                self.meta_gen.gen(
-                    ty.abstract_nary_pi(
-                        self.cache(),
-                        ctx.local_variables
-                            .values()
-                            .map(|constant| (provenance, *constant)),
-                    ),
-                ),
-            ),
+            if ty.value(self.cache()) == ExpressionT::Region {
+                ExpressionT::Metaregion(metavariable)
+            } else {
+                ExpressionT::Metavariable(metavariable)
+            },
         )
         .create_nary_application(
             self.cache(),
@@ -155,6 +159,14 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                     ),
                 )
             }),
+        )
+    }
+
+    /// Create a new metauniverse.
+    pub fn universe_hole(&mut self, provenance: Provenance) -> Universe {
+        Universe::new_with_provenance(
+            provenance,
+            UniverseContents::Metauniverse(self.metauniverse_gen().gen()),
         )
     }
 

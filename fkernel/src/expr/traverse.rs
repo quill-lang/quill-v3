@@ -40,7 +40,8 @@ impl<'cache> Expression<'cache> {
             | ExpressionT::Region
             | ExpressionT::RegionT
             | ExpressionT::StaticRegion
-            | ExpressionT::Lifespan(_) => Vec::new(),
+            | ExpressionT::Lifespan(_)
+            | ExpressionT::Metaregion(_) => Vec::new(),
             ExpressionT::Metavariable(e) => vec![e.ty],
             ExpressionT::LocalConstant(e) => vec![e.metavariable.ty],
         }
@@ -296,6 +297,8 @@ impl<'cache> Expression<'cache> {
                             ty: e.ty.replace_in_expression_offset(cache, replace_fn, offset),
                         }),
                     ),
+                    // Metaregions have no real sub-expressions.
+                    ExpressionT::Metaregion(_) => self,
                     ExpressionT::LocalConstant(e) => {
                         Self::new(
                             cache,
@@ -448,6 +451,7 @@ impl<'cache> Expression<'cache> {
                 | ExpressionT::RegionT
                 | ExpressionT::StaticRegion
                 | ExpressionT::Metavariable(_)
+                | ExpressionT::Metaregion(_)
                 | ExpressionT::LocalConstant(_) => None,
             }
         }

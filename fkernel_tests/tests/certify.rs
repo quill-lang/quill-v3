@@ -55,7 +55,7 @@ fn run_test(file: &str) {
                         segments
                     });
                     println!("certifying {}", path.display(&db));
-                    let result = fkernel::typeck::certify_definition(&db, path);
+                    let result = fkernel::certify_definition(&db, path);
                     for report in result.reports() {
                         report.render(&db, &formatter, std::io::stdout());
                     }
@@ -68,7 +68,7 @@ fn run_test(file: &str) {
                         segments
                     });
                     println!("certifying {}", path.display(&db));
-                    let result = fkernel::inductive::certify_inductive(&db, path);
+                    let result = fkernel::certify_inductive(&db, path);
                     for report in result.reports() {
                         report.render(&db, &formatter, std::io::stdout());
                     }
