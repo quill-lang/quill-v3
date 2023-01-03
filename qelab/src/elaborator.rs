@@ -163,10 +163,5 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             actual,
             justification,
         });
-        tracing::info!(
-            "unifying {} with {}",
-            expected.to_heap(self.cache()).display(self.db()),
-            actual.to_heap(self.cache()).display(self.db())
-        )
     }
 }

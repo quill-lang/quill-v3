@@ -9,7 +9,7 @@
 pub mod def;
 pub mod expr;
 pub mod inductive;
-mod lex;
+pub mod lex;
 mod parser;
 
 use def::PDefinition;
@@ -19,9 +19,9 @@ use fkernel::result::{Dr, Message};
 #[salsa::jar(db = Db)]
 pub struct Jar(module_from_quill_source);
 
-pub trait Db: fcommon::Db + salsa::DbWithJar<Jar> {}
+pub trait Db: fkernel::Db + salsa::DbWithJar<Jar> {}
 
-impl<DB> Db for DB where DB: ?Sized + fcommon::Db + salsa::DbWithJar<Jar> {}
+impl<DB> Db for DB where DB: ?Sized + fkernel::Db + salsa::DbWithJar<Jar> {}
 
 #[tracing::instrument(level = "debug")]
 #[salsa::tracked(return_ref)]

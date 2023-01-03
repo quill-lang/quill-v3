@@ -8,6 +8,7 @@ use fkernel::{
 };
 use qdb::QuillDatabase;
 use qelab::elaborator::{Context, Elaborator};
+use qformat::pexpression_to_document;
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
@@ -63,6 +64,8 @@ fn main() {
         for def in result {
             ExpressionCache::with_cache(&db, |cache| {
                 if let Some(ty) = &def.ty {
+                    println!("{}", pexpression_to_document(&db, ty).pretty_print(15));
+                    println!("{}", pexpression_to_document(&db, &def.body).pretty_print(15));
                     let mut elab = Elaborator::new(cache, source, None, None);
                     let result = elab.elaborate(ty, None, &Context::default()).bind(|ty| {
                         elab.elaborate(&def.body, Some(ty), &Context::default())
@@ -71,14 +74,14 @@ fn main() {
                     for report in result.reports() {
                         report.render(&db, &formatter, &mut stderr);
                     }
-                    if let Some((ty, body)) = result.value() {
-                        // tracing::info!(
-                        //     "elaborated {}: {}\n{}",
-                        //     def.name.text(&db),
-                        //     formatter.format(&message![ty.to_heap(cache)]),
-                        //     formatter.format(&message![body.to_heap(cache)]),
-                        // );
-                    }
+                    // if let Some((ty, body)) = result.value() {
+                    //     tracing::info!(
+                    //         "elaborated {}: {}\n{}",
+                    //         def.name.text(&db),
+                    //         formatter.format(&message![ty.to_heap(cache)]),
+                    //         formatter.format(&message![body.to_heap(cache)]),
+                    //     );
+                    // }
                 }
             });
             // Only process the first definition for now.

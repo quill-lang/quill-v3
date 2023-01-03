@@ -510,13 +510,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "qdelab"
+version = "0.0.0"
+
+[[package]]
 name = "qelab"
 version = "0.0.0"
 dependencies = [
  "fcommon",
  "fkernel",
+ "qdelab",
+ "qformat",
  "qparse",
  "salsa-2022",
+ "tracing",
+]
+
+[[package]]
+name = "qformat"
+version = "0.0.0"
+dependencies = [
+ "fkernel",
+ "qparse",
  "tracing",
 ]
 
@@ -537,7 +552,9 @@ dependencies = [
  "fcommon",
  "fkernel",
  "qdb",
+ "qdelab",
  "qelab",
+ "qformat",
  "qparse",
  "ron",
  "salsa-2022",
