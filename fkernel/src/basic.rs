@@ -338,6 +338,10 @@ impl DeBruijnIndex {
     pub fn pred(self) -> DeBruijnIndex {
         Self(self.0.saturating_sub(1))
     }
+
+    pub fn value(self) -> u32 {
+        self.0
+    }
 }
 
 /// An offset for de Bruijn indices, which can be used to calculate relative indices.

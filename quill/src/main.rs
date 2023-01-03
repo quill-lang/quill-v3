@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
-use fcommon::{MessageFormatter, Path, Source, SourceType, Str};
+use fcommon::{Path, Source, SourceType, Str};
 use fkernel::{
     expr::ExpressionCache,
-    message,
     result::{ConsoleFormatter, Delaborator},
 };
 use qdb::QuillDatabase;
+use qdelab::delaborate;
 use qelab::elaborator::{Context, Elaborator};
 use qformat::pexpression_to_document;
 use tracing::info;
@@ -64,12 +64,36 @@ fn main() {
         for def in result {
             ExpressionCache::with_cache(&db, |cache| {
                 if let Some(ty) = &def.ty {
-                    println!("{}", pexpression_to_document(&db, ty).pretty_print(15));
-                    println!("{}", pexpression_to_document(&db, &def.body).pretty_print(15));
+                    tracing::debug!(
+                        "Type:\n    {}",
+                        pexpression_to_document(&db, ty).pretty_print(15)
+                    );
+                    tracing::debug!(
+                        "Body:\n    {}",
+                        pexpression_to_document(&db, &def.body).pretty_print(15)
+                    );
                     let mut elab = Elaborator::new(cache, source, None, None);
                     let result = elab.elaborate(ty, None, &Context::default()).bind(|ty| {
                         elab.elaborate(&def.body, Some(ty), &Context::default())
-                            .map(|body| (ty, body))
+                            .map(|body| {
+                                tracing::debug!(
+                                    "Elaborated type:\n    {}",
+                                    pexpression_to_document(
+                                        &db,
+                                        &delaborate(cache, ty, &Default::default())
+                                    )
+                                    .pretty_print(15)
+                                );
+                                tracing::debug!(
+                                    "Elaborated body:\n    {}",
+                                    pexpression_to_document(
+                                        &db,
+                                        &delaborate(cache, body, &Default::default())
+                                    )
+                                    .pretty_print(15)
+                                );
+                                (ty, body)
+                            })
                     });
                     for report in result.reports() {
                         report.render(&db, &formatter, &mut stderr);
@@ -85,7 +109,7 @@ fn main() {
                 }
             });
             // Only process the first definition for now.
-            break;
+            // break;
         }
     }
 

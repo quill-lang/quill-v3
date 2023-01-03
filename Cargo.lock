@@ -512,6 +512,12 @@ dependencies = [
 [[package]]
 name = "qdelab"
 version = "0.0.0"
+dependencies = [
+ "fcommon",
+ "fkernel",
+ "qparse",
+ "tracing",
+]
 
 [[package]]
 name = "qelab"
