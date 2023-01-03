@@ -194,7 +194,18 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 // Process the rest of the arguments.
                 let local = structure.generate_local_with_gen(self.meta_gen());
                 self.preprocess_lambda(
-                    expected_type,
+                    if let Some(expected_pi) = &expected_pi {
+                        Some(expected_pi.result.instantiate(
+                            self.cache(),
+                            Expression::new(
+                                self.cache(),
+                                local.structure.bound.name.0.provenance,
+                                ExpressionT::LocalConstant(local),
+                            ),
+                        ))
+                    } else {
+                        todo!()
+                    },
                     &ctx.clone().with(local),
                     fn_token,
                     &binders[1..],

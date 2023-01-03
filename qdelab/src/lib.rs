@@ -82,7 +82,12 @@ pub fn delaborate<'cache>(
         ExpressionT::StaticRegion => todo!(),
         ExpressionT::Lifespan(_) => todo!(),
         ExpressionT::Metavariable(_) => todo!(),
-        ExpressionT::LocalConstant(_) => todo!(),
+        ExpressionT::LocalConstant(local) => PExpression::Variable {
+            name: QualifiedName(WithProvenance::new_synthetic(vec![
+                local.structure.bound.name,
+            ])),
+            universe_ascription: None,
+        },
     }
 }
 

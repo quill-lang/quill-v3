@@ -1,11 +1,8 @@
 #![feature(trait_upcasting)]
 
-use fkernel::expr::BinderAnnotation;
+use fkernel::{expr::BinderAnnotation, Db};
 use pretty_print::Document;
-use qparse::{
-    expr::{PExpression, PUniverse},
-    Db,
-};
+use qparse::expr::{PExpression, PUniverse};
 
 pub mod pretty_print;
 
