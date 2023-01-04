@@ -143,16 +143,13 @@ fn pretty_print<'cache>(cache: &ExpressionCache<'cache>, expr: Expression<'cache
 }
 
 pub fn print_inference_error(db: &dyn fkernel::Db, err: InferenceError) -> Message {
-    ExpressionCache::with_cache(db, |cache| match err {
+    ExpressionCache::with_cache(db, None, None, |cache| match err {
         InferenceError::ExpressionNotClosed(_) => todo!(),
         InferenceError::IncorrectUniverseArity => todo!(),
         InferenceError::DefinitionNotFound(_) => todo!(),
         InferenceError::LetTypeMismatch => todo!(),
         InferenceError::ApplyTypeMismatch {
-            function,
-            function_type,
-            argument,
-            argument_type,
+            function, argument, ..
         } => {
             message![
                 "could not apply function ",

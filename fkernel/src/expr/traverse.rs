@@ -468,7 +468,24 @@ impl<'cache> Expression<'cache> {
         })
     }
 
-    /// Returns true if the local variable given by `local` appears in `t`.
+    /// Returns true if the given metavariable appears in `self`.
+    #[must_use]
+    pub fn metavariable_occurs(
+        self,
+        cache: &ExpressionCache<'cache>,
+        metavariable: Metavariable<Expression<'cache>>,
+    ) -> bool {
+        self.find_in_expression(cache, &|inner, _offset| {
+            if let ExpressionT::Metavariable(var) = inner.value(cache) {
+                metavariable == var
+            } else {
+                false
+            }
+        })
+        .is_some()
+    }
+
+    /// Returns true if the local variable given by `local` appears in `self`.
     #[must_use]
     pub fn local_is_bound(self, cache: &ExpressionCache<'cache>, local: DeBruijnIndex) -> bool {
         self.find_in_expression(cache, &|inner, offset| {

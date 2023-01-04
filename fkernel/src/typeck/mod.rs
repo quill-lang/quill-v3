@@ -48,7 +48,7 @@ pub fn certify_definition(
     def: &Definition,
     origin: DefinitionOrigin,
 ) -> Dr<CertifiedDefinition> {
-    ExpressionCache::with_cache(db, |cache| {
+    ExpressionCache::with_cache(db, None, None, |cache| {
         check_no_local_or_metavariable(cache, def.contents.ty.from_heap(cache)).bind(|()| {
             // Since we have no metavariables in the given expression,
             // we can initialise the metavariable generator with any value.
@@ -88,7 +88,7 @@ pub fn certify_definition(
                                     },
                                     origin,
                                 )),
-                                Ok((_ty, false)) => Dr::fail(
+                                Ok((ty, false)) => Dr::fail(
                                     Report::new(
                                         ReportKind::Error,
                                         Source::new(db, path.split_last(db).0, SourceType::Feather),
@@ -97,7 +97,9 @@ pub fn certify_definition(
                                     .with_message(message![
                                         "body of definition ",
                                         def.name,
-                                        " had incorrect type"
+                                        " had type ",
+                                        ty.to_heap(cache),
+                                        " which does not match its definition"
                                     ]),
                                 ),
                                 Err(e) => Dr::fail(

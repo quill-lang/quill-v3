@@ -3,16 +3,25 @@ use std::path::PathBuf;
 use fcommon::{Path, Source, SourceType, Str};
 use fkernel::{
     certify_definition,
+    expr::ExpressionCache,
     result::{ConsoleFormatter, Delaborator},
 };
 use qdb::QuillDatabase;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
 
-struct DebugDelaborator<'a>(&'a QuillDatabase);
+struct PrettyPrintDelaborator<'a>(&'a QuillDatabase);
 
-impl<'a> Delaborator for DebugDelaborator<'a> {
+impl<'a> Delaborator for PrettyPrintDelaborator<'a> {
     fn delaborate(&self, expr: &fkernel::expr::HeapExpression) -> fkernel::result::Message {
-        expr.display(self.0).into()
+        ExpressionCache::with_cache(self.0, None, None, |cache| {
+            fkernel::result::Message::String(
+                qformat::pexpression_to_document(
+                    self.0,
+                    &qdelab::delaborate(cache, expr.from_heap(cache), &Default::default()),
+                )
+                .pretty_print(100),
+            )
+        })
     }
 }
 
@@ -41,7 +50,7 @@ fn main() {
 
     let formatter = ConsoleFormatter {
         db: &db,
-        delaborator: DebugDelaborator(&db),
+        delaborator: PrettyPrintDelaborator(&db),
     };
 
     let (result, reports) = qparse::module_from_quill_source(&db, source)

@@ -12,6 +12,7 @@ pub mod definition;
 pub mod elaborator;
 mod infer;
 mod preprocess;
+mod solve;
 
 #[salsa::jar(db = Db)]
 pub struct Jar();

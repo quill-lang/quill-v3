@@ -5,7 +5,7 @@ use fkernel::{
     basic::{Provenance, WithProvenance},
     expr::*,
     result::Dr,
-    universe::{MetauniverseGenerator, Universe, UniverseContents},
+    universe::{Universe, UniverseContents},
 };
 use qdelab::delaborate;
 use qformat::pexpression_to_document;
@@ -22,8 +22,6 @@ use crate::constraint::{Justification, UnificationConstraint};
 pub struct Elaborator<'a, 'cache> {
     cache: &'a ExpressionCache<'cache>,
     source: Source,
-    meta_gen: MetavariableGenerator<Expression<'cache>>,
-    metauniverse_gen: MetauniverseGenerator,
     /// TODO: This probably shouldn't be a [`Vec`].
     /// The API is designed so that changing this type should be easy.
     unification_constraints: Vec<UnificationConstraint<'cache>>,
@@ -55,17 +53,10 @@ pub struct TypedExpression<'cache> {
 impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// Creates a new elaborator.
     /// `largest_unusable` is used to instantiate the metavariable generator.
-    pub fn new(
-        cache: &'a ExpressionCache<'cache>,
-        source: Source,
-        largest_unusable: Option<u32>,
-        largest_unusable_metauniverse: Option<u32>,
-    ) -> Self {
+    pub fn new(cache: &'a ExpressionCache<'cache>, source: Source) -> Self {
         Self {
             cache,
             source,
-            meta_gen: MetavariableGenerator::new(largest_unusable),
-            metauniverse_gen: MetauniverseGenerator::new(largest_unusable_metauniverse),
             unification_constraints: Vec::new(),
         }
     }
@@ -93,14 +84,6 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         self.cache.db()
     }
 
-    pub fn meta_gen(&mut self) -> &mut MetavariableGenerator<Expression<'cache>> {
-        &mut self.meta_gen
-    }
-
-    pub fn metauniverse_gen(&mut self) -> &mut MetauniverseGenerator {
-        &mut self.metauniverse_gen
-    }
-
     pub fn provenance(&self, span: Span) -> Provenance {
         Provenance::Quill(SourceSpan {
             source: self.source,
@@ -126,7 +109,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 provenance,
                 ExpressionT::Sort(Sort(WithProvenance::new_with_provenance(
                     provenance,
-                    UniverseContents::Metauniverse(self.metauniverse_gen().gen()),
+                    UniverseContents::Metauniverse(self.cache().gen_metauniverse()),
                 ))),
             ));
             self.hole(ctx, provenance, ty_ty)
@@ -134,7 +117,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
         // TODO: `create_nary_application` and `abstract_nary_pi` work strangely with local constants
         // introduced by function types invoked from behind a borrow.
-        let metavariable = self.meta_gen.gen(
+        let metavariable = self.cache().gen_metavariable(
             ty.abstract_nary_pi(
                 self.cache(),
                 ctx.local_variables
@@ -170,7 +153,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     pub fn universe_hole(&mut self, provenance: Provenance) -> Universe {
         Universe::new_with_provenance(
             provenance,
-            UniverseContents::Metauniverse(self.metauniverse_gen().gen()),
+            UniverseContents::Metauniverse(self.cache().gen_metauniverse()),
         )
     }
 
@@ -184,7 +167,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// Returns the expression with implicit parameters substituted, and its type.
     pub fn infer_type(
         &mut self,
-        mut expr: Expression<'cache>,
+        expr: Expression<'cache>,
         ctx: &Context<'cache>,
         apply_weak: bool,
     ) -> Dr<TypedExpression<'cache>> {

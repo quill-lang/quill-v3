@@ -10,16 +10,15 @@ impl<'cache> Expression<'cache> {
     /// If this is not a function application, we interpret the expression as a nullary function,
     /// and return the whole expression.
     #[must_use]
-    pub fn leftmost_function(self, cache: &ExpressionCache<'cache>) -> Self {
+    pub fn head(self, cache: &ExpressionCache<'cache>) -> Self {
         if let ExpressionT::Apply(apply) = self.value(cache) {
-            apply.function.leftmost_function(cache)
+            apply.function.head(cache)
         } else {
             self
         }
     }
 
-    /// If this is a function application, return the list of arguments applied to the
-    /// [leftmost function](Self::leftmost_function) of the expression.
+    /// If this is a function application, return the list of arguments applied to the [`head`] of the expression.
     /// Applying this function to `foo 1 2 3` returns `[1, 2, 3]`.
     /// If this is not a function application, return `[]`.
     #[must_use]
@@ -34,7 +33,7 @@ impl<'cache> Expression<'cache> {
     }
 
     /// Suppose that this expression is an n-ary function application, where n is zero or a positive integer.
-    /// Then, this function returns the [`Expression::leftmost_function`] of this expression, and the list of
+    /// Then, this function returns the [`Expression::head`] of this expression, and the list of
     /// [`Expression::apply_args`] that were applied to it.
     /// Applying this function to `foo 1 2 3` returns `(foo, [1, 2, 3])`.
     #[must_use]
@@ -42,7 +41,7 @@ impl<'cache> Expression<'cache> {
         self,
         cache: &ExpressionCache<'cache>,
     ) -> (Self, Vec<Self>) {
-        (self.leftmost_function(cache), self.apply_args(cache))
+        (self.head(cache), self.apply_args(cache))
     }
 
     /// Returns the arguments, in order, to a [`ExpressionT::Pi`].
@@ -56,7 +55,7 @@ impl<'cache> Expression<'cache> {
         let mut result = Vec::new();
         while let ExpressionT::Pi(pi) = self.value(cache) {
             self = pi.result;
-            result.push(pi.structure.generate_local_with_gen(meta_gen));
+            result.push(pi.structure.generate_local(cache));
         }
         result
     }

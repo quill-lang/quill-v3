@@ -178,12 +178,7 @@ fn binder_definitionally_equal<'cache>(
     let local = Expression::new(
         cache,
         Provenance::Synthetic,
-        ExpressionT::LocalConstant(left.structure.generate_local_with_gen(
-            &mut MetavariableGenerator::new(std::cmp::max(
-                left.result.largest_unusable_metavariable(cache),
-                right.result.largest_unusable_metavariable(cache),
-            )),
-        )),
+        ExpressionT::LocalConstant(left.structure.generate_local(cache)),
     );
     let left_body = left.result.instantiate(cache, local);
     let right_body = right.result.instantiate(cache, local);

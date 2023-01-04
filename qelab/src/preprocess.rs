@@ -298,7 +298,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 };
 
                 // Process the rest of the arguments.
-                let local = structure.generate_local_with_gen(self.meta_gen());
+                let local = structure.generate_local(self.cache());
                 self.preprocess_lambda(
                     if let Some(expected_pi) = &expected_pi {
                         Some(expected_pi.result.instantiate(
@@ -373,7 +373,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             };
 
             if binder.name.is_some() {
-                let local = structure.generate_local_with_gen(self.meta_gen());
+                let local = structure.generate_local(self.cache());
                 self.preprocess(result, None, &ctx.clone().with(local))
                     .map(|result| {
                         Expression::new(

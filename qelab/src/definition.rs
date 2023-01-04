@@ -14,7 +14,7 @@ use crate::{
 };
 
 pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> Dr<Definition> {
-    ExpressionCache::with_cache(db, |cache| {
+    ExpressionCache::with_cache(db, None, None, |cache| {
         if let Some(ty) = &def.ty {
             tracing::debug!(
                 "Type:\n    {}",
@@ -24,7 +24,7 @@ pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> D
                 "Body:\n    {}",
                 pexpression_to_document(db, &def.body).pretty_print(15)
             );
-            let mut elab = Elaborator::new(cache, source, None, None);
+            let mut elab = Elaborator::new(cache, source);
             let result = elab.elaborate(ty, None, &Context::default()).bind(|ty| {
                 elab.elaborate(&def.body, Some(ty), &Context::default())
                     .map(|body| {

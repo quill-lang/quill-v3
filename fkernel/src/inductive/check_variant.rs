@@ -1,6 +1,6 @@
 use crate::{
     basic::{DeBruijnIndex, DeBruijnOffset, Provenance},
-    expr::{Expression, ExpressionCache, ExpressionT, MetavariableGenerator},
+    expr::{Expression, ExpressionCache, ExpressionT},
     inductive::Variant,
     result::Dr,
     typeck::{as_sort, check_no_local_or_metavariable},
@@ -125,18 +125,13 @@ fn check_field(
         .bound
         .ty
         .from_heap(cache);
-    let mut meta_gen = MetavariableGenerator::new(expr.largest_unusable_metavariable(cache));
     for param in variant.intro_rule.structures.iter().take(field_index).rev() {
         expr = expr.instantiate(
             cache,
             Expression::new(
                 cache,
                 Provenance::Synthetic,
-                ExpressionT::LocalConstant(
-                    param
-                        .from_heap(cache)
-                        .generate_local_with_gen(&mut meta_gen),
-                ),
+                ExpressionT::LocalConstant(param.from_heap(cache).generate_local(cache)),
             ),
         );
     }

@@ -263,7 +263,7 @@ fn infer_type_lambda<'cache>(
     as_sort(cache, argument_type_type)?;
 
     // Infer the return type of the lambda by first instantiating the parameter then inferring the resulting type.
-    let new_local = lambda.structure.generate_local(cache, lambda.result);
+    let new_local = lambda.structure.generate_local(cache);
     let body = lambda.result.instantiate(
         cache,
         Expression::new(
@@ -294,7 +294,7 @@ fn infer_type_pi<'cache>(
         Expression::new(
             cache,
             Provenance::Synthetic,
-            ExpressionT::LocalConstant(pi.structure.generate_local(cache, pi.result)),
+            ExpressionT::LocalConstant(pi.structure.generate_local(cache)),
         ),
     );
     let return_type = as_sort(cache, infer_type_core(cache, body)?)?;
@@ -704,18 +704,10 @@ fn process_match<'cache>(
         // Check that the minor premise type matches the motive.
         // Strip off the fields from the type of the minor premise.
         let mut fields = Vec::new();
-        let mut meta_gen = MetavariableGenerator::new(
-            Expression::new(
-                cache,
-                Provenance::Synthetic,
-                ExpressionT::Match(match_expr.clone()),
-            )
-            .largest_unusable_metavariable(cache),
-        );
         for _ in 0..premise.fields {
             match minor_premise_type.value(cache) {
                 ExpressionT::Pi(pi) => {
-                    let field = pi.structure.generate_local_with_gen(&mut meta_gen);
+                    let field = pi.structure.generate_local(cache);
                     minor_premise_type = pi.result.instantiate(
                         cache,
                         Expression::new(
@@ -968,7 +960,7 @@ fn process_fix<'cache>(
     fix: Fix<Expression<'cache>>,
     borrowed: Option<Expression<'cache>>,
 ) -> Result<Expression<'cache>, InferenceError> {
-    let inductive_term = argument_type.leftmost_function(cache);
+    let inductive_term = argument_type.head(cache);
     match inductive_term.value(cache) {
         ExpressionT::Inst(inst) => {
             if get_inductive(cache.db(), inst.name.to_path(cache.db()))
