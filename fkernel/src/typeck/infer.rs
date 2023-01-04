@@ -76,7 +76,7 @@ impl From<InferenceError> for Message {
 }
 
 /// Short for "inference result".
-/// See also [`fcommon::Dr`].
+/// See also [`fcommon::ParametricDr`].
 ///
 /// Instead of emitting textual errors, the kernel emits *inference results* which either succeed
 /// or error with a particular error message.
@@ -1133,7 +1133,7 @@ pub fn as_sort<'cache>(cache: &ExpressionCache<'cache>, expr: Expression<'cache>
 
 /// Expands the given term until it is a [`ExpressionT::Pi`].
 /// If the term was not a function type, returns [`Err`].
-fn as_pi<'cache>(
+pub fn as_pi<'cache>(
     cache: &ExpressionCache<'cache>,
     expr: Expression<'cache>,
 ) -> Ir<Binder<Expression<'cache>>> {
@@ -1150,7 +1150,7 @@ fn as_pi<'cache>(
 /// If the term was not a function type, returns [`Err`].
 /// The error this returns is [`InferenceError::ExpectedPi`] because
 /// this function is called when we expect either a region pi or a normal pi.
-fn as_region_pi<'cache>(
+pub fn as_region_pi<'cache>(
     cache: &ExpressionCache<'cache>,
     expr: Expression<'cache>,
 ) -> Ir<RegionBinder<Expression<'cache>>> {
@@ -1165,7 +1165,7 @@ fn as_region_pi<'cache>(
 
 /// Expands the given term until it is a [`ExpressionT::Delta`].
 /// If the term was not a function type, returns [`Err`].
-fn as_delta<'cache>(
+pub fn as_delta<'cache>(
     cache: &ExpressionCache<'cache>,
     expr: Expression<'cache>,
 ) -> Ir<Delta<Expression<'cache>>> {

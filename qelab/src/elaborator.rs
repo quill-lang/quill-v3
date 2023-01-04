@@ -5,7 +5,6 @@ use fkernel::{
     basic::{Provenance, WithProvenance},
     expr::*,
     result::Dr,
-    typeck::Ir,
     universe::{MetauniverseGenerator, Universe, UniverseContents},
 };
 use qdelab::delaborate;
@@ -46,6 +45,11 @@ impl<'cache> Context<'cache> {
     pub fn get(&self, name: Str) -> Option<&LocalConstant<Expression<'cache>>> {
         self.local_variables.get(&name)
     }
+}
+
+pub struct TypedExpression<'cache> {
+    pub expr: Expression<'cache>,
+    pub ty: Expression<'cache>,
 }
 
 impl<'a, 'cache> Elaborator<'a, 'cache> {
@@ -170,7 +174,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         )
     }
 
-    /// Infers the type of this expression.
+    /// Infers the type of this expression, storing any constraints that were generated.
     /// Use this instead of the method from `fkernel` while we are in the elaborator.
     ///
     /// If the expression was found to have a function type where the argument is given implicitly,
@@ -183,8 +187,28 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         mut expr: Expression<'cache>,
         ctx: &Context<'cache>,
         apply_weak: bool,
-    ) -> Ir<(Expression<'cache>, Expression<'cache>)> {
-        let mut ty = expr.infer_type(self.cache())?;
+    ) -> Dr<TypedExpression<'cache>> {
+        self.infer_type_with_constraints(expr).map(|ty| {
+            for constraint in &ty.constraints {
+                tracing::trace!(
+                    "inference: unifying {} =?= {} because {}",
+                    self.pretty_print(constraint.expected),
+                    self.pretty_print(constraint.actual),
+                    constraint.justification.display(self),
+                );
+            }
+            self.unification_constraints.extend(ty.constraints);
+            self.apply_implicit_args(expr, ty.expr, ctx, apply_weak)
+        })
+    }
+
+    fn apply_implicit_args(
+        &mut self,
+        mut expr: Expression<'cache>,
+        mut ty: Expression<'cache>,
+        ctx: &Context<'cache>,
+        apply_weak: bool,
+    ) -> TypedExpression<'cache> {
         while let ExpressionT::Pi(pi) = ty.value(self.cache()) {
             match pi.structure.binder_annotation {
                 BinderAnnotation::Explicit => break,
@@ -227,7 +251,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 BinderAnnotation::ImplicitTypeclass => todo!("TODO: typeclass resolution"),
             }
         }
-        Ok((expr, ty))
+        TypedExpression { expr, ty }
     }
 
     pub fn pretty_print(&self, expr: Expression<'cache>) -> String {
@@ -246,7 +270,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         justification: Justification,
     ) {
         tracing::trace!(
-            "unifying {} =?= {} because {}",
+            "direct: unifying {} =?= {} because {}",
             self.pretty_print(expected),
             self.pretty_print(actual),
             justification.display(self),

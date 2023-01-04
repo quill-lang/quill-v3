@@ -10,6 +10,7 @@ pub mod db_impls;
 mod constraint;
 pub mod definition;
 pub mod elaborator;
+mod infer;
 mod preprocess;
 
 #[salsa::jar(db = Db)]

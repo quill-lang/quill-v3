@@ -1,4 +1,4 @@
-use fcommon::{Report, ReportKind, Span, Spanned, Str};
+use fcommon::{Span, Spanned, Str};
 use fkernel::{
     basic::{Name, QualifiedName, WithProvenance},
     expr::*,
@@ -7,7 +7,6 @@ use fkernel::{
     result::Dr,
     universe::{Universe, UniverseContents, UniverseVariable},
 };
-use qdelab::print_inference_error;
 use qparse::expr::*;
 
 use crate::{
@@ -23,6 +22,8 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// produces the fully elaborated expression.
     ///
     /// TODO: Should we put the expected type in weak head normal form here?
+    ///
+    /// TODO: We currently duplicate some constraints due to calling `infer_type` too often.
     pub fn preprocess(
         &mut self,
         e: &PExpression,
@@ -80,7 +81,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             if let Some(local) = ctx.get(*name[0]) {
                 // The associated local variable exists.
                 assert!(universe_ascription.is_none());
-                let (result, result_ty) = self
+                return self
                     .infer_type(
                         Expression::new(
                             self.cache(),
@@ -90,15 +91,16 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                         ctx,
                         false,
                     )
-                    .expect("local not type correct");
-                if let Some(expected_type) = expected_type {
-                    self.add_unification_constraint(
-                        expected_type,
-                        result_ty,
-                        Justification::Variable,
-                    );
-                }
-                return Dr::ok(result);
+                    .map(|result| {
+                        if let Some(expected_type) = expected_type {
+                            self.add_unification_constraint(
+                                expected_type,
+                                result.ty,
+                                Justification::Variable,
+                            );
+                        }
+                        result.expr
+                    });
             }
         }
 
@@ -156,49 +158,43 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             end: argument.span().end,
         };
         self.preprocess(function, None, ctx).bind(|function| {
-            let (function, function_ty) = self
-                .infer_type(function, ctx, true)
-                .expect("function not type correct");
-            tracing::trace!("function type {}", self.pretty_print(function_ty));
-            // The `function_ty` should be a function type.
-            match function_ty.value(self.cache()) {
-                ExpressionT::Pi(pi) => {
-                    // This invariant should be upheld by `infer_type`.
-                    assert_eq!(pi.structure.binder_annotation, BinderAnnotation::Explicit);
-                    self.preprocess(argument, Some(pi.structure.bound.ty), ctx)
-                        .bind(|argument| {
-                            let (result, result_ty) = match self.infer_type(
-                                Expression::new(
-                                    self.cache(),
-                                    self.provenance(span),
-                                    ExpressionT::Apply(Apply { function, argument }),
-                                ),
-                                ctx,
-                                false,
-                            ) {
-                                Ok(result) => result,
-                                Err(err) => {
-                                    return Dr::fail(
-                                        Report::new(ReportKind::Error, self.source(), span.start)
-                                            .with_message(print_inference_error(self.db(), err)),
-                                    );
-                                }
-                            };
-
-                            if let Some(expected_type) = expected_type {
-                                self.add_unification_constraint(
-                                    expected_type,
-                                    result_ty,
-                                    Justification::Apply,
-                                );
-                            }
-                            Dr::ok(result)
-                        })
+            self.infer_type(function, ctx, true).bind(|function| {
+                // The `function.ty` should be a function type.
+                match function.ty.value(self.cache()) {
+                    ExpressionT::Pi(pi) => {
+                        // This invariant should be upheld by `infer_type`.
+                        assert_eq!(pi.structure.binder_annotation, BinderAnnotation::Explicit);
+                        self.preprocess(argument, Some(pi.structure.bound.ty), ctx)
+                            .bind(|argument| {
+                                self.infer_type(
+                                    Expression::new(
+                                        self.cache(),
+                                        self.provenance(span),
+                                        ExpressionT::Apply(Apply {
+                                            function: function.expr,
+                                            argument,
+                                        }),
+                                    ),
+                                    ctx,
+                                    false,
+                                )
+                                .map(|result| {
+                                    if let Some(expected_type) = expected_type {
+                                        self.add_unification_constraint(
+                                            expected_type,
+                                            result.ty,
+                                            Justification::Apply,
+                                        );
+                                    }
+                                    result.expr
+                                })
+                            })
+                    }
+                    ExpressionT::RegionPi(_) => todo!(),
+                    ExpressionT::Metavariable(_) => todo!(),
+                    _ => todo!(),
                 }
-                ExpressionT::RegionPi(_) => todo!(),
-                ExpressionT::Metavariable(_) => todo!(),
-                _ => todo!(),
-            }
+            })
         })
     }
 
