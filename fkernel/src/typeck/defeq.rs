@@ -202,7 +202,9 @@ fn universe_definitionally_equal(
     left: &Universe,
     right: &Universe,
 ) -> bool {
-    left.clone().normalise_universe(cache.db()) == right.clone().normalise_universe(cache.db())
+    left.clone()
+        .normalise_universe(cache.db())
+        .eq_ignoring_provenance(&right.clone().normalise_universe(cache.db()))
 }
 
 /// Returns true if `left` and `right` are proofs of the same proposition.

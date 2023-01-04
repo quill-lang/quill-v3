@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     basic::*,
     multiplicity::ParameterOwnership,
-    universe::{MetauniverseGenerator, Universe, UniverseContents, UniverseSucc, Metauniverse},
+    universe::{Metauniverse, MetauniverseGenerator, Universe, UniverseContents, UniverseSucc},
     Db,
 };
 
@@ -215,7 +215,7 @@ impl<'cache> BinderStructure<Expression<'cache>> {
     ) -> LocalConstant<Expression<'cache>> {
         LocalConstant {
             metavariable: cache.gen_metavariable(self.bound.ty),
-            structure: self.clone(),
+            structure: *self,
         }
     }
 }

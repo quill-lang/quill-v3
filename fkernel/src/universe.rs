@@ -62,7 +62,7 @@ impl Universe {
             (
                 UniverseContents::UniverseVariable(arg1),
                 UniverseContents::UniverseVariable(arg2),
-            ) => arg1.0 == arg2.0,
+            ) => *arg1.0 == *arg2.0,
             (UniverseContents::UniverseSucc(arg1), UniverseContents::UniverseSucc(arg2)) => {
                 arg1.0.eq_ignoring_provenance(&arg2.0)
             }

@@ -115,7 +115,7 @@ where
         if f.alternate() {
             write!(f, "{:?}@{:#?}", self.provenance, self.contents)
         } else {
-            write!(f, "{:?}@{:?}", self.provenance, self.contents)
+            write!(f, "{:?}", self.contents)
         }
     }
 }

@@ -88,9 +88,11 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
                     .collect(),
             );
 
-            binders_doc
+            Document::Text("(".to_owned())
+                .then(binders_doc)
                 .then(Document::Text(" => ".to_owned()))
                 .then(to_doc(db, result, true))
+                .then(Document::Text(")".to_owned()))
         }
         PExpression::FunctionType { binder, result, .. } => {
             let draw_brackets = binder.name.is_some()

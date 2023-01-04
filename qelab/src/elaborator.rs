@@ -24,7 +24,7 @@ pub struct Elaborator<'a, 'cache> {
     source: Source,
     /// TODO: This probably shouldn't be a [`Vec`].
     /// The API is designed so that changing this type should be easy.
-    unification_constraints: Vec<UnificationConstraint<'cache>>,
+    pub(crate) unification_constraints: Vec<UnificationConstraint<'cache>>,
 }
 
 #[derive(Default, Clone)]

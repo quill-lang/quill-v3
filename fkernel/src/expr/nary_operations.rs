@@ -47,11 +47,7 @@ impl<'cache> Expression<'cache> {
     /// Returns the arguments, in order, to a [`ExpressionT::Pi`].
     /// Discards the return value.
     #[must_use]
-    pub fn pi_args(
-        mut self,
-        cache: &ExpressionCache<'cache>,
-        meta_gen: &mut MetavariableGenerator<Self>,
-    ) -> Vec<LocalConstant<Self>> {
+    pub fn pi_args(mut self, cache: &ExpressionCache<'cache>) -> Vec<LocalConstant<Self>> {
         let mut result = Vec::new();
         while let ExpressionT::Pi(pi) = self.value(cache) {
             self = pi.result;

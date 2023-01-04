@@ -1,6 +1,9 @@
 use fcommon::Span;
-use fkernel::expr::{
-    Expression, ExpressionCache, ExpressionT, LocalConstant, Metavariable, StuckExpression,
+use fkernel::{
+    basic::Provenance,
+    expr::{
+        Expression, ExpressionCache, ExpressionT, LocalConstant, Metavariable, StuckExpression,
+    },
 };
 
 use crate::elaborator::Elaborator;
@@ -39,7 +42,7 @@ pub enum CategorisedConstraint<'cache> {
 /// that does not contain `t`.
 pub struct PatternConstraint<'cache> {
     pub metavariable: Metavariable<Expression<'cache>>,
-    pub arguments: Vec<LocalConstant<Expression<'cache>>>,
+    pub arguments: Vec<(Provenance, LocalConstant<Expression<'cache>>)>,
     pub replacement: Expression<'cache>,
 }
 
@@ -61,6 +64,14 @@ impl<'cache> UnificationConstraint<'cache> {
                     cache,
                     self.expected,
                     self.actual,
+                );
+                vec![(constraint, self.justification)]
+            }
+            (None, Some(StuckExpression::Application(_))) => {
+                let constraint = UnificationConstraint::categorise_stuck_application(
+                    cache,
+                    self.actual,
+                    self.expected,
                 );
                 vec![(constraint, self.justification)]
             }
@@ -88,7 +99,7 @@ impl<'cache> UnificationConstraint<'cache> {
             .iter()
             .filter_map(|expr| {
                 if let ExpressionT::LocalConstant(local) = expr.value(cache) {
-                    Some(local)
+                    Some((expr.provenance(cache), local))
                 } else {
                     None
                 }
@@ -103,11 +114,11 @@ impl<'cache> UnificationConstraint<'cache> {
                 todo!()
             } else {
                 // Check that the arguments are all distinct.
-                if arguments.iter().enumerate().all(|(i, local)| {
+                if arguments.iter().enumerate().all(|(i, (_, local))| {
                     arguments
                         .iter()
-                        .skip(i)
-                        .all(|other_local| local != other_local)
+                        .skip(i + 1)
+                        .all(|(_, other_local)| local != other_local)
                 }) {
                     // This is a pattern.
                     CategorisedConstraint::Pattern(PatternConstraint {
