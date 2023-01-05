@@ -206,8 +206,6 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         binders: &[PLambdaBinder],
         result: &PExpression,
     ) -> Dr<Expression<'cache>> {
-        // TODO: Implement implicit lambdas, so for example if the expected type is `{x: A} -> T`, we don't need to bind `x` explicitly.
-
         if let Some(binder) = binders.first() {
             // If the expected type is a `Pi`, we can use some information.
             let expected_pi = expected_type.and_then(|expected_type| {

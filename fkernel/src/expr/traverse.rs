@@ -498,9 +498,8 @@ impl<'cache> Expression<'cache> {
         .is_some()
     }
 
-    /// Traverses the expression tree and finds expressions matching the provided predicate.
-    /// If any return `true`, the first such expression is returned.
-    /// The tree is traversed depth firse.
+    /// Traverses the expression tree and calls the given function on each expression.
+    /// The tree is traversed depth first.
     pub fn for_each_expression(
         self,
         cache: &ExpressionCache<'cache>,
@@ -584,6 +583,37 @@ impl<'cache> Expression<'cache> {
                 _ => ReplaceResult::Skip,
             }
         })
+    }
+
+    /// Gets the set of universe variables used in this expression, in the order they were used.
+    pub fn universe_variables(self, cache: &ExpressionCache<'cache>) -> Vec<UniverseVariable> {
+        let mut result = Vec::<UniverseVariable>::new();
+        self.for_each_expression(cache, |expr, _offset| match expr.value(cache) {
+            ExpressionT::Inst(inst) => {
+                for univ in inst.universes {
+                    for value in univ.universe_variables() {
+                        if result
+                            .iter()
+                            .all(|univ| univ.0 .0.contents != value.0 .0.contents)
+                        {
+                            result.push(value);
+                        }
+                    }
+                }
+            }
+            ExpressionT::Sort(sort) => {
+                for value in sort.0.universe_variables() {
+                    if result
+                        .iter()
+                        .all(|univ| univ.0 .0.contents != value.0 .0.contents)
+                    {
+                        result.push(value);
+                    }
+                }
+            }
+            _ => {}
+        });
+        result
     }
 
     /// Replace the given list of universe parameters with the given arguments.

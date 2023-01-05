@@ -53,22 +53,21 @@ pub fn certify_definition(
             // Since we have no metavariables in the given expression,
             // we can initialise the metavariable generator with any value.
             // Check that the type of a definition is indeed a type.
-            let sort = def
-                .contents
-                .ty
-                .from_heap(cache)
+            let def_ty = def.ty.from_heap(cache);
+            let def_expr = def.expr.as_ref().map(|expr| expr.from_heap(cache));
+            let sort = def_ty
                 .infer_type(cache)
                 .and_then(|sort| as_sort(cache, sort));
 
+            // TODO: Check that all universes in the definition are quantified.
             match sort {
                 Ok(sort) => {
                     let sort = Sort(sort.0.normalise_universe(db));
-                    if let Some(expr) = &def.contents.expr {
-                        let expr = expr.clone();
-                        check_no_local_or_metavariable(cache, expr.from_heap(cache)).bind(|()| {
+                    if let Some(def_expr) = def_expr {
+                        check_no_local_or_metavariable(cache, def_expr).bind(|()| {
                             // Check that the type of the contents of the definition
                             // match the type declared in the definition.
-                            let defeq = expr.from_heap(cache).infer_type(cache).and_then(|ty| {
+                            let defeq = def_expr.infer_type(cache).and_then(|ty| {
                                 Ok((
                                     ty,
                                     Expression::definitionally_equal(
@@ -84,7 +83,7 @@ pub fn certify_definition(
                                     def.clone(),
                                     sort,
                                     ReducibilityHints::Regular {
-                                        height: expr.from_heap(cache).get_max_height(cache) + 1,
+                                        height: def_expr.get_max_height(cache) + 1,
                                     },
                                     origin,
                                 )),

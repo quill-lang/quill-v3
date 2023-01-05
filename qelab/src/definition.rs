@@ -52,14 +52,31 @@ pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> D
                     })
             });
 
-            result.map(|(ty, body)| Definition {
-                provenance: def.name.0.provenance,
-                contents: DefinitionContents {
-                    name: def.name,
-                    universe_params: Vec::new(),
-                    ty: ty.to_heap(cache),
-                    expr: Some(body.to_heap(cache)),
-                },
+            result.map(|(ty, body)| {
+                // We quantify over all universe variables found either in the type or body of the definition.
+                let mut universe_params = ty
+                    .universe_variables(cache)
+                    .iter()
+                    .map(|var| var.0)
+                    .collect::<Vec<_>>();
+                for value in body.universe_variables(cache) {
+                    if universe_params
+                        .iter()
+                        .all(|univ| univ.0.contents != value.0 .0.contents)
+                    {
+                        universe_params.push(value.0);
+                    }
+                }
+
+                Definition {
+                    provenance: def.name.0.provenance,
+                    contents: DefinitionContents {
+                        name: def.name,
+                        universe_params,
+                        ty: ty.to_heap(cache),
+                        expr: Some(body.to_heap(cache)),
+                    },
+                }
             })
         } else {
             todo!()

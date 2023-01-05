@@ -3,6 +3,7 @@
 // Allow this lint to increase readability in complex chains of logic.
 #![allow(clippy::if_same_then_else)]
 
+use std::collections::HashMap;
 use std::ops::DerefMut;
 
 use crate::basic::*;
@@ -361,6 +362,18 @@ impl Universe {
         }
     }
 
+    /// Returns the list of universe variables used this universe, in the order they were used.
+    pub fn universe_variables(&self) -> Vec<UniverseVariable> {
+        match &**self {
+            UniverseContents::UniverseZero => Vec::new(),
+            UniverseContents::UniverseVariable(var) => vec![var.clone()],
+            UniverseContents::UniverseSucc(univ) => univ.0.universe_variables(),
+            UniverseContents::UniverseMax(_) => todo!(),
+            UniverseContents::UniverseImpredicativeMax(_) => todo!(),
+            UniverseContents::Metauniverse(_) => Vec::new(),
+        }
+    }
+
     /// Replace the given universe variable with the provided replacement.
     pub fn instantiate_universe_variable(
         &mut self,
@@ -380,11 +393,11 @@ impl Universe {
     }
 
     /// Replace the given metauniverse with the provided replacement.
-    pub fn instantiate_metauniverse(&mut self, meta: &Metauniverse, replacement: &Universe) {
+    pub fn instantiate_metauniverses(&mut self, map: &HashMap<Metauniverse, Universe>) {
         self.replace(&|inner| match &inner.contents {
-            UniverseContents::Metauniverse(inner_meta) => {
-                if *inner_meta == *meta {
-                    ReplaceResult::ReplaceWith(replacement.clone())
+            UniverseContents::Metauniverse(meta) => {
+                if let Some(value) = map.get(meta) {
+                    ReplaceResult::ReplaceWith(value.clone())
                 } else {
                     ReplaceResult::Skip
                 }

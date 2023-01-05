@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use fkernel::{
     expr::{Expression, ExpressionCache, ExpressionT, Metavariable, ReplaceResult},
     result::Dr,
+    universe::{Metauniverse, Universe},
 };
 
 use crate::{
@@ -13,6 +14,7 @@ use crate::{
 #[derive(Default)]
 pub struct Solution<'cache> {
     map: HashMap<Metavariable<Expression<'cache>>, Expression<'cache>>,
+    universes: HashMap<Metauniverse, Universe>,
 }
 
 impl<'cache> Solution<'cache> {
@@ -21,15 +23,30 @@ impl<'cache> Solution<'cache> {
         cache: &ExpressionCache<'cache>,
         expr: Expression<'cache>,
     ) -> Expression<'cache> {
-        expr.replace_in_expression(cache, &|expr, _offset| {
-            if let ExpressionT::Metavariable(var) = expr.value(cache) {
-                match self.map.get(&var) {
-                    Some(replacement) => ReplaceResult::ReplaceWith(*replacement),
-                    None => ReplaceResult::Skip,
+        expr.replace_in_expression(cache, &|expr, _offset| match expr.value(cache) {
+            ExpressionT::Inst(mut inst) => {
+                for univ in &mut inst.universes {
+                    univ.instantiate_metauniverses(&self.universes);
                 }
-            } else {
-                ReplaceResult::Skip
+                ReplaceResult::ReplaceWith(Expression::new(
+                    cache,
+                    expr.provenance(cache),
+                    ExpressionT::Inst(inst),
+                ))
             }
+            ExpressionT::Sort(mut sort) => {
+                sort.0.instantiate_metauniverses(&self.universes);
+                ReplaceResult::ReplaceWith(Expression::new(
+                    cache,
+                    expr.provenance(cache),
+                    ExpressionT::Sort(sort),
+                ))
+            }
+            ExpressionT::Metavariable(var) => match self.map.get(&var) {
+                Some(replacement) => ReplaceResult::ReplaceWith(*replacement),
+                None => ReplaceResult::Skip,
+            },
+            _ => ReplaceResult::Skip,
         })
     }
 }
@@ -65,7 +82,7 @@ impl<'a, 'cache> Solver<'a, 'cache> {
     ) {
         for constraint in constraints {
             tracing::trace!(
-                "categorising {} and {}",
+                "categorising {} =?= {}",
                 self.elab.pretty_print(constraint.expected),
                 self.elab.pretty_print(constraint.actual)
             );

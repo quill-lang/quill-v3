@@ -1,4 +1,5 @@
 #![feature(trait_upcasting)]
+#![feature(iter_intersperse)]
 
 use fkernel::{expr::BinderAnnotation, Db};
 use pretty_print::Document;
@@ -18,8 +19,23 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
             name,
             universe_ascription,
         } => {
-            assert!(universe_ascription.is_none(), "deal with this later");
-            Document::Text(name.display(db))
+            let body = Document::Text(name.display(db));
+            if let Some((_, ascription, _)) = universe_ascription {
+                Document::Concat(
+                    std::iter::once(body)
+                        .chain(std::iter::once(Document::Text("::{".to_owned())))
+                        .chain(
+                            ascription
+                                .iter()
+                                .map(|puniverse| puniverse_to_document(db, puniverse))
+                                .intersperse_with(|| Document::Text(", ".to_owned())),
+                        )
+                        .chain(std::iter::once(Document::Text("}".to_owned())))
+                        .collect(),
+                )
+            } else {
+                body
+            }
         }
         PExpression::Borrow { .. } => todo!(),
         PExpression::Dereference { .. } => todo!(),
