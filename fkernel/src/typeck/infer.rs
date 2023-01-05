@@ -301,7 +301,7 @@ fn infer_type_pi<'cache>(
     Ok(Expression::new(
         cache,
         Provenance::Synthetic,
-        ExpressionT::Sort(Sort(Universe::new_with_provenance(
+        ExpressionT::Sort(Sort(Universe::new(
             Provenance::Synthetic,
             UniverseContents::UniverseImpredicativeMax(UniverseImpredicativeMax {
                 left: Box::new(domain_type.0),
@@ -549,7 +549,7 @@ fn process_match<'cache>(
         .chain(std::iter::once(BinderStructure {
             // The structure here isn't really relevant.
             bound: BoundVariable {
-                name: Name(WithProvenance::new_with_provenance(
+                name: Name(WithProvenance::new(
                     Provenance::Synthetic,
                     Str::new(cache.db(), "_major_premise".to_owned()),
                 )),

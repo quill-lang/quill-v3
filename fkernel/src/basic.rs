@@ -99,7 +99,7 @@ impl<T> WithProvenance<T> {
         }
     }
 
-    pub fn new_with_provenance(provenance: Provenance, contents: T) -> Self {
+    pub fn new(provenance: Provenance, contents: T) -> Self {
         Self {
             provenance,
             contents,

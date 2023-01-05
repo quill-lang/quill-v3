@@ -121,15 +121,13 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                     self.cache(),
                     name.0.provenance,
                     ExpressionT::Inst(Inst {
-                        name: QualifiedName(WithProvenance::new_with_provenance(
+                        name: QualifiedName(WithProvenance::new(
                             name.0.provenance,
                             self.source()
                                 .path(self.db())
                                 .segments(self.db())
                                 .iter()
-                                .map(|s| {
-                                    Name(WithProvenance::new_with_provenance(name.0.provenance, *s))
-                                })
+                                .map(|s| Name(WithProvenance::new(name.0.provenance, *s)))
                                 .chain(name.iter().copied())
                                 .collect(),
                         )),
@@ -353,7 +351,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             let structure = BinderStructure {
                 bound: BoundVariable {
                     name: binder.name.unwrap_or_else(|| {
-                        Name(WithProvenance::new_with_provenance(
+                        Name(WithProvenance::new(
                             self.provenance(binder.ty.span()),
                             Str::new(self.db(), "_".to_owned()),
                         ))
@@ -409,7 +407,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
     fn preprocess_universe(&mut self, universe: &PUniverse) -> Universe {
         match universe {
-            PUniverse::Variable(variable) => Universe::new_with_provenance(
+            PUniverse::Variable(variable) => Universe::new(
                 self.provenance(variable.0.provenance.span()),
                 UniverseContents::UniverseVariable(UniverseVariable(*variable)),
             ),

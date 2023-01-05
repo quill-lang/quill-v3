@@ -11,5 +11,6 @@ fkernel = { path = "../fkernel" }
 qdelab = { path = "../qdelab" }
 qformat = { path = "../qformat" }
 qparse = { path = "../qparse" }
+rpds = "0.12"
 salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
 tracing = "0.1"

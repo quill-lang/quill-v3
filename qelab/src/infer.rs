@@ -2,7 +2,14 @@
 //! When compared to [`Expression::infer_type`], inference results from this module
 //! also return a set of constraints on the metavariables.
 
-use fkernel::{expr::*, get_definition, result::Dr, typeck::*};
+use fkernel::{
+    basic::Provenance,
+    expr::*,
+    get_definition,
+    result::Dr,
+    typeck::*,
+    universe::{Universe, UniverseContents, UniverseSucc},
+};
 
 use crate::{
     constraint::{Justification, UnificationConstraint},
@@ -37,6 +44,9 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// If no constraints could be added to make `expr` type correct, this function returns a failed [`Dr`].
     ///
     /// We try to copy the provenance from the input expression where possible.
+    ///
+    /// This function tries to be a bit more "clever" than the usual [`Expression::infer_type`],
+    /// which doesn't know how to handle uncertainty.
     pub fn infer_type_with_constraints(
         &self,
         expr: Expression<'cache>,
@@ -60,7 +70,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             ExpressionT::Delta(_) => todo!(),
             ExpressionT::Inst(inst) => self.infer_type_inst(inst),
             ExpressionT::Let(_) => todo!(),
-            ExpressionT::Lambda(_) => todo!(),
+            ExpressionT::Lambda(lambda) => self.infer_type_lambda(lambda),
             ExpressionT::Pi(_) => todo!(),
             ExpressionT::RegionLambda(_) => todo!(),
             ExpressionT::RegionPi(_) => todo!(),
@@ -68,7 +78,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             ExpressionT::Intro(_) => todo!(),
             ExpressionT::Match(_) => todo!(),
             ExpressionT::Fix(_) => todo!(),
-            ExpressionT::Sort(_) => todo!(),
+            ExpressionT::Sort(sort) => self.infer_type_sort(sort),
             ExpressionT::Region | ExpressionT::RegionT => {
                 Dr::ok(ConstrainedExpression::new(Expression::new(
                     self.cache(),
@@ -116,6 +126,45 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         }
     }
 
+    fn infer_type_lambda(
+        &self,
+        lambda: Binder<Expression<'cache>>,
+    ) -> Dr<ConstrainedExpression<'cache>> {
+        self.infer_type_with_constraints_core(lambda.structure.bound.ty)
+            .bind(|mut argument_type_type| {
+                // The argument type must be a type.
+                as_sort(self.cache(), argument_type_type.expr).expect("deal with this later");
+
+                // Infer the return type of the lambda by first instantiating the parameter then inferring the resulting type.
+                let new_local = lambda.structure.generate_local(self.cache());
+                let body = lambda.result.instantiate(
+                    self.cache(),
+                    Expression::new(
+                        self.cache(),
+                        Provenance::Synthetic,
+                        ExpressionT::LocalConstant(new_local),
+                    ),
+                );
+                self.infer_type_with_constraints_core(body)
+                    .map(|return_type| {
+                        let expr = Expression::new(
+                            self.cache(),
+                            Provenance::Synthetic,
+                            ExpressionT::Pi(
+                                return_type.expr.abstract_binder(self.cache(), new_local),
+                            ),
+                        );
+                        argument_type_type
+                            .constraints
+                            .extend(return_type.constraints);
+                        ConstrainedExpression {
+                            expr,
+                            constraints: argument_type_type.constraints,
+                        }
+                    })
+            })
+    }
+
     fn infer_type_apply(
         &self,
         apply: Apply<Expression<'cache>>,
@@ -153,6 +202,18 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                     }
                 }
             })
+    }
+
+    fn infer_type_sort(&self, sort: Sort) -> Dr<ConstrainedExpression<'cache>> {
+        // The type of any sort, valid or not, is just the sort one universe higher.
+        Dr::ok(ConstrainedExpression::new(Expression::new(
+            self.cache(),
+            Provenance::Synthetic,
+            ExpressionT::Sort(Sort(Universe::new(
+                sort.0.provenance,
+                UniverseContents::UniverseSucc(UniverseSucc(Box::new(sort.0))),
+            ))),
+        )))
     }
 
     /// Ensures that `expr` is a [`ExpressionT::Pi`].

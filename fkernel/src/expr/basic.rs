@@ -411,6 +411,24 @@ where
     }
 }
 
+impl<E> PartialOrd for Metavariable<E>
+where
+    E: PartialEq,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.index.partial_cmp(&other.index)
+    }
+}
+
+impl<E> Ord for Metavariable<E>
+where
+    E: Eq,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.index.cmp(&other.index)
+    }
+}
+
 impl<E> Hash for Metavariable<E> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.index.hash(state);
@@ -578,7 +596,7 @@ impl<'cache> Expression<'cache> {
         provenance: Provenance,
         value: ExpressionT<Expression<'cache>>,
     ) -> Self {
-        let value = WithProvenance::new_with_provenance(provenance, value);
+        let value = WithProvenance::new(provenance, value);
         match cache.ids.borrow_mut().entry(value.clone()) {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {

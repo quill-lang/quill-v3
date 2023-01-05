@@ -55,7 +55,7 @@ where
         self.require_lexical().bind(|(name, name_span)| {
             self.require_reserved(ReservedSymbol::Colon).bind(|_| {
                 self.parse_expr(min_indent, indent).map(|ty| PField {
-                    name: Name(WithProvenance::new_with_provenance(
+                    name: Name(WithProvenance::new(
                         self.provenance(name_span),
                         Str::new(self.config().db, name),
                     )),
@@ -123,7 +123,7 @@ where
                 };
 
                 ty.map(|ty| PVariant {
-                    name: Name(WithProvenance::new_with_provenance(
+                    name: Name(WithProvenance::new(
                         self.provenance(name_span),
                         Str::new(self.config().db, name),
                     )),

@@ -107,7 +107,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             let ty_ty = Some(Expression::new(
                 self.cache(),
                 provenance,
-                ExpressionT::Sort(Sort(WithProvenance::new_with_provenance(
+                ExpressionT::Sort(Sort(WithProvenance::new(
                     provenance,
                     UniverseContents::Metauniverse(self.cache().gen_metauniverse()),
                 ))),
@@ -151,7 +151,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
     /// Create a new metauniverse.
     pub fn universe_hole(&mut self, provenance: Provenance) -> Universe {
-        Universe::new_with_provenance(
+        Universe::new(
             provenance,
             UniverseContents::Metauniverse(self.cache().gen_metauniverse()),
         )

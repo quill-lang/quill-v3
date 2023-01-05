@@ -3,7 +3,6 @@
 // Allow this lint to increase readability in complex chains of logic.
 #![allow(clippy::if_same_then_else)]
 
-use std::collections::HashMap;
 use std::ops::DerefMut;
 
 use crate::basic::*;
@@ -40,7 +39,7 @@ pub struct UniverseImpredicativeMax {
 
 /// An inference variable for universes.
 /// May represent any universe.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Metauniverse(pub u32);
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -135,7 +134,7 @@ impl Universe {
             let result = inner.remove_offset();
             let inner = std::mem::replace(
                 inner.deref_mut(),
-                Universe::new_with_provenance(self.provenance, UniverseContents::UniverseZero),
+                Universe::new(self.provenance, UniverseContents::UniverseZero),
             );
             *self = inner;
             result + 1
@@ -148,9 +147,10 @@ impl Universe {
     fn add_offset(&mut self, levels_to_raise: UniverseLevel) {
         let mut contents = std::mem::replace(&mut self.contents, UniverseContents::UniverseZero);
         for _ in 0..levels_to_raise {
-            contents = UniverseContents::UniverseSucc(UniverseSucc(Box::new(
-                Universe::new_with_provenance(self.provenance, contents),
-            )));
+            contents = UniverseContents::UniverseSucc(UniverseSucc(Box::new(Universe::new(
+                self.provenance,
+                contents,
+            ))));
         }
         self.contents = contents;
     }
@@ -226,10 +226,7 @@ impl Universe {
             *imax.left
         } else {
             // Couldn't simplify.
-            Universe::new_with_provenance(
-                provenance,
-                UniverseContents::UniverseImpredicativeMax(imax),
-            )
+            Universe::new(provenance, UniverseContents::UniverseImpredicativeMax(imax))
         }
     }
 
@@ -328,7 +325,7 @@ impl Universe {
             // Couldn't simplify. Revert the `+ k` chains for now.
             max.left.add_offset( left_levels);
             max.right.add_offset( right_levels);
-            Universe::new_with_provenance(provenance, UniverseContents::UniverseMax(max))
+            Universe::new(provenance, UniverseContents::UniverseMax(max))
         }
     }
     }
@@ -392,12 +389,12 @@ impl Universe {
         })
     }
 
-    /// Replace the given metauniverse with the provided replacement.
-    pub fn instantiate_metauniverses(&mut self, map: &HashMap<Metauniverse, Universe>) {
+    /// Replace the given metauniverses with the provided replacements.
+    pub fn instantiate_metauniverses(&mut self, map: &impl Fn(Metauniverse) -> Option<Universe>) {
         self.replace(&|inner| match &inner.contents {
             UniverseContents::Metauniverse(meta) => {
-                if let Some(value) = map.get(meta) {
-                    ReplaceResult::ReplaceWith(value.clone())
+                if let Some(value) = map(*meta) {
+                    ReplaceResult::ReplaceWith(value)
                 } else {
                     ReplaceResult::Skip
                 }

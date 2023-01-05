@@ -747,6 +747,27 @@ impl<'cache> Expression<'cache> {
         }
     }
 
+    /// Instantiates the given metavariable.
+    /// `replacement` should be a closed expression.
+    #[must_use]
+    pub fn replace_metavariable(
+        self,
+        cache: &ExpressionCache<'cache>,
+        metavariable: Metavariable<Self>,
+        replacement: Self,
+    ) -> Self {
+        self.replace_in_expression(cache, &|e, _offset| match e.value(cache) {
+            ExpressionT::Metavariable(inner_metavariable) => {
+                if inner_metavariable == metavariable {
+                    ReplaceResult::ReplaceWith(replacement)
+                } else {
+                    ReplaceResult::Skip
+                }
+            }
+            _ => ReplaceResult::Skip,
+        })
+    }
+
     /// Replace the given local constant with this expression.
     #[must_use]
     pub fn replace_local(
@@ -757,7 +778,7 @@ impl<'cache> Expression<'cache> {
     ) -> Self {
         self.replace_in_expression(cache, &|e, offset| {
             if let ExpressionT::LocalConstant(inner) = e.value(cache)
-            && inner.metavariable.index == local.metavariable.index {
+            && inner.metavariable == local.metavariable {
             // We should replace this local variable.
             ReplaceResult::ReplaceWith(replacement.lift_free_vars(cache, DeBruijnOffset::zero(), offset))
         } else {

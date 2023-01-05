@@ -43,7 +43,7 @@ where
                         self.require_reserved(ReservedSymbol::Assign).bind(|_| {
                             // Parse the body of the definition.
                             self.parse_expr(0, 0).map(|body| PDefinition {
-                                name: Name(WithProvenance::new_with_provenance(
+                                name: Name(WithProvenance::new(
                                     self.provenance(name_span),
                                     Str::new(self.config().db, name),
                                 )),
@@ -59,7 +59,7 @@ where
                 }) => {
                     // Parse the body of the definition.
                     self.parse_expr(0, 0).map(|body| PDefinition {
-                        name: Name(WithProvenance::new_with_provenance(
+                        name: Name(WithProvenance::new(
                             self.provenance(name_span),
                             Str::new(self.config().db, name),
                         )),

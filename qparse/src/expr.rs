@@ -303,7 +303,7 @@ impl SmallExpression {
                 final_span,
                 universe_ascription,
             } => SmallExpression::PExpression(PExpression::Variable {
-                name: QualifiedName(WithProvenance::new_with_provenance(
+                name: QualifiedName(WithProvenance::new(
                     parser.provenance(match segments.first() {
                         Some((_, first_span, _)) => Span {
                             start: first_span.start,
@@ -314,12 +314,12 @@ impl SmallExpression {
                     segments
                         .into_iter()
                         .map(|(name, name_span, _)| {
-                            Name(WithProvenance::new_with_provenance(
+                            Name(WithProvenance::new(
                                 parser.provenance(name_span),
                                 Str::new(parser.config().db, name),
                             ))
                         })
-                        .chain(std::iter::once(Name(WithProvenance::new_with_provenance(
+                        .chain(std::iter::once(Name(WithProvenance::new(
                             parser.provenance(final_span),
                             Str::new(parser.config().db, final_segment),
                         ))))
@@ -340,7 +340,7 @@ where
     fn parse_universe_end(&mut self) -> Dr<PUniverse> {
         self.require_lexical().bind(|(name, span)| {
             self.assert_end("universe").map(|()| {
-                PUniverse::Variable(Name(WithProvenance::new_with_provenance(
+                PUniverse::Variable(Name(WithProvenance::new(
                     self.provenance(span),
                     Str::new(self.config().db, name),
                 )))
@@ -424,7 +424,7 @@ where
                         self.require_reserved(ReservedSymbol::Assign).bind(|_| {
                             self.parse_expr(0, newline_indent).map(|value| {
                                 (
-                                    Name(WithProvenance::new_with_provenance(
+                                    Name(WithProvenance::new(
                                         self.provenance(name_span),
                                         Str::new(self.config().db, name),
                                     )),
@@ -457,7 +457,7 @@ where
             } = name
             {
                 SmallExpression::PExpression(PExpression::Intro {
-                    inductive: QualifiedName(WithProvenance::new_with_provenance(
+                    inductive: QualifiedName(WithProvenance::new(
                         self.provenance(match segments.first() {
                             Some((_, first_span, _)) => Span {
                                 start: first_span.start,
@@ -468,12 +468,12 @@ where
                         segments
                             .into_iter()
                             .map(|(name, name_span, _)| {
-                                Name(WithProvenance::new_with_provenance(
+                                Name(WithProvenance::new(
                                     self.provenance(name_span),
                                     Str::new(self.config().db, name),
                                 ))
                             })
-                            .chain(std::iter::once(Name(WithProvenance::new_with_provenance(
+                            .chain(std::iter::once(Name(WithProvenance::new(
                                 self.provenance(final_span),
                                 Str::new(self.config().db, final_segment),
                             ))))
@@ -910,7 +910,7 @@ where
                     self.require_reserved(ReservedSymbol::Assign).bind(|_| {
                         self.parse_expr(min_indent, indent)
                             .map(|to_assign| PLetBinder {
-                                name: Name(WithProvenance::new_with_provenance(
+                                name: Name(WithProvenance::new(
                                     self.provenance(name_span),
                                     Str::new(self.config().db, name),
                                 )),
@@ -923,7 +923,7 @@ where
                 self.require_reserved(ReservedSymbol::Assign).bind(|_| {
                     self.parse_expr(min_indent, indent)
                         .map(|to_assign| PLetBinder {
-                            name: Name(WithProvenance::new_with_provenance(
+                            name: Name(WithProvenance::new(
                                 self.provenance(name_span),
                                 Str::new(self.config().db, name),
                             )),
@@ -1056,7 +1056,7 @@ where
                 let mut index_params = Vec::new();
                 while inner.peek().is_some() {
                     index_params.push(inner.require_lexical().map(|(text, span)| {
-                        Name(WithProvenance::new_with_provenance(
+                        Name(WithProvenance::new(
                             self.provenance(span),
                             Str::new(self.config().db, text),
                         ))
@@ -1099,11 +1099,11 @@ where
                                 self.require_lexical()
                                     .map(|(name_to_bind, name_to_bind_span)| {
                                         (
-                                            Name(WithProvenance::new_with_provenance(
+                                            Name(WithProvenance::new(
                                                 self.provenance(field_name_span),
                                                 Str::new(self.config().db, field_name),
                                             )),
-                                            Some(Name(WithProvenance::new_with_provenance(
+                                            Some(Name(WithProvenance::new(
                                                 self.provenance(name_to_bind_span),
                                                 Str::new(self.config().db, name_to_bind),
                                             ))),
@@ -1111,7 +1111,7 @@ where
                                     })
                             } else {
                                 Dr::ok((
-                                    Name(WithProvenance::new_with_provenance(
+                                    Name(WithProvenance::new(
                                         self.provenance(field_name_span),
                                         Str::new(self.config().db, field_name),
                                     )),
@@ -1164,7 +1164,7 @@ where
                         // Parse the result.
                         self.parse_expr(min_indent, indent)
                             .map(|result| PMinorPremise {
-                                variant: Name(WithProvenance::new_with_provenance(
+                                variant: Name(WithProvenance::new(
                                     self.provenance(variant_span),
                                     Str::new(self.config().db, variant),
                                 )),
@@ -1202,7 +1202,7 @@ where
                 self.next();
                 // We have `name "="` syntax.
                 if let TokenTree::Lexical { text, span } = name {
-                    Some(Name(WithProvenance::new_with_provenance(
+                    Some(Name(WithProvenance::new(
                         self.provenance(span),
                         Str::new(self.config().db, text),
                     )))
@@ -1285,25 +1285,15 @@ where
                                         .bind(|_| {
                                             self.parse_expr(min_indent, indent).map(|body| {
                                                 PExpression::Fix {
-                                                    function_name: Name(
-                                                        WithProvenance::new_with_provenance(
-                                                            self.provenance(function_name_span),
-                                                            Str::new(
-                                                                self.config().db,
-                                                                function_name,
-                                                            ),
-                                                        ),
-                                                    ),
+                                                    function_name: Name(WithProvenance::new(
+                                                        self.provenance(function_name_span),
+                                                        Str::new(self.config().db, function_name),
+                                                    )),
                                                     argument: Box::new(argument),
-                                                    argument_name: Name(
-                                                        WithProvenance::new_with_provenance(
-                                                            self.provenance(argument_name_span),
-                                                            Str::new(
-                                                                self.config().db,
-                                                                argument_name,
-                                                            ),
-                                                        ),
-                                                    ),
+                                                    argument_name: Name(WithProvenance::new(
+                                                        self.provenance(argument_name_span),
+                                                        Str::new(self.config().db, argument_name),
+                                                    )),
                                                     body: Box::new(body),
                                                 }
                                             })
@@ -1321,7 +1311,7 @@ where
             // A single lexical token is interpreted as a binder with no explicit type, using
             // the explicit binder annotation.
             Some(TokenTree::Lexical { text, span }) => Dr::ok(PLambdaBinder {
-                name: Name(WithProvenance::new_with_provenance(
+                name: Name(WithProvenance::new(
                     self.provenance(span),
                     Str::new(self.config().db, text),
                 )),
@@ -1345,7 +1335,7 @@ where
                     // This is a binder which does not explicitly declare the type of the parameter.
                     match inner.next() {
                         Some(TokenTree::Lexical { text, span }) => Dr::ok(PLambdaBinder {
-                            name: Name(WithProvenance::new_with_provenance(
+                            name: Name(WithProvenance::new(
                                 inner.provenance(span),
                                 Str::new(inner.config().db, text),
                             )),
@@ -1360,7 +1350,7 @@ where
                     // This is a binder which explicitly declares its type.
                     // The form is `name : type`.
                     let name = if let Some(TokenTree::Lexical { text, span }) = inner.next() {
-                        Name(WithProvenance::new_with_provenance(
+                        Name(WithProvenance::new(
                             inner.provenance(span),
                             Str::new(inner.config().db, text),
                         ))
@@ -1468,7 +1458,7 @@ where
                 // Parse the type of the parameter.
                 self.parse_expr(indent, indent).bind(|ty| {
                     self.assert_end("parameter type").map(|()| PFunctionBinder {
-                        name: Some(Name(WithProvenance::new_with_provenance(
+                        name: Some(Name(WithProvenance::new(
                             self.provenance(span),
                             Str::new(self.config().db, text),
                         ))),
