@@ -30,6 +30,18 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         expected_type: Option<Expression<'cache>>,
         ctx: &Context<'cache>,
     ) -> Dr<Expression<'cache>> {
+        // if let Some(expected_type) = expected_type {
+        //     tracing::trace!(
+        //         "inferring {} with expected type {}",
+        //         qformat::pexpression_to_document(self.db(), e).pretty_print(100),
+        //         self.pretty_print(expected_type),
+        //     );
+        // } else {
+        //     tracing::trace!(
+        //         "inferring {}",
+        //         qformat::pexpression_to_document(self.db(), e).pretty_print(100),
+        //     );
+        // }
         match e {
             PExpression::Variable {
                 name,
@@ -117,7 +129,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             Some(def) => {
                 // We will instantiate this definition.
                 assert!(universe_ascription.is_none(), "deal with this later");
-                Dr::ok(Expression::new(
+                let expr = Expression::new(
                     self.cache(),
                     name.0.provenance,
                     ExpressionT::Inst(Inst {
@@ -138,7 +150,8 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                             .map(|_| self.universe_hole(name.0.provenance))
                             .collect(),
                     }),
-                ))
+                );
+                self.infer_type(expr, ctx, false).map(|expr| expr.expr)
             }
             None => todo!(),
         }
@@ -178,10 +191,15 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                                 )
                                 .map(|result| {
                                     if let Some(expected_type) = expected_type {
+                                        // tracing::trace!(
+                                        //     "inferred type of {} was {}",
+                                        //     self.pretty_print(result.expr),
+                                        //     self.pretty_print(result.ty)
+                                        // );
                                         self.add_unification_constraint(
                                             expected_type,
                                             result.ty,
-                                            Justification::Apply,
+                                            Justification::ApplyPreprocess,
                                         );
                                     }
                                     result.expr
@@ -411,6 +429,8 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 self.provenance(variable.0.provenance.span()),
                 UniverseContents::UniverseVariable(UniverseVariable(*variable)),
             ),
+            PUniverse::Succ { .. } => todo!(),
+            PUniverse::ImpredicativeMax { .. } => todo!(),
             PUniverse::Metauniverse { .. } => todo!(),
         }
     }

@@ -14,3 +14,7 @@ qparse = { path = "../qparse" }
 rpds = "0.12"
 salsa = { git = "https://github.com/salsa-rs/salsa", package = "salsa-2022" }
 tracing = "0.1"
+
+[features]
+# Since the elaborator needs to perform very efficiently, we hide calls to tracing::trace! and so on behind a feature flag instead of disabling it using tracing's normal mechanisms.
+elaborator_diagnostics = []

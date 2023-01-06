@@ -159,8 +159,8 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
         PExpression::Type { .. } => todo!(),
         PExpression::Prop(_) => todo!(),
         PExpression::StaticRegion(_) => todo!(),
-        PExpression::Region(_) => todo!(),
-        PExpression::RegionT(_) => todo!(),
+        PExpression::Region(_) => Document::Text("Region".to_owned()),
+        PExpression::RegionT(_) => Document::Text("RegionT".to_owned()),
         PExpression::Inductive(_) => todo!(),
         PExpression::Metavariable { index, .. } => Document::Text(format!("?{index}")),
     }
@@ -169,6 +169,14 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
 pub fn puniverse_to_document(db: &dyn Db, puniverse: &PUniverse) -> Document {
     match puniverse {
         PUniverse::Variable(var) => Document::Text(var.text(db).to_owned()),
+        PUniverse::Succ { value, .. } => {
+            puniverse_to_document(db, value).then(Document::Text(" + 1".to_owned()))
+        }
+        PUniverse::ImpredicativeMax { left, right, .. } => Document::Text("imax (".to_owned())
+            .then(puniverse_to_document(db, left))
+            .then(Document::Text(") (".to_owned()))
+            .then(puniverse_to_document(db, right))
+            .then(Document::Text(")".to_owned())),
         PUniverse::Metauniverse { index, .. } => Document::Text(format!("?u{index}")),
     }
 }

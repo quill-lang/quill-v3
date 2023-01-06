@@ -23,6 +23,7 @@ pub(crate) fn check_no_local_or_metavariable<'cache>(
     cache: &ExpressionCache<'cache>,
     e: Expression<'cache>,
 ) -> Dr<()> {
+    // TODO: Check no metauniverses.
     if let Some(e) = e.first_local_or_metavariable(cache) {
         Dr::fail(e.provenance(cache).report(ReportKind::Error).with_label(
             e.provenance(cache).label(LabelType::Error).with_message(

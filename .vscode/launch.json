@@ -15,6 +15,20 @@
 			},
 			"program": "${cargo:program}",
 			"args": []
+		},
+		{
+			"type": "lldb",
+			"request": "launch",
+			"name": "Quill",
+			"cargo": {
+				"args": [
+					"build",
+					"-p",
+					"quill"
+				]
+			},
+			"program": "${cargo:program}",
+			"args": []
 		}
 	]
 }

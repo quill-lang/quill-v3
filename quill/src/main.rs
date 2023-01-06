@@ -17,7 +17,7 @@ impl<'a> Delaborator for PrettyPrintDelaborator<'a> {
             fkernel::result::Message::String(
                 qformat::pexpression_to_document(
                     self.0,
-                    &qdelab::delaborate(cache, expr.from_heap(cache), &Default::default()),
+                    &qdelab::delaborate(cache, expr.from_heap(cache), &Default::default(), false),
                 )
                 .pretty_print(100),
             )

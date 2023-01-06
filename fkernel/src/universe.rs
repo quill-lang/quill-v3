@@ -365,8 +365,19 @@ impl Universe {
             UniverseContents::UniverseZero => Vec::new(),
             UniverseContents::UniverseVariable(var) => vec![var.clone()],
             UniverseContents::UniverseSucc(univ) => univ.0.universe_variables(),
-            UniverseContents::UniverseMax(_) => todo!(),
-            UniverseContents::UniverseImpredicativeMax(_) => todo!(),
+            UniverseContents::UniverseMax(UniverseMax { left, right })
+            | UniverseContents::UniverseImpredicativeMax(UniverseImpredicativeMax {
+                left,
+                right,
+            }) => {
+                let mut result = left.universe_variables();
+                for item in right.universe_variables() {
+                    if result.iter().all(|var| item.0 .0 != var.0 .0) {
+                        result.push(item);
+                    }
+                }
+                result
+            }
             UniverseContents::Metauniverse(_) => Vec::new(),
         }
     }
@@ -390,10 +401,12 @@ impl Universe {
     }
 
     /// Replace the given metauniverses with the provided replacements.
+    /// The replacement will be performed recursively; i.e. if `u -> v` and `v -> w` are in `map`, then applying this function to `u` will return `w`.
     pub fn instantiate_metauniverses(&mut self, map: &impl Fn(Metauniverse) -> Option<Universe>) {
         self.replace(&|inner| match &inner.contents {
             UniverseContents::Metauniverse(meta) => {
-                if let Some(value) = map(*meta) {
+                if let Some(mut value) = map(*meta) {
+                    value.instantiate_metauniverses(map);
                     ReplaceResult::ReplaceWith(value)
                 } else {
                     ReplaceResult::Skip

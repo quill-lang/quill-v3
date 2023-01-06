@@ -157,6 +157,23 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         )
     }
 
+    /// Add the constraints that this expression is type correct.
+    /// Returns the type that it was deduced to have.
+    pub fn constrain_type_correct(&mut self, expr: Expression<'cache>) -> Dr<Expression<'cache>> {
+        self.infer_type_with_constraints(expr).map(|ty| {
+            // for constraint in &ty.constraints {
+            //     tracing::trace!(
+            //         "inference: unifying {} =?= {} because {}",
+            //         self.pretty_print(constraint.expected),
+            //         self.pretty_print(constraint.actual),
+            //         constraint.justification.display(self),
+            //     );
+            // }
+            self.unification_constraints.extend(ty.constraints);
+            ty.expr
+        })
+    }
+
     /// Infers the type of this expression, storing any constraints that were generated.
     /// Use this instead of the method from `fkernel` while we are in the elaborator.
     ///
@@ -172,15 +189,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         apply_weak: bool,
     ) -> Dr<TypedExpression<'cache>> {
         self.infer_type_with_constraints(expr).map(|ty| {
-            for constraint in &ty.constraints {
-                tracing::trace!(
-                    "inference: unifying {} =?= {} because {}",
-                    self.pretty_print(constraint.expected),
-                    self.pretty_print(constraint.actual),
-                    constraint.justification.display(self),
-                );
-            }
-            self.unification_constraints.extend(ty.constraints);
+            // For now, ignore the constraints on the type.
             self.apply_implicit_args(expr, ty.expr, ctx, apply_weak)
         })
     }
@@ -240,7 +249,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     pub fn pretty_print(&self, expr: Expression<'cache>) -> String {
         pexpression_to_document(
             self.db(),
-            &delaborate(self.cache(), expr, &Default::default()),
+            &delaborate(self.cache(), expr, &Default::default(), true),
         )
         .pretty_print(100)
     }
@@ -250,14 +259,14 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         &mut self,
         expected: Expression<'cache>,
         actual: Expression<'cache>,
-        justification: Justification,
+        justification: Justification<'cache>,
     ) {
-        tracing::trace!(
-            "direct: unifying {} =?= {} because {}",
-            self.pretty_print(expected),
-            self.pretty_print(actual),
-            justification.display(self),
-        );
+        // tracing::trace!(
+        //     "direct: unifying {} =?= {} because {}",
+        //     self.pretty_print(expected),
+        //     self.pretty_print(actual),
+        //     justification.display(self),
+        // );
         self.unification_constraints.push(UnificationConstraint {
             expected,
             actual,

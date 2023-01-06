@@ -7,8 +7,8 @@ use rpds::RedBlackTreeMap;
 
 use crate::{
     constraint::{
-        CategorisedConstraint, Justification, StuckApplicationConstraint, StuckApplicationType,
-        UnificationConstraint, UniverseConstraint,
+        CategorisedConstraint, FlexFlexConstraint, Justification, StuckApplicationConstraint,
+        StuckApplicationType, UnificationConstraint, UniverseConstraint,
     },
     elaborator::Elaborator,
 };
@@ -17,7 +17,10 @@ use crate::{
 /// This data structure is fast to clone, as its underlying storage uses persistent data structures.
 #[derive(Default, Clone)]
 pub struct Solution<'cache> {
-    map: RedBlackTreeMap<Metavariable<Expression<'cache>>, (Expression<'cache>, Justification)>,
+    map: RedBlackTreeMap<
+        Metavariable<Expression<'cache>>,
+        (Expression<'cache>, Justification<'cache>),
+    >,
     universes: RedBlackTreeMap<Metauniverse, Universe>,
 }
 
@@ -48,7 +51,11 @@ impl<'cache> Solution<'cache> {
                 ))
             }
             ExpressionT::Metavariable(var) => match self.map.get(&var) {
-                Some((replacement, _)) => ReplaceResult::ReplaceWith(*replacement),
+                Some((replacement, _)) => {
+                    // Since substitution is not idempotent in the current implementation,
+                    // we need to perform a substitution operation on the solution to make sure it doesn't contain metavariables.
+                    ReplaceResult::ReplaceWith(self.substitute(cache, *replacement))
+                }
                 None => ReplaceResult::Skip,
             },
             _ => ReplaceResult::Skip,
@@ -66,6 +73,14 @@ struct Solver<'a, 'cache> {
     /// This is used as a queue of constraints to be solved.
     stuck_applications:
         RedBlackTreeMap<Metavariable<Expression<'cache>>, Vec<StuckApplicationConstraint<'cache>>>,
+    /// Maps pairs of metavariables to the list of flex-flex constraints that are stuck on both variables.
+    flex_flex: RedBlackTreeMap<
+        (
+            Metavariable<Expression<'cache>>,
+            Metavariable<Expression<'cache>>,
+        ),
+        Vec<FlexFlexConstraint<'cache>>,
+    >,
 }
 
 impl<'a, 'cache> Elaborator<'a, 'cache> {
@@ -77,6 +92,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             elab: self,
             solution: Default::default(),
             stuck_applications: Default::default(),
+            flex_flex: Default::default(),
         };
         for constraint in constraints {
             solver.add_constraint(constraint);
@@ -88,11 +104,13 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
 impl<'a, 'cache> Solver<'a, 'cache> {
     fn add_constraint(&mut self, constraint: UnificationConstraint<'cache>) {
-        // tracing::trace!(
-        //     "categorising {} =?= {}",
-        //     self.elab.pretty_print(constraint.expected),
-        //     self.elab.pretty_print(constraint.actual)
-        // );
+        #[cfg(feature = "elaborator_diagnostics")]
+        tracing::trace!(
+            "categorising {} =?= {} because {}",
+            self.elab.pretty_print(constraint.expected),
+            self.elab.pretty_print(constraint.actual),
+            constraint.justification.display(&self.elab),
+        );
 
         // Simplify the unification constraint.
         // This may yield several constraints.
@@ -100,6 +118,9 @@ impl<'a, 'cache> Solver<'a, 'cache> {
             match constraint {
                 CategorisedConstraint::StuckApplication(stuck_app) => {
                     self.add_stuck_application_constraint(stuck_app);
+                }
+                CategorisedConstraint::FlexFlex(flex_flex) => {
+                    self.add_flex_flex_constraint(flex_flex);
                 }
                 CategorisedConstraint::Universe(univ) => {
                     self.add_universe_constraint(univ);
@@ -112,6 +133,13 @@ impl<'a, 'cache> Solver<'a, 'cache> {
         // Check if a solution for this stuck application is already known.
         match self.solution.map.get(&stuck_app.metavariable) {
             Some((solution, justification)) => {
+                #[cfg(feature = "elaborator_diagnostics")]
+                tracing::trace!(
+                    "already found solution for ?{}: {}",
+                    stuck_app.metavariable.index,
+                    self.elab.pretty_print(*solution),
+                );
+
                 // We have solved a constraint for this metavariable already.
                 self.add_constraint(UnificationConstraint {
                     expected: solution.create_nary_application(
@@ -165,6 +193,17 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                             (solution, stuck_app.justification),
                         );
 
+                        #[cfg(feature = "elaborator_diagnostics")]
+                        tracing::trace!(
+                            "solving {} = {}",
+                            self.elab.pretty_print(Expression::new(
+                                self.elab.cache(),
+                                fkernel::basic::Provenance::Synthetic,
+                                ExpressionT::Metavariable(stuck_app.metavariable)
+                            )),
+                            self.elab.pretty_print(solution)
+                        );
+
                         // Assert that the type of the solution matches the type of the metavariable.
                         if let Some(solution_constrained) =
                             self.elab.infer_type_with_constraints(solution).value()
@@ -181,6 +220,7 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                         }
 
                         // We need to revisit all of the constraints that were stuck due to this metavariable.
+                        // Revisit stuck applications, which are now solved.
                         let to_revisit = self
                             .stuck_applications
                             .get(&stuck_app.metavariable)
@@ -193,7 +233,24 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                             self.add_stuck_application_constraint(stuck_app);
                         }
 
-                        // TODO: Revisit other things like flex-flex and stuck match constraints.
+                        // Revisit flex-flex constraints, which are now only stuck applications.
+                        let mut to_revisit = Vec::new();
+                        let mut keys_to_remove = Vec::new();
+                        for key in self.flex_flex.keys() {
+                            if key.0 == stuck_app.metavariable || key.1 == stuck_app.metavariable {
+                                to_revisit
+                                    .extend(self.flex_flex.get(key).into_iter().flatten().cloned());
+                                keys_to_remove.push(*key);
+                            }
+                        }
+                        for key in keys_to_remove {
+                            self.flex_flex.remove_mut(&key);
+                        }
+                        for flex_flex in to_revisit {
+                            self.add_flex_flex_constraint(flex_flex);
+                        }
+
+                        // TODO: Revisit other things like stuck match constraints.
                     }
                     _ => {
                         // We can't solve this constraint immediately.
@@ -208,6 +265,64 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    fn add_flex_flex_constraint(&mut self, flex_flex: FlexFlexConstraint<'cache>) {
+        // Check if a solution for this stuck application is already known.
+        if self.solution.map.contains_key(&flex_flex.expected) {
+            // We have solved a constraint for this metavariable already.
+            // Recategorise this constraint as a stuck application and solve it.
+            self.add_stuck_application_constraint(StuckApplicationConstraint {
+                metavariable: flex_flex.expected,
+                arguments: flex_flex.expected_arguments,
+                replacement: Expression::new(
+                    self.elab.cache(),
+                    flex_flex.actual.ty.provenance(self.elab.cache()),
+                    ExpressionT::Metavariable(flex_flex.actual),
+                )
+                .create_nary_application(
+                    self.elab.cache(),
+                    flex_flex
+                        .actual_arguments
+                        .into_iter()
+                        .map(|expr| (expr.provenance(self.elab.cache()), expr)),
+                ),
+                justification: flex_flex.justification,
+            });
+        } else if self.solution.map.contains_key(&flex_flex.actual) {
+            self.add_stuck_application_constraint(StuckApplicationConstraint {
+                metavariable: flex_flex.actual,
+                arguments: flex_flex.actual_arguments,
+                replacement: Expression::new(
+                    self.elab.cache(),
+                    flex_flex.expected.ty.provenance(self.elab.cache()),
+                    ExpressionT::Metavariable(flex_flex.expected),
+                )
+                .create_nary_application(
+                    self.elab.cache(),
+                    flex_flex
+                        .expected_arguments
+                        .into_iter()
+                        .map(|expr| (expr.provenance(self.elab.cache()), expr)),
+                ),
+                justification: flex_flex.justification,
+            });
+        } else {
+            // We can't solve this constraint immediately.
+            // Add it to the solver's list of flex-flex constraints to solve later.
+            match self
+                .flex_flex
+                .get_mut(&(flex_flex.expected, flex_flex.actual))
+            {
+                Some(constraints) => {
+                    constraints.push(flex_flex);
+                }
+                None => {
+                    self.flex_flex
+                        .insert_mut((flex_flex.expected, flex_flex.actual), vec![flex_flex]);
                 }
             }
         }
@@ -246,9 +361,10 @@ impl<'a, 'cache> Solver<'a, 'cache> {
     }
 
     fn solve(&mut self) {
+        #[cfg(feature = "elaborator_diagnostics")]
         tracing::debug!(
             "solving constraints for {} metavariables",
-            self.stuck_applications.keys().count()
+            self.stuck_applications.keys().count() + self.flex_flex.keys().count()
         );
     }
 }

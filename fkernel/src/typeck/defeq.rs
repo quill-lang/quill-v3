@@ -138,6 +138,12 @@ fn quick_definitionally_equal<'cache>(
         (ExpressionT::Sort(left), ExpressionT::Sort(right)) => {
             Some(Ok(universe_definitionally_equal(cache, &left.0, &right.0)))
         }
+        (ExpressionT::Sort(_), ExpressionT::Region)
+        | (ExpressionT::Region, ExpressionT::Sort(_))
+        | (ExpressionT::Sort(_), ExpressionT::RegionT)
+        | (ExpressionT::RegionT, ExpressionT::Sort(_))
+        | (ExpressionT::Region, ExpressionT::RegionT)
+        | (ExpressionT::RegionT, ExpressionT::Region) => Some(Ok(false)),
         _ => None,
     }
 }

@@ -9,6 +9,13 @@ K: {A: Sort::{u}} -> {B: Sort::{v}} -> A -> B -> A = fn {A} {B} a b => a
 
 I: {A: Sort::{u}} -> A -> A = fn {A} a => K a a
 
+B: {A: Sort::{u}} -> {B: Sort::{v}} -> {C: Sort::{w}} ->
+    (B -> C) -> (A -> B) -> A -> C = fn {A} {B} {C} => S (K S) K
+
+C = S (S (K (S (K S) K)) S) (K K)
+
+W = S S (S K)
+
 let_test: {A: Sort::{u}} -> A -> A =
     fn {A} a => let
         b = a

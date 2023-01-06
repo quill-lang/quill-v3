@@ -25,6 +25,15 @@ use crate::{
 pub enum PUniverse {
     /// A universe variable.
     Variable(Name),
+    Succ {
+        value: Box<PUniverse>,
+        succ_token: Span,
+    },
+    ImpredicativeMax {
+        imax_token: Span,
+        left: Box<PUniverse>,
+        right: Box<PUniverse>,
+    },
     Metauniverse {
         span: Span,
         index: u32,
@@ -35,6 +44,16 @@ impl Spanned for PUniverse {
     fn span(&self) -> Span {
         match self {
             PUniverse::Variable(name) => name.0.provenance.span(),
+            PUniverse::Succ { value, succ_token } => Span {
+                start: value.span().start,
+                end: succ_token.end,
+            },
+            PUniverse::ImpredicativeMax {
+                imax_token, right, ..
+            } => Span {
+                start: imax_token.start,
+                end: right.span().end,
+            },
             PUniverse::Metauniverse { span, .. } => *span,
         }
     }

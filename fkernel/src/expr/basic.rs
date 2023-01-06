@@ -22,6 +22,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::{hash_map::Entry, HashMap},
+    fmt::Debug,
     hash::Hash,
     marker::PhantomData,
 };
@@ -508,7 +509,7 @@ pub enum ExpressionT<E> {
     StaticRegion,
     Lifespan(Lifespan<E>),
     Metavariable(Metavariable<E>),
-    /// A metavariable that has type `Region`.
+    /// A metavariable that has type `T -> Region`, where `T` is any list of parameters.
     /// These are allowed to be left and not unified until the borrow checking stage.
     Metaregion(Metavariable<E>),
     LocalConstant(LocalConstant<E>),
@@ -574,10 +575,16 @@ impl<'cache> ExpressionCache<'cache> {
 
 /// An ID for an expression, tied to an [`ExpressionCache`] by the `'cache` lifetime.
 /// See also [`HeapExpression`].
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Expression<'cache> {
     _phantom: PhantomData<&'cache ()>,
     id: u64,
+}
+
+impl<'cache> Debug for Expression<'cache> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#{}", self.id)
+    }
 }
 
 /// An expression, stored entirely on the heap.
@@ -726,9 +733,13 @@ impl<'cache> Expression<'cache> {
             return match_expr.major_premise.stuck(cache);
         }
         match self.head(cache).value(cache) {
-            ExpressionT::Metavariable(var) => Some(StuckExpression::Application(var)),
+            ExpressionT::Metavariable(var) | ExpressionT::Metaregion(var) => {
+                Some(StuckExpression::Application(var))
+            }
             ExpressionT::Borrow(borrow) => {
-                if let ExpressionT::Metavariable(var) = borrow.value.value(cache) {
+                if let ExpressionT::Metavariable(var) | ExpressionT::Metaregion(var) =
+                    borrow.value.value(cache)
+                {
                     Some(StuckExpression::Application(var))
                 } else {
                     None

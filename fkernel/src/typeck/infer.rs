@@ -134,10 +134,14 @@ pub(crate) fn infer_type_core<'cache>(
         ExpressionT::Lifespan(_) => todo!(),
         ExpressionT::Metavariable(var) => Ok(var.ty),
         ExpressionT::Metaregion(var) => {
-            if var.ty.value(cache) == ExpressionT::Region {
-                Ok(var.ty)
-            } else {
-                todo!()
+            let mut ty = var.ty;
+            loop {
+                match ty.value(cache) {
+                    ExpressionT::Pi(pi) => ty = pi.result,
+                    ExpressionT::RegionPi(pi) => ty = pi.body,
+                    ExpressionT::Region => return Ok(var.ty),
+                    _ => todo!(),
+                }
             }
         }
         ExpressionT::LocalConstant(local) => Ok(local.metavariable.ty),

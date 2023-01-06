@@ -26,30 +26,34 @@ pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> D
             );
             let mut elab = Elaborator::new(cache, source);
             let result = elab.elaborate(ty, None, &Context::default()).bind(|ty| {
-                elab.elaborate(&def.body, Some(ty), &Context::default())
-                    .bind(|body| {
-                        elab.solve().map(|solution| {
-                            let ty = solution.substitute(cache, ty);
-                            let body = solution.substitute(cache, body);
-                            tracing::debug!(
-                                "Elaborated type:\n    {}",
-                                pexpression_to_document(
-                                    db,
-                                    &delaborate(cache, ty, &Default::default())
-                                )
-                                .pretty_print(15)
-                            );
-                            tracing::debug!(
-                                "Elaborated body:\n    {}",
-                                pexpression_to_document(
-                                    db,
-                                    &delaborate(cache, body, &Default::default())
-                                )
-                                .pretty_print(15)
-                            );
-                            (ty, body)
+                elab.constrain_type_correct(ty).bind(|_| {
+                    elab.elaborate(&def.body, Some(ty), &Context::default())
+                        .bind(|body| {
+                            elab.constrain_type_correct(body).bind(|_| {
+                                elab.solve().map(|solution| {
+                                    let ty = solution.substitute(cache, ty);
+                                    let body = solution.substitute(cache, body);
+                                    tracing::debug!(
+                                        "Elaborated type:\n    {}",
+                                        pexpression_to_document(
+                                            db,
+                                            &delaborate(cache, ty, &Default::default(), false)
+                                        )
+                                        .pretty_print(15)
+                                    );
+                                    tracing::debug!(
+                                        "Elaborated body:\n    {}",
+                                        pexpression_to_document(
+                                            db,
+                                            &delaborate(cache, body, &Default::default(), false)
+                                        )
+                                        .pretty_print(15)
+                                    );
+                                    (ty, body)
+                                })
+                            })
                         })
-                    })
+                })
             });
 
             result.map(|(ty, body)| {

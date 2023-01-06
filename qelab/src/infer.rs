@@ -8,7 +8,7 @@ use fkernel::{
     get_definition,
     result::Dr,
     typeck::*,
-    universe::{Universe, UniverseContents, UniverseSucc},
+    universe::{Universe, UniverseContents, UniverseImpredicativeMax, UniverseSucc},
 };
 
 use crate::{
@@ -71,7 +71,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             ExpressionT::Inst(inst) => self.infer_type_inst(inst),
             ExpressionT::Let(_) => todo!(),
             ExpressionT::Lambda(lambda) => self.infer_type_lambda(lambda),
-            ExpressionT::Pi(_) => todo!(),
+            ExpressionT::Pi(pi) => self.infer_type_pi(pi),
             ExpressionT::RegionLambda(_) => todo!(),
             ExpressionT::RegionPi(_) => todo!(),
             ExpressionT::Apply(apply) => self.infer_type_apply(apply),
@@ -132,9 +132,6 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     ) -> Dr<ConstrainedExpression<'cache>> {
         self.infer_type_with_constraints_core(lambda.structure.bound.ty)
             .bind(|mut argument_type_type| {
-                // The argument type must be a type.
-                as_sort(self.cache(), argument_type_type.expr).expect("deal with this later");
-
                 // Infer the return type of the lambda by first instantiating the parameter then inferring the resulting type.
                 let new_local = lambda.structure.generate_local(self.cache());
                 let body = lambda.result.instantiate(
@@ -160,6 +157,47 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                         ConstrainedExpression {
                             expr,
                             constraints: argument_type_type.constraints,
+                        }
+                    })
+            })
+    }
+
+    fn infer_type_pi(&self, pi: Binder<Expression<'cache>>) -> Dr<ConstrainedExpression<'cache>> {
+        // The argument type must be a type.
+        self.infer_type_with_constraints_core(pi.structure.bound.ty)
+            .bind(|mut parameter_type| {
+                let domain_type =
+                    as_sort(self.cache(), parameter_type.expr).expect("deal with this later");
+                // Infer the return type of the pi by first instantiating the parameter then inferring the resulting type.
+                let body = pi.result.instantiate(
+                    self.cache(),
+                    Expression::new(
+                        self.cache(),
+                        Provenance::Synthetic,
+                        ExpressionT::LocalConstant(pi.structure.generate_local(self.cache())),
+                    ),
+                );
+                self.infer_type_with_constraints_core(body)
+                    .map(|return_type| {
+                        let return_type_sort =
+                            as_sort(self.cache(), return_type.expr).expect("deal with this later");
+                        let expr = Expression::new(
+                            self.cache(),
+                            Provenance::Synthetic,
+                            ExpressionT::Sort(Sort(Universe::new(
+                                Provenance::Synthetic,
+                                UniverseContents::UniverseImpredicativeMax(
+                                    UniverseImpredicativeMax {
+                                        left: Box::new(domain_type.0),
+                                        right: Box::new(return_type_sort.0),
+                                    },
+                                ),
+                            ))),
+                        );
+                        parameter_type.constraints.extend(return_type.constraints);
+                        ConstrainedExpression {
+                            expr,
+                            constraints: parameter_type.constraints,
                         }
                     })
             })
@@ -193,7 +231,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                                             .chain(std::iter::once(UnificationConstraint {
                                                 expected: pi.structure.bound.ty,
                                                 actual: argument_type.expr,
-                                                justification: Justification::Apply,
+                                                justification: Justification::Apply { apply },
                                             }))
                                             .collect(),
                                     },

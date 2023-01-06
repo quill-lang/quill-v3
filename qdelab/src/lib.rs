@@ -18,6 +18,7 @@ pub fn delaborate<'cache>(
     cache: &ExpressionCache<'cache>,
     expr: Expression<'cache>,
     locals: &VecDeque<Str>,
+    print_metavariable_indices: bool,
 ) -> PExpression {
     match expr.value(cache) {
         ExpressionT::Local(local) => PExpression::Variable {
@@ -36,10 +37,7 @@ pub fn delaborate<'cache>(
             } else {
                 Some((
                     Span::default(),
-                    inst.universes
-                        .iter()
-                        .map(|universe| delaborate_universe(universe))
-                        .collect(),
+                    inst.universes.iter().map(delaborate_universe).collect(),
                     Span::default(),
                 ))
             },
@@ -60,14 +58,24 @@ pub fn delaborate<'cache>(
                     annotation: structure.binder_annotation,
                     brackets: None,
                     ownership: Some((structure.bound.ownership, Span::default())),
-                    ty: Some(delaborate(cache, structure.bound.ty, &locals)),
+                    ty: Some(delaborate(
+                        cache,
+                        structure.bound.ty,
+                        &locals,
+                        print_metavariable_indices,
+                    )),
                 });
                 locals.push_front(*structure.bound.name);
             }
             PExpression::Lambda {
                 fn_token: Span::default(),
                 binders,
-                result: Box::new(delaborate(cache, result, &locals)),
+                result: Box::new(delaborate(
+                    cache,
+                    result,
+                    &locals,
+                    print_metavariable_indices,
+                )),
             }
         }
         ExpressionT::Pi(pi) => {
@@ -84,17 +92,37 @@ pub fn delaborate<'cache>(
                     annotation: pi.structure.binder_annotation,
                     brackets: None,
                     ownership: Some((pi.structure.bound.ownership, Span::default())),
-                    ty: Box::new(delaborate(cache, pi.structure.bound.ty, locals)),
+                    ty: Box::new(delaborate(
+                        cache,
+                        pi.structure.bound.ty,
+                        locals,
+                        print_metavariable_indices,
+                    )),
                 },
                 arrow_token: Span::default(),
-                result: Box::new(delaborate(cache, pi.result, &new_locals)),
+                result: Box::new(delaborate(
+                    cache,
+                    pi.result,
+                    &new_locals,
+                    print_metavariable_indices,
+                )),
             }
         }
         ExpressionT::RegionLambda(_) => todo!(),
         ExpressionT::RegionPi(_) => todo!(),
         ExpressionT::Apply(apply) => PExpression::Apply {
-            function: Box::new(delaborate(cache, apply.function, locals)),
-            argument: Box::new(delaborate(cache, apply.argument, locals)),
+            function: Box::new(delaborate(
+                cache,
+                apply.function,
+                locals,
+                print_metavariable_indices,
+            )),
+            argument: Box::new(delaborate(
+                cache,
+                apply.argument,
+                locals,
+                print_metavariable_indices,
+            )),
         },
         ExpressionT::Intro(_) => todo!(),
         ExpressionT::Match(_) => todo!(),
@@ -103,18 +131,35 @@ pub fn delaborate<'cache>(
             span: Span::default(),
             universe: delaborate_universe(&sort.0),
         },
-        ExpressionT::Region => todo!(),
-        ExpressionT::RegionT => todo!(),
+        ExpressionT::Region => PExpression::Region(Span::default()),
+        ExpressionT::RegionT => PExpression::RegionT(Span::default()),
         ExpressionT::StaticRegion => todo!(),
         ExpressionT::Lifespan(_) => todo!(),
         ExpressionT::Metavariable(var) => PExpression::Metavariable {
             span: Span::default(),
             index: var.index,
         },
-        ExpressionT::Metaregion(_) => todo!(),
+        ExpressionT::Metaregion(var) => PExpression::Metavariable {
+            span: Span::default(),
+            index: var.index,
+        },
         ExpressionT::LocalConstant(local) => PExpression::Variable {
             name: QualifiedName(WithProvenance::new_synthetic(vec![
-                local.structure.bound.name,
+                if print_metavariable_indices {
+                    Name(WithProvenance::new(
+                        local.structure.bound.name.0.provenance,
+                        Str::new(
+                            cache.db(),
+                            format!(
+                                "{}/{}",
+                                local.structure.bound.name.text(cache.db()),
+                                local.metavariable.index
+                            ),
+                        ),
+                    ))
+                } else {
+                    local.structure.bound.name
+                },
             ])),
             universe_ascription: None,
         },
@@ -125,9 +170,16 @@ pub fn delaborate_universe(universe: &Universe) -> PUniverse {
     match &universe.contents {
         UniverseContents::UniverseZero => todo!(),
         UniverseContents::UniverseVariable(name) => PUniverse::Variable(name.0),
-        UniverseContents::UniverseSucc(_) => todo!(),
+        UniverseContents::UniverseSucc(succ) => PUniverse::Succ {
+            value: Box::new(delaborate_universe(&succ.0)),
+            succ_token: Span::default(),
+        },
         UniverseContents::UniverseMax(_) => todo!(),
-        UniverseContents::UniverseImpredicativeMax(_) => todo!(),
+        UniverseContents::UniverseImpredicativeMax(imax) => PUniverse::ImpredicativeMax {
+            imax_token: Span::default(),
+            left: Box::new(delaborate_universe(&imax.left)),
+            right: Box::new(delaborate_universe(&imax.right)),
+        },
         UniverseContents::Metauniverse(meta) => PUniverse::Metauniverse {
             span: Span::default(),
             index: meta.0,
@@ -137,8 +189,11 @@ pub fn delaborate_universe(universe: &Universe) -> PUniverse {
 
 fn pretty_print<'cache>(cache: &ExpressionCache<'cache>, expr: Expression<'cache>) -> Message {
     Message::String(
-        pexpression_to_document(cache.db(), &delaborate(cache, expr, &Default::default()))
-            .pretty_print(100),
+        pexpression_to_document(
+            cache.db(),
+            &delaborate(cache, expr, &Default::default(), true),
+        )
+        .pretty_print(100),
     )
 }
 

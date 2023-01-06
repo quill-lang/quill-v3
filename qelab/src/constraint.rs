@@ -1,6 +1,6 @@
 use fcommon::Span;
 use fkernel::{
-    expr::{Expression, ExpressionCache, ExpressionT, Metavariable, StuckExpression},
+    expr::{Apply, Expression, ExpressionCache, ExpressionT, Metavariable, StuckExpression},
     universe::Universe,
 };
 
@@ -10,44 +10,48 @@ use crate::elaborator::Elaborator;
 pub struct UnificationConstraint<'cache> {
     pub expected: Expression<'cache>,
     pub actual: Expression<'cache>,
-    pub justification: Justification,
+    pub justification: Justification<'cache>,
 }
 
 /// A universe `actual` is required to be definitionally equal to `expected`.
-pub struct UniverseConstraint {
+pub struct UniverseConstraint<'cache> {
     pub expected: Universe,
     pub actual: Universe,
-    pub justification: Justification,
+    pub justification: Justification<'cache>,
 }
 
 /// The reason why a particular unification constraint was given.
 #[derive(Clone)]
-pub enum Justification {
+pub enum Justification<'cache> {
     Variable,
-    Apply,
-    PreprocessLambda {
-        binder: Span,
-    },
-    Join {
-        first: Box<Justification>,
-        second: Box<Justification>,
-    },
+    ApplyPreprocess,
+    Apply { apply: Apply<Expression<'cache>> },
+    PreprocessLambda { binder: Span },
+    Join { first: Box<Self>, second: Box<Self> },
     PatternSolution,
-    PiParameter(Box<Justification>),
-    PiRegion(Box<Justification>),
-    PiBody(Box<Justification>),
+    PiParameter(Box<Self>),
+    PiRegion(Box<Self>),
+    PiBody(Box<Self>),
 }
 
-impl Justification {
-    pub fn display(&self, elab: &Elaborator) -> String {
+impl<'cache> Justification<'cache> {
+    pub fn display(&self, elab: &Elaborator<'_, 'cache>) -> String {
         match self {
             Justification::Variable => "variable".to_owned(),
-            Justification::Apply => "apply".to_owned(),
+            Justification::ApplyPreprocess => "apply (preprocess)".to_owned(),
+            Justification::Apply { apply } => format!(
+                "apply function {} to argument {}",
+                elab.pretty_print(apply.function),
+                elab.pretty_print(apply.argument),
+            ),
             Justification::PreprocessLambda { binder: _ } => "preprocessing lambda".to_owned(),
             Justification::Join { first, second } => {
                 format!("{}; {}", first.display(elab), second.display(elab))
             }
-            _ => todo!(),
+            Justification::PatternSolution => "pattern solution".to_owned(),
+            Justification::PiParameter(_) => "pi parameter".to_owned(),
+            Justification::PiRegion(_) => "pi region".to_owned(),
+            Justification::PiBody(_) => "pi body".to_owned(),
         }
     }
 }
@@ -55,7 +59,8 @@ impl Justification {
 /// A unification constraint with certain properties.
 pub enum CategorisedConstraint<'cache> {
     StuckApplication(StuckApplicationConstraint<'cache>),
-    Universe(UniverseConstraint),
+    FlexFlex(FlexFlexConstraint<'cache>),
+    Universe(UniverseConstraint<'cache>),
 }
 
 impl<'cache> UnificationConstraint<'cache> {
@@ -75,6 +80,13 @@ impl<'cache> UnificationConstraint<'cache> {
             return Vec::new();
         }
 
+        #[cfg(feature = "elaborator_diagnostics")]
+        tracing::trace!(
+            "simplifying {} =?= {}",
+            elab.pretty_print(self.expected),
+            elab.pretty_print(self.actual)
+        );
+
         // Simplification occurs differently depending on which variables were stuck, and how.
         // First, we check if the expressions have particular forms that are easy to simplify.
 
@@ -93,23 +105,14 @@ impl<'cache> UnificationConstraint<'cache> {
                     actual.structure.bound.ownership
                 );
 
-                // Unify their parameters, return types, and regions.
+                // Unify their parameters and return types.
+                // Deal with regions later.
                 let mut constraints = UnificationConstraint {
                     expected: expected.structure.bound.ty,
                     actual: actual.structure.bound.ty,
                     justification: Justification::PiParameter(Box::new(self.justification.clone())),
                 }
                 .simplify(elab);
-                constraints.extend(
-                    UnificationConstraint {
-                        expected: expected.structure.region,
-                        actual: actual.structure.region,
-                        justification: Justification::PiRegion(Box::new(
-                            self.justification.clone(),
-                        )),
-                    }
-                    .simplify(elab),
-                );
                 let local = Expression::new(
                     elab.cache(),
                     expected.structure.bound.name.0.provenance,
@@ -119,9 +122,7 @@ impl<'cache> UnificationConstraint<'cache> {
                     UnificationConstraint {
                         expected: expected.result.instantiate(elab.cache(), local),
                         actual: actual.result.instantiate(elab.cache(), local),
-                        justification: Justification::PiRegion(Box::new(
-                            self.justification.clone(),
-                        )),
+                        justification: Justification::PiBody(Box::new(self.justification.clone())),
                     }
                     .simplify(elab),
                 );
@@ -134,7 +135,7 @@ impl<'cache> UnificationConstraint<'cache> {
                     justification: self.justification,
                 })]
             }
-            _ => (),
+            _ => {},
         }
 
         // It was not in any of the simple forms that we recognised.
@@ -163,7 +164,29 @@ impl<'cache> UnificationConstraint<'cache> {
                     },
                 )]
             }
-            result => todo!("{:?}", result),
+            (
+                Some(StuckExpression::Application(expected)),
+                Some(StuckExpression::Application(actual)),
+            ) => {
+                // This is a flex-flex constraint.
+                vec![CategorisedConstraint::FlexFlex(FlexFlexConstraint {
+                    expected,
+                    expected_arguments: self.expected.apply_args(elab.cache()),
+                    actual,
+                    actual_arguments: self.actual.apply_args(elab.cache()),
+                    justification: self.justification,
+                })]
+            }
+            result => {
+                tracing::error!(
+                    "don't know how to categorise {} =?= {}\n{:?}\n{:?}",
+                    elab.pretty_print(self.expected),
+                    elab.pretty_print(self.actual),
+                    self.expected,
+                    self.actual,
+                );
+                todo!("{:?}", result)
+            }
         }
     }
 }
@@ -180,7 +203,7 @@ pub struct StuckApplicationConstraint<'cache> {
     pub metavariable: Metavariable<Expression<'cache>>,
     pub arguments: Vec<Expression<'cache>>,
     pub replacement: Expression<'cache>,
-    pub justification: Justification,
+    pub justification: Justification<'cache>,
 }
 
 /// Categorisations of stuck applications.
@@ -238,4 +261,13 @@ impl<'cache> StuckApplicationConstraint<'cache> {
             StuckApplicationType::FlexRigid
         }
     }
+}
+
+#[derive(Clone)]
+pub struct FlexFlexConstraint<'cache> {
+    pub expected: Metavariable<Expression<'cache>>,
+    pub expected_arguments: Vec<Expression<'cache>>,
+    pub actual: Metavariable<Expression<'cache>>,
+    pub actual_arguments: Vec<Expression<'cache>>,
+    pub justification: Justification<'cache>,
 }
