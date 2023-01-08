@@ -40,10 +40,12 @@ impl<'cache> Expression<'cache> {
             | ExpressionT::Region
             | ExpressionT::RegionT
             | ExpressionT::StaticRegion
-            | ExpressionT::Lifespan(_)
-            | ExpressionT::Metaregion(_) => Vec::new(),
-            ExpressionT::Metavariable(e) => vec![e.ty],
-            ExpressionT::LocalConstant(e) => vec![e.metavariable.ty],
+            | ExpressionT::Lifespan(_) => Vec::new(),
+            ExpressionT::Hole(mut e) | ExpressionT::RegionHole(mut e) => {
+                e.args.push(e.ty);
+                e.args
+            }
+            ExpressionT::LocalConstant(e) => vec![e.structure.bound.ty],
         }
     }
 
@@ -289,28 +291,46 @@ impl<'cache> Expression<'cache> {
                     | ExpressionT::Region
                     | ExpressionT::RegionT
                     | ExpressionT::StaticRegion => self,
-                    ExpressionT::Metavariable(e) => Self::new(
+                    ExpressionT::Hole(e) => Self::new(
                         cache,
                         self.provenance(cache),
-                        ExpressionT::Metavariable(Metavariable {
-                            index: e.index,
-                            ty: e.ty.replace_in_expression_offset(cache, replace_fn, offset),
+                        ExpressionT::Hole(Hole {
+                            id: e.id,
+                            args: e
+                                .args
+                                .iter()
+                                .map(|e| e.replace_in_expression_offset(cache, replace_fn, offset))
+                                .collect(),
+                            ty: e.ty.replace_in_expression_offset(
+                                cache,
+                                replace_fn,
+                                offset + DeBruijnOffset::new(e.args.len() as u32),
+                            ),
                         }),
                     ),
-                    // Metaregions have no real sub-expressions.
-                    ExpressionT::Metaregion(_) => self,
+                    ExpressionT::RegionHole(e) => Self::new(
+                        cache,
+                        self.provenance(cache),
+                        ExpressionT::RegionHole(Hole {
+                            id: e.id,
+                            args: e
+                                .args
+                                .iter()
+                                .map(|e| e.replace_in_expression_offset(cache, replace_fn, offset))
+                                .collect(),
+                            ty: e.ty.replace_in_expression_offset(
+                                cache,
+                                replace_fn,
+                                offset + DeBruijnOffset::new(e.args.len() as u32),
+                            ),
+                        }),
+                    ),
                     ExpressionT::LocalConstant(e) => {
                         Self::new(
                             cache,
                             self.provenance(cache),
                             ExpressionT::LocalConstant(LocalConstant {
-                                metavariable: Metavariable {
-                                    index: e.metavariable.index,
-                                    ty: e
-                                        .metavariable
-                                        .ty
-                                        .replace_in_expression_offset(cache, replace_fn, offset),
-                                },
+                                id: e.id,
                                 structure: BinderStructure {
                                     bound: BoundVariable {
                                         ty: e.structure.bound.ty.replace_in_expression_offset(
@@ -348,7 +368,7 @@ impl<'cache> Expression<'cache> {
     fn find_in_expression_offset(
         self,
         cache: &ExpressionCache<'cache>,
-        predicate: impl Clone + Fn(Self, DeBruijnOffset) -> bool,
+        predicate: &impl Fn(Self, DeBruijnOffset) -> bool,
         offset: DeBruijnOffset,
     ) -> Option<Self> {
         if predicate(self, offset) {
@@ -358,27 +378,22 @@ impl<'cache> Expression<'cache> {
                 ExpressionT::Local(_) | ExpressionT::Inst(_) => None,
                 ExpressionT::Borrow(e) => e
                     .region
-                    .find_in_expression_offset(cache, predicate.clone(), offset)
-                    .or_else(|| {
-                        e.value
-                            .find_in_expression_offset(cache, predicate.clone(), offset)
-                    }),
+                    .find_in_expression_offset(cache, predicate, offset)
+                    .or_else(|| e.value.find_in_expression_offset(cache, predicate, offset)),
                 ExpressionT::Dereference(e) => {
                     e.value.find_in_expression_offset(cache, predicate, offset)
                 }
                 ExpressionT::Delta(e) => e
                     .region
-                    .find_in_expression_offset(cache, predicate.clone(), offset)
-                    .or_else(|| {
-                        e.ty.find_in_expression_offset(cache, predicate.clone(), offset)
-                    }),
+                    .find_in_expression_offset(cache, predicate, offset)
+                    .or_else(|| e.ty.find_in_expression_offset(cache, predicate, offset)),
                 ExpressionT::Let(e) => e
                     .to_assign
-                    .find_in_expression_offset(cache, predicate.clone(), offset)
+                    .find_in_expression_offset(cache, predicate, offset)
                     .or_else(|| {
                         e.bound
                             .ty
-                            .find_in_expression_offset(cache, predicate.clone(), offset)
+                            .find_in_expression_offset(cache, predicate, offset)
                     })
                     .or_else(|| {
                         e.body
@@ -387,13 +402,12 @@ impl<'cache> Expression<'cache> {
                 ExpressionT::Lambda(e) | ExpressionT::Pi(e) => e
                     .structure
                     .region
-                    .find_in_expression_offset(cache, predicate.clone(), offset)
+                    .find_in_expression_offset(cache, predicate, offset)
                     .or_else(|| {
-                        e.structure.bound.ty.find_in_expression_offset(
-                            cache,
-                            predicate.clone(),
-                            offset,
-                        )
+                        e.structure
+                            .bound
+                            .ty
+                            .find_in_expression_offset(cache, predicate, offset)
                     })
                     .or_else(|| {
                         e.result
@@ -404,22 +418,22 @@ impl<'cache> Expression<'cache> {
                     .find_in_expression_offset(cache, predicate, offset.succ()),
                 ExpressionT::Apply(e) => e
                     .function
-                    .find_in_expression_offset(cache, predicate.clone(), offset)
+                    .find_in_expression_offset(cache, predicate, offset)
                     .or_else(|| {
                         e.argument
-                            .find_in_expression_offset(cache, predicate.clone(), offset)
+                            .find_in_expression_offset(cache, predicate, offset)
                     }),
                 ExpressionT::Intro(e) => e
                     .parameters
                     .iter()
-                    .find_map(|e| e.find_in_expression_offset(cache, predicate.clone(), offset)),
+                    .find_map(|e| e.find_in_expression_offset(cache, predicate, offset)),
                 ExpressionT::Match(e) => e
                     .major_premise
-                    .find_in_expression_offset(cache, predicate.clone(), offset)
+                    .find_in_expression_offset(cache, predicate, offset)
                     .or_else(|| {
                         e.motive.find_in_expression_offset(
                             cache,
-                            predicate.clone(),
+                            predicate,
                             offset.succ() + DeBruijnOffset::new(e.index_params),
                         )
                     })
@@ -427,18 +441,18 @@ impl<'cache> Expression<'cache> {
                         e.minor_premises.iter().find_map(|premise| {
                             premise.result.find_in_expression_offset(
                                 cache,
-                                predicate.clone(),
+                                predicate,
                                 offset + DeBruijnOffset::new(premise.fields),
                             )
                         })
                     }),
                 ExpressionT::Fix(e) => e
                     .argument
-                    .find_in_expression_offset(cache, predicate.clone(), offset.succ())
+                    .find_in_expression_offset(cache, predicate, offset.succ())
                     .or_else(|| {
                         e.fixpoint.ty.find_in_expression_offset(
                             cache,
-                            predicate.clone(),
+                            predicate,
                             offset.succ().succ(),
                         )
                     })
@@ -450,34 +464,41 @@ impl<'cache> Expression<'cache> {
                 | ExpressionT::Region
                 | ExpressionT::RegionT
                 | ExpressionT::StaticRegion
-                | ExpressionT::Metavariable(_)
-                | ExpressionT::Metaregion(_)
                 | ExpressionT::LocalConstant(_) => None,
+                ExpressionT::Hole(e) | ExpressionT::RegionHole(e) => e
+                    .args
+                    .iter()
+                    .map(|e| e.find_in_expression_offset(cache, predicate, offset))
+                    .next()
+                    .unwrap_or_default()
+                    .or_else(|| {
+                        e.ty.find_in_expression_offset(
+                            cache,
+                            predicate,
+                            offset + DeBruijnOffset::new(e.args.len() as u32),
+                        )
+                    }),
             }
         }
     }
 
-    /// Returns the first local constant or metavariable in the given expression.
+    /// Returns the first local constant, hole, or region hole in the given expression.
     #[must_use]
-    pub fn first_local_or_metavariable(self, cache: &ExpressionCache<'cache>) -> Option<Self> {
+    pub fn first_local_or_hole(self, cache: &ExpressionCache<'cache>) -> Option<Self> {
         self.find_in_expression(cache, &|inner, _offset| {
             matches!(
                 inner.value(cache),
-                ExpressionT::LocalConstant(_) | ExpressionT::Metavariable(_)
+                ExpressionT::LocalConstant(_) | ExpressionT::Hole(_)
             )
         })
     }
 
-    /// Returns true if the given metavariable appears in `self`.
+    /// Returns true if the given hole or region hole appears in `self`.
     #[must_use]
-    pub fn metavariable_occurs(
-        self,
-        cache: &ExpressionCache<'cache>,
-        metavariable: Metavariable<Expression<'cache>>,
-    ) -> bool {
+    pub fn hole_occurs(self, cache: &ExpressionCache<'cache>, hole: HoleId) -> bool {
         self.find_in_expression(cache, &|inner, _offset| {
-            if let ExpressionT::Metavariable(var) = inner.value(cache) {
-                metavariable == var
+            if let ExpressionT::Hole(var) | ExpressionT::RegionHole(var) = inner.value(cache) {
+                hole == var.id
             } else {
                 false
             }
@@ -548,6 +569,7 @@ impl<'cache> Expression<'cache> {
     /// Instantiate the first bound variable with the given substitution.
     /// This will subtract one from all higher de Bruijn indices.
     /// TODO: Cache the results.
+    /// TODO: n-ary instantiation operation.
     #[must_use]
     pub fn instantiate(self, cache: &ExpressionCache<'cache>, substitution: Self) -> Self {
         self.replace_in_expression(cache, &|e, offset| {
@@ -747,19 +769,18 @@ impl<'cache> Expression<'cache> {
         }
     }
 
-    /// Instantiates the given metavariable.
-    /// `replacement` should be a closed expression.
+    /// Replaces every instance of the given hole inside this expression with a replacement.
+    /// When instantiated with the arguments of the hole, `replacement` should be a closed expression.
     #[must_use]
-    pub fn replace_metavariable(
-        self,
-        cache: &ExpressionCache<'cache>,
-        metavariable: Metavariable<Self>,
-        replacement: Self,
-    ) -> Self {
+    pub fn fill_hole(self, cache: &ExpressionCache<'cache>, id: HoleId, replacement: Self) -> Self {
         self.replace_in_expression(cache, &|e, _offset| match e.value(cache) {
-            ExpressionT::Metavariable(inner_metavariable) => {
-                if inner_metavariable == metavariable {
-                    ReplaceResult::ReplaceWith(replacement)
+            ExpressionT::Hole(hole) | ExpressionT::RegionHole(hole) => {
+                if hole.id == id {
+                    ReplaceResult::ReplaceWith(
+                        hole.args
+                            .into_iter()
+                            .fold(replacement, |acc, e| acc.instantiate(cache, e)),
+                    )
                 } else {
                     ReplaceResult::Skip
                 }
@@ -778,7 +799,7 @@ impl<'cache> Expression<'cache> {
     ) -> Self {
         self.replace_in_expression(cache, &|e, offset| {
             if let ExpressionT::LocalConstant(inner) = e.value(cache)
-            && inner.metavariable == local.metavariable {
+            && inner.id == local.id {
             // We should replace this local variable.
             ReplaceResult::ReplaceWith(replacement.lift_free_vars(cache, DeBruijnOffset::zero(), offset))
         } else {
@@ -813,26 +834,6 @@ impl<'cache> Expression<'cache> {
                     cache,
                     e.provenance(cache),
                     ExpressionT::Sort(sort),
-                ))
-            }
-            ExpressionT::Metavariable(mut meta) => {
-                meta.ty = meta.ty.replace_universe_variable(cache, var, replacement);
-                ReplaceResult::ReplaceWith(Self::new(
-                    cache,
-                    e.provenance(cache),
-                    ExpressionT::Metavariable(meta),
-                ))
-            }
-            ExpressionT::LocalConstant(mut local) => {
-                local.metavariable.ty =
-                    local
-                        .metavariable
-                        .ty
-                        .replace_universe_variable(cache, var, replacement);
-                ReplaceResult::ReplaceWith(Self::new(
-                    cache,
-                    e.provenance(cache),
-                    ExpressionT::LocalConstant(local),
                 ))
             }
             _ => ReplaceResult::Skip,

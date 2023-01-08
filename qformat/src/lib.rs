@@ -162,7 +162,22 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
         PExpression::Region(_) => Document::Text("Region".to_owned()),
         PExpression::RegionT(_) => Document::Text("RegionT".to_owned()),
         PExpression::Inductive(_) => todo!(),
-        PExpression::Metavariable { index, .. } => Document::Text(format!("?{index}")),
+        PExpression::Metavariable { id, args, .. } => {
+            if args.is_empty() {
+                Document::Text(id.to_string())
+            } else {
+                Document::Concat(
+                    std::iter::once(Document::Text(format!("{id}[")))
+                        .chain(
+                            args.iter()
+                                .map(|pexpr| pexpression_to_document(db, pexpr))
+                                .intersperse(Document::Text(", ".to_owned())),
+                        )
+                        .chain(std::iter::once(Document::Text("]".to_owned())))
+                        .collect(),
+                )
+            }
+        }
     }
 }
 

@@ -51,7 +51,7 @@ impl<'cache> Expression<'cache> {
         let mut result = Vec::new();
         while let ExpressionT::Pi(pi) = self.value(cache) {
             self = pi.result;
-            result.push(pi.structure.generate_local(cache));
+            result.push(cache.gen_local(pi.structure));
         }
         result
     }

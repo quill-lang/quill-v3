@@ -95,8 +95,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// If the expected type is unknown, it is created as another hole.
     /// If the expected type is (syntactically) `Region`, we will create a metaregion hole instead of a metavariable hole.
     ///
-    /// Since only closed expressions can be assigned to metavariables, creating a hole of type `C` inside a context `x: A, y: B`
-    /// actually creates the metavariable `m: (x: A) -> (y: B) -> C` and returns `m x y`.
+    /// Creating a hole of type `C` inside a context `x: A, y: B` creates the expression `?m[x, y]`.
     pub fn hole(
         &mut self,
         ctx: &Context<'cache>,
@@ -115,37 +114,27 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             self.hole(ctx, provenance, ty_ty)
         });
 
-        // TODO: `create_nary_application` and `abstract_nary_pi` work strangely with local constants
-        // introduced by function types invoked from behind a borrow.
-        let metavariable = self.cache().gen_metavariable(
-            ty.abstract_nary_pi(
-                self.cache(),
-                ctx.local_variables
-                    .values()
-                    .map(|constant| (provenance, *constant)),
-            ),
+        let hole = self.cache.gen_hole(
+            ctx.local_variables
+                .values()
+                .map(|constant| {
+                    Expression::new(
+                        self.cache,
+                        provenance,
+                        ExpressionT::LocalConstant(*constant),
+                    )
+                })
+                .collect(),
+            ty,
         );
         Expression::new(
             self.cache(),
             provenance,
             if ty.value(self.cache()) == ExpressionT::Region {
-                ExpressionT::Metaregion(metavariable)
+                ExpressionT::RegionHole(hole)
             } else {
-                ExpressionT::Metavariable(metavariable)
+                ExpressionT::Hole(hole)
             },
-        )
-        .create_nary_application(
-            self.cache(),
-            ctx.local_variables.values().map(|constant| {
-                (
-                    provenance,
-                    Expression::new(
-                        self.cache(),
-                        constant.structure.bound.name.0.provenance,
-                        ExpressionT::LocalConstant(*constant),
-                    ),
-                )
-            }),
         )
     }
 
@@ -161,14 +150,15 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// Returns the type that it was deduced to have.
     pub fn constrain_type_correct(&mut self, expr: Expression<'cache>) -> Dr<Expression<'cache>> {
         self.infer_type_with_constraints(expr).map(|ty| {
-            // for constraint in &ty.constraints {
-            //     tracing::trace!(
-            //         "inference: unifying {} =?= {} because {}",
-            //         self.pretty_print(constraint.expected),
-            //         self.pretty_print(constraint.actual),
-            //         constraint.justification.display(self),
-            //     );
-            // }
+            #[cfg(feature = "elaborator_diagnostics")]
+            for constraint in &ty.constraints {
+                tracing::trace!(
+                    "inference: unifying {} =?= {} because {}",
+                    self.pretty_print(constraint.expected),
+                    self.pretty_print(constraint.actual),
+                    constraint.justification.display(self),
+                );
+            }
             self.unification_constraints.extend(ty.constraints);
             ty.expr
         })

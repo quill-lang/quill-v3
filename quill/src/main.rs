@@ -13,7 +13,7 @@ struct PrettyPrintDelaborator<'a>(&'a QuillDatabase);
 
 impl<'a> Delaborator for PrettyPrintDelaborator<'a> {
     fn delaborate(&self, expr: &fkernel::expr::HeapExpression) -> fkernel::result::Message {
-        ExpressionCache::with_cache(self.0, None, None, |cache| {
+        ExpressionCache::with_cache(self.0, None, None, None, |cache| {
             fkernel::result::Message::String(
                 qformat::pexpression_to_document(
                     self.0,
@@ -68,6 +68,9 @@ fn main() {
             let result = certify_definition(&db, path.with(&db, *def.name));
             for report in result.reports() {
                 report.render(&db, &formatter, &mut stderr);
+            }
+            if result.failed() {
+                break;
             }
         }
     }

@@ -131,7 +131,7 @@ fn check_field(
             Expression::new(
                 cache,
                 Provenance::Synthetic,
-                ExpressionT::LocalConstant(param.from_heap(cache).generate_local(cache)),
+                ExpressionT::LocalConstant(cache.gen_local(param.from_heap(cache))),
             ),
         );
     }

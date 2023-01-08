@@ -8,7 +8,7 @@ use std::iter::Peekable;
 use fcommon::{Label, LabelType, Report, ReportKind, Span, Spanned, Str};
 use fkernel::{
     basic::{Name, QualifiedName, WithProvenance},
-    expr::BinderAnnotation,
+    expr::{BinderAnnotation, HoleId},
     message,
     multiplicity::ParameterOwnership,
     result::Dr,
@@ -205,7 +205,8 @@ pub enum PExpression {
     Inductive(PInductive),
     Metavariable {
         span: Span,
-        index: u32,
+        id: HoleId,
+        args: Vec<PExpression>,
     },
 }
 

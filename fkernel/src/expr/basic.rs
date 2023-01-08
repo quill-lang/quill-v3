@@ -22,7 +22,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::{hash_map::Entry, HashMap},
-    fmt::Debug,
+    fmt::{Debug, Display},
     hash::Hash,
     marker::PhantomData,
 };
@@ -207,20 +207,6 @@ pub struct Binder<E> {
     pub result: E,
 }
 
-impl<'cache> BinderStructure<Expression<'cache>> {
-    /// Generates a local constant that represents the argument to this dependent function type.
-    /// The index of the metavariable is guaranteed not to collide with the metavariables in `exprs`.
-    pub fn generate_local(
-        &self,
-        cache: &ExpressionCache<'cache>,
-    ) -> LocalConstant<Expression<'cache>> {
-        LocalConstant {
-            metavariable: cache.gen_metavariable(self.bound.ty),
-            structure: *self,
-        }
-    }
-}
-
 /// A [`Binder`] that takes an arbitrary amount of parameters, including zero.
 /// Each binder may depend on the previous ones.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -256,48 +242,6 @@ pub struct RegionBinder<E> {
     pub region_name: Name,
     /// The body of the expression.
     pub body: E,
-}
-
-impl<'cache> RegionBinder<Expression<'cache>> {
-    /// Generates a local constant that represents the argument to this dependent function type.
-    pub fn generate_local_with_gen(
-        &self,
-        cache: &ExpressionCache<'cache>,
-        meta_gen: &mut MetavariableGenerator<Expression<'cache>>,
-    ) -> LocalConstant<Expression<'cache>> {
-        LocalConstant {
-            metavariable: meta_gen.gen(Expression::new(
-                cache,
-                self.region_name.0.provenance,
-                ExpressionT::Region,
-            )),
-            structure: BinderStructure {
-                bound: BoundVariable {
-                    name: self.region_name,
-                    ty: Expression::new(cache, self.region_name.0.provenance, ExpressionT::Region),
-                    ownership: ParameterOwnership::PCopyable,
-                },
-                function_ownership: FunctionOwnership::Once,
-                binder_annotation: BinderAnnotation::Explicit,
-                region: Expression::new(
-                    cache,
-                    self.region_name.0.provenance,
-                    ExpressionT::StaticRegion,
-                ),
-            },
-        }
-    }
-
-    /// Generates a local constant that represents the argument to this dependent function type.
-    /// The index of the metavariable is guaranteed not to collide with the metavariables in `e`.
-    pub fn generate_local(
-        &self,
-        cache: &ExpressionCache<'cache>,
-        e: Expression<'cache>,
-    ) -> LocalConstant<Expression<'cache>> {
-        let largest_unusable = e.largest_unusable_metavariable(cache);
-        self.generate_local_with_gen(cache, &mut MetavariableGenerator::new(largest_unusable))
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -390,98 +334,112 @@ pub struct Lifespan<E> {
     pub ty: E,
 }
 
+/// An identifier for a hole.
+/// These are considered unique for a particular [`ExpressionCache`].
+/// When a hole is filled, all holes with this ID are processed in the same way.
+///
+/// An [`Ord`] implementation is provided to aid with determinism.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HoleId(pub u32);
+
+impl Display for HoleId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "?{}", self.0)
+    }
+}
+
 /// An inference variable.
 /// May have theoretically any type.
-/// Metavariables can be used for region variables that are to be inferred by the borrow checker.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq)]
-pub struct Metavariable<E> {
-    pub index: u32,
-    /// We store the types of metavariables explicitly, since they can't be inferred.
+/// Also called a *metavariable*, although this name is sometimes reserved for holes with no arguments.
+///
+/// When the metavariable is instantiated with an expression `expr`, we instantiate `expr` with `args`, and
+/// replace this expression with the result. This result should always be a closed expression.
+/// This approach to metavariables allows us to avoid using pi types and function application unnecessarily,
+/// which is helpful when reasoning about regions, which behave weirdly with functions.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Hole<E> {
+    /// An index for this metavariable.
+    /// This is unique for a particular [`ExpressionCache`].
+    /// When a hole is filled, all holes with this ID are processed in the same way.
+    pub id: HoleId,
+    /// A list of arguments to the metavariable.
+    /// The value and type of the hole should be closed expressions, once instantiated with `args`.
+    ///
+    /// These arguments should either be bound variables or local constants, all of which must be distinct.
+    pub args: Vec<E>,
+    /// The type of this hole, which is evaluated in the context of `args`.
     pub ty: E,
 }
 
-impl<E> PartialEq for Metavariable<E>
-where
-    E: PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        if self.index == other.index && self.ty != other.ty {
-            unreachable!();
-        }
-        self.index == other.index
-    }
-}
-
-impl<E> PartialOrd for Metavariable<E>
-where
-    E: PartialEq,
-{
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.index.partial_cmp(&other.index)
-    }
-}
-
-impl<E> Ord for Metavariable<E>
-where
-    E: Eq,
-{
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.index.cmp(&other.index)
-    }
-}
-
-impl<E> Hash for Metavariable<E> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.index.hash(state);
-    }
-}
+/// An identifier for a local constant.
+/// These are considered unique for a particular [`ExpressionCache`].
+///
+/// An [`Ord`] implementation is provided to aid with determinism.
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LocalConstantId(pub u32);
 
 /// De Bruijn indices (bound variables) are replaced with local constants while we're inside the function body.
 /// Should not be used in functions manually.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, Eq)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct LocalConstant<E> {
-    pub metavariable: Metavariable<E>,
+    /// An id created to ensure that local constants with the same name are not considered equal.
+    /// All local constants with the same `id` must have the same `structure`.
+    pub id: LocalConstantId,
     /// The structure of the binder that introduced this local constant.
+    /// This field provides the type of this variable.
     pub structure: BinderStructure<E>,
 }
 
-impl<E> PartialEq for LocalConstant<E>
-where
-    E: PartialEq,
-{
+impl<E> PartialEq for LocalConstant<E> {
     fn eq(&self, other: &Self) -> bool {
-        self.metavariable == other.metavariable
+        self.id == other.id
     }
 }
+
+impl<E> Eq for LocalConstant<E> {}
 
 impl<E> Hash for LocalConstant<E> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.metavariable.hash(state);
+        self.id.hash(state);
     }
 }
 
-/// Generates unique inference variable names.
-#[derive(Default)]
+/// Generates unique hole and local constant IDs.
 pub struct MetavariableGenerator<E> {
     _phantom: std::marker::PhantomData<E>,
-    next_var: u32,
+    next_hole: HoleId,
+    next_local: LocalConstantId,
 }
 
 impl<E> MetavariableGenerator<E> {
     /// Creates a new variable generator.
-    /// Its variables will all be greater than the provided "largest unusable" variable name.
+    /// Its hole IDs will all be greater than the provided largest used ID, and the same holds for local constant IDs.
     /// If one was not provided, no guarantees are made about name clashing.
-    pub fn new(largest_unusable: Option<u32>) -> Self {
+    pub fn new(largest_hole: Option<HoleId>, largest_local: Option<LocalConstantId>) -> Self {
         Self {
             _phantom: Default::default(),
-            next_var: largest_unusable.map_or(0, |x| x + 1),
+            next_hole: largest_hole.map_or(HoleId(0), |x| HoleId(x.0 + 1)),
+            next_local: largest_local.map_or(LocalConstantId(0), |x| LocalConstantId(x.0 + 1)),
         }
     }
 
-    pub fn gen(&mut self, ty: E) -> Metavariable<E> {
-        let result = self.next_var;
-        self.next_var += 1;
-        Metavariable { index: result, ty }
+    pub fn gen_hole(&mut self, args: Vec<E>, ty: E) -> Hole<E> {
+        let result = self.next_hole;
+        self.next_hole.0 += 1;
+        Hole {
+            id: result,
+            args,
+            ty,
+        }
+    }
+
+    pub fn gen_local(&mut self, structure: BinderStructure<E>) -> LocalConstant<E> {
+        let result = self.next_local;
+        self.next_local.0 += 1;
+        LocalConstant {
+            id: result,
+            structure,
+        }
     }
 }
 
@@ -508,10 +466,11 @@ pub enum ExpressionT<E> {
     RegionT,
     StaticRegion,
     Lifespan(Lifespan<E>),
-    Metavariable(Metavariable<E>),
-    /// A metavariable that has type `T -> Region`, where `T` is any list of parameters.
-    /// These are allowed to be left and not unified until the borrow checking stage.
-    Metaregion(Metavariable<E>),
+    Hole(Hole<E>),
+    /// A hole that has type `Region`.
+    /// These are allowed to be unfilled until the borrow checking stage.
+    /// TODO: Establish a contract for the use of this variant to speed up certain kernel operations by assuming facts about region holes.
+    RegionHole(Hole<E>),
     LocalConstant(LocalConstant<E>),
 }
 
@@ -533,8 +492,8 @@ pub struct ExpressionCache<'cache> {
     expressions:
         RefCell<HashMap<Expression<'cache>, WithProvenance<ExpressionT<Expression<'cache>>>>>,
 
-    /// Memoised results of `largest_unusable_metavariable`.
-    pub(crate) largest_unusable_metavariable: RefCell<HashMap<Expression<'cache>, Option<u32>>>,
+    /// Memoised results of `largest_hole`.
+    pub(crate) largest_hole: RefCell<HashMap<Expression<'cache>, Option<HoleId>>>,
     /// Memoised results of `first_free_variable_index`.
     pub(crate) first_free_variable_index: RefCell<HashMap<Expression<'cache>, DeBruijnIndex>>,
 }
@@ -544,18 +503,19 @@ impl<'cache> ExpressionCache<'cache> {
     /// See <https://plv.mpi-sws.org/rustbelt/ghostcell/paper.pdf> for more information about this technique.
     pub fn with_cache<R>(
         db: &dyn Db,
-        largest_unusable: Option<u32>,
+        largest_hole: Option<HoleId>,
+        largest_local: Option<LocalConstantId>,
         largest_unusable_universe: Option<u32>,
         f: impl for<'a> FnOnce(&ExpressionCache<'a>) -> R,
     ) -> R {
         f(&ExpressionCache {
             db,
             next_id: Cell::new(0),
-            meta_gen: RefCell::new(MetavariableGenerator::new(largest_unusable)),
+            meta_gen: RefCell::new(MetavariableGenerator::new(largest_hole, largest_local)),
             metauniverse_gen: RefCell::new(MetauniverseGenerator::new(largest_unusable_universe)),
             ids: Default::default(),
             expressions: Default::default(),
-            largest_unusable_metavariable: Default::default(),
+            largest_hole: Default::default(),
             first_free_variable_index: Default::default(),
         })
     }
@@ -564,8 +524,39 @@ impl<'cache> ExpressionCache<'cache> {
         self.db
     }
 
-    pub fn gen_metavariable(&self, ty: Expression<'cache>) -> Metavariable<Expression<'cache>> {
-        self.meta_gen.borrow_mut().gen(ty)
+    pub fn gen_hole(
+        &self,
+        args: Vec<Expression<'cache>>,
+        ty: Expression<'cache>,
+    ) -> Hole<Expression<'cache>> {
+        self.meta_gen.borrow_mut().gen_hole(args, ty)
+    }
+
+    pub fn gen_local(
+        &self,
+        structure: BinderStructure<Expression<'cache>>,
+    ) -> LocalConstant<Expression<'cache>> {
+        self.meta_gen.borrow_mut().gen_local(structure)
+    }
+
+    pub fn gen_region_local(
+        &self,
+        binder: RegionBinder<Expression<'cache>>,
+    ) -> LocalConstant<Expression<'cache>> {
+        self.gen_local(BinderStructure {
+            bound: BoundVariable {
+                name: binder.region_name,
+                ty: Expression::new(self, binder.region_name.0.provenance, ExpressionT::Region),
+                ownership: ParameterOwnership::PCopyable,
+            },
+            function_ownership: FunctionOwnership::Once,
+            binder_annotation: BinderAnnotation::Explicit,
+            region: Expression::new(
+                self,
+                binder.region_name.0.provenance,
+                ExpressionT::StaticRegion,
+            ),
+        })
     }
 
     pub fn gen_metauniverse(&self) -> Metauniverse {
@@ -598,6 +589,7 @@ pub struct HeapExpression {
 impl<'cache> Expression<'cache> {
     /// Creates a new [`Expression`] with the given value.
     /// If an expression with this body was already cached, return the cached [`Expression`].
+    /// Note that expressions with differing provenance are considered different.
     pub fn new(
         cache: &ExpressionCache<'cache>,
         provenance: Provenance,
@@ -707,23 +699,24 @@ impl<'cache> Expression<'cache> {
         )
     }
 
+    /// Returns the sort of regions.
     pub fn region(cache: &ExpressionCache<'cache>) -> Self {
         Self::new(cache, Provenance::Synthetic, ExpressionT::Region)
     }
 }
 
-/// An expression is *stuck* if computation cannot continue without instantiating a metavariable.
+/// An expression is *stuck* if computation cannot continue without filling a hole.
 #[derive(Debug)]
 pub enum StuckExpression<'cache> {
-    /// An expression is a stuck application if its [head symbol](Expression::head) is a metavariable,
-    /// or a borrow of a metavariable.
-    /// If the given metavariable is instantiated with an unstuck expression,
+    /// An expression is a stuck application if its [head symbol](Expression::head) is a hole,
+    /// or a borrow of a hole.
+    /// If the given hole is instantiated with an unstuck expression,
     /// the expression will no longer be stuck.
-    Application(Metavariable<Expression<'cache>>),
+    Application(Hole<Expression<'cache>>),
     /// An expression is a stuck match if it is a match, where the major premise is stuck.
-    /// If the given metavariable is instantiated with an unstuck expression,
+    /// If the given hole is instantiated with an unstuck expression,
     /// the expression will no longer be stuck.
-    Match(Metavariable<Expression<'cache>>),
+    Match(Hole<Expression<'cache>>),
 }
 
 impl<'cache> Expression<'cache> {
@@ -733,14 +726,14 @@ impl<'cache> Expression<'cache> {
             return match_expr.major_premise.stuck(cache);
         }
         match self.head(cache).value(cache) {
-            ExpressionT::Metavariable(var) | ExpressionT::Metaregion(var) => {
-                Some(StuckExpression::Application(var))
+            ExpressionT::Hole(hole) | ExpressionT::RegionHole(hole) => {
+                Some(StuckExpression::Application(hole))
             }
             ExpressionT::Borrow(borrow) => {
-                if let ExpressionT::Metavariable(var) | ExpressionT::Metaregion(var) =
+                if let ExpressionT::Hole(hole) | ExpressionT::RegionHole(hole) =
                     borrow.value.value(cache)
                 {
-                    Some(StuckExpression::Application(var))
+                    Some(StuckExpression::Application(hole))
                 } else {
                     None
                 }

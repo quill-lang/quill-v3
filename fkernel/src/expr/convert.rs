@@ -9,21 +9,21 @@ impl<'cache> Expression<'cache> {
             ExpressionT::Borrow(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::Borrow(Borrow {
-                    region: (e.region.to_heap(cache)),
-                    value: (e.value.to_heap(cache)),
+                    region: e.region.to_heap(cache),
+                    value: e.value.to_heap(cache),
                 }),
             ),
             ExpressionT::Dereference(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::Dereference(Dereference {
-                    value: (e.value.to_heap(cache)),
+                    value: e.value.to_heap(cache),
                 }),
             ),
             ExpressionT::Delta(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::Delta(Delta {
-                    region: (e.region.to_heap(cache)),
-                    ty: (e.ty.to_heap(cache)),
+                    region: e.region.to_heap(cache),
+                    ty: e.ty.to_heap(cache),
                 }),
             ),
             ExpressionT::Inst(e) => HeapExpression::new(
@@ -37,43 +37,43 @@ impl<'cache> Expression<'cache> {
                 self.provenance(cache),
                 ExpressionT::Let(Let {
                     bound: e.bound.to_heap(cache),
-                    to_assign: (e.to_assign.to_heap(cache)),
-                    body: (e.body.to_heap(cache)),
+                    to_assign: e.to_assign.to_heap(cache),
+                    body: e.body.to_heap(cache),
                 }),
             ),
             ExpressionT::Lambda(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::Lambda(Binder {
                     structure: e.structure.to_heap(cache),
-                    result: (e.result.to_heap(cache)),
+                    result: e.result.to_heap(cache),
                 }),
             ),
             ExpressionT::Pi(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::Pi(Binder {
                     structure: e.structure.to_heap(cache),
-                    result: (e.result.to_heap(cache)),
+                    result: e.result.to_heap(cache),
                 }),
             ),
             ExpressionT::RegionLambda(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::RegionLambda(RegionBinder {
                     region_name: e.region_name,
-                    body: (e.body.to_heap(cache)),
+                    body: e.body.to_heap(cache),
                 }),
             ),
             ExpressionT::RegionPi(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::RegionPi(RegionBinder {
                     region_name: e.region_name,
-                    body: (e.body.to_heap(cache)),
+                    body: e.body.to_heap(cache),
                 }),
             ),
             ExpressionT::Apply(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::Apply(Apply {
-                    function: (e.function.to_heap(cache)),
-                    argument: (e.argument.to_heap(cache)),
+                    function: e.function.to_heap(cache),
+                    argument: e.argument.to_heap(cache),
                 }),
             ),
             ExpressionT::Intro(e) => HeapExpression::new(
@@ -94,7 +94,7 @@ impl<'cache> Expression<'cache> {
                 ExpressionT::Match(Match {
                     major_premise: (e.major_premise.to_heap(cache)),
                     index_params: e.index_params,
-                    motive: (e.motive.to_heap(cache)),
+                    motive: e.motive.to_heap(cache),
                     minor_premises: e
                         .minor_premises
                         .iter()
@@ -109,10 +109,10 @@ impl<'cache> Expression<'cache> {
             ExpressionT::Fix(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::Fix(Fix {
-                    argument: (e.argument.to_heap(cache)),
+                    argument: e.argument.to_heap(cache),
                     argument_name: e.argument_name,
                     fixpoint: e.fixpoint.to_heap(cache),
-                    body: (e.body.to_heap(cache)),
+                    body: e.body.to_heap(cache),
                 }),
             ),
             ExpressionT::Sort(e) => {
@@ -131,27 +131,26 @@ impl<'cache> Expression<'cache> {
                     ty: (e.ty.to_heap(cache)),
                 }),
             ),
-            ExpressionT::Metavariable(e) => HeapExpression::new(
+            ExpressionT::Hole(e) => HeapExpression::new(
                 self.provenance(cache),
-                ExpressionT::Metavariable(Metavariable {
-                    index: e.index,
-                    ty: (e.ty.to_heap(cache)),
+                ExpressionT::Hole(Hole {
+                    id: e.id,
+                    ty: e.ty.to_heap(cache),
+                    args: e.args.iter().map(|arg| arg.to_heap(cache)).collect(),
                 }),
             ),
-            ExpressionT::Metaregion(e) => HeapExpression::new(
+            ExpressionT::RegionHole(e) => HeapExpression::new(
                 self.provenance(cache),
-                ExpressionT::Metaregion(Metavariable {
-                    index: e.index,
-                    ty: (e.ty.to_heap(cache)),
+                ExpressionT::RegionHole(Hole {
+                    id: e.id,
+                    ty: e.ty.to_heap(cache),
+                    args: e.args.iter().map(|arg| arg.to_heap(cache)).collect(),
                 }),
             ),
             ExpressionT::LocalConstant(e) => HeapExpression::new(
                 self.provenance(cache),
                 ExpressionT::LocalConstant(LocalConstant {
-                    metavariable: Metavariable {
-                        index: e.metavariable.index,
-                        ty: (e.metavariable.ty.to_heap(cache)),
-                    },
+                    id: e.id,
                     structure: e.structure.to_heap(cache),
                 }),
             ),
@@ -246,19 +245,18 @@ impl HeapExpression {
             ExpressionT::Lifespan(e) => ExpressionT::Lifespan(Lifespan {
                 ty: e.ty.from_heap(cache),
             }),
-            ExpressionT::Metavariable(e) => ExpressionT::Metavariable(Metavariable {
-                index: e.index,
+            ExpressionT::Hole(e) => ExpressionT::Hole(Hole {
+                id: e.id,
                 ty: e.ty.from_heap(cache),
+                args: e.args.iter().map(|e| e.from_heap(cache)).collect(),
             }),
-            ExpressionT::Metaregion(e) => ExpressionT::Metaregion(Metavariable {
-                index: e.index,
+            ExpressionT::RegionHole(e) => ExpressionT::RegionHole(Hole {
+                id: e.id,
                 ty: e.ty.from_heap(cache),
+                args: e.args.iter().map(|e| e.from_heap(cache)).collect(),
             }),
             ExpressionT::LocalConstant(e) => ExpressionT::LocalConstant(LocalConstant {
-                metavariable: Metavariable {
-                    index: e.metavariable.index,
-                    ty: e.metavariable.ty.from_heap(cache),
-                },
+                id: e.id,
                 structure: e.structure.from_heap(cache),
             }),
         };

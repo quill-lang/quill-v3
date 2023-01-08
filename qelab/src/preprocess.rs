@@ -207,7 +207,8 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                             })
                     }
                     ExpressionT::RegionPi(_) => todo!(),
-                    ExpressionT::Metavariable(_) => todo!(),
+                    ExpressionT::Hole(_) => todo!(),
+                    ExpressionT::RegionHole(_) => todo!(),
                     _ => todo!(),
                 }
             })
@@ -312,7 +313,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 };
 
                 // Process the rest of the arguments.
-                let local = structure.generate_local(self.cache());
+                let local = self.cache().gen_local(structure);
                 self.preprocess_lambda(
                     if let Some(expected_pi) = &expected_pi {
                         Some(expected_pi.result.instantiate(
@@ -387,7 +388,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             };
 
             if binder.name.is_some() {
-                let local = structure.generate_local(self.cache());
+                let local = self.cache().gen_local(structure);
                 self.preprocess(result, None, &ctx.clone().with(local))
                     .map(|result| {
                         Expression::new(

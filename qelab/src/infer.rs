@@ -92,16 +92,16 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 ExpressionT::Region,
             ))),
             ExpressionT::Lifespan(_) => todo!(),
-            ExpressionT::Metavariable(var) => Dr::ok(ConstrainedExpression::new(var.ty)),
-            ExpressionT::Metaregion(var) => {
-                if var.ty.value(self.cache()) == ExpressionT::Region {
-                    Dr::ok(ConstrainedExpression::new(var.ty))
+            ExpressionT::Hole(hole) => Dr::ok(ConstrainedExpression::new(hole.ty)),
+            ExpressionT::RegionHole(hole) => {
+                if hole.ty.value(self.cache()) == ExpressionT::Region {
+                    Dr::ok(ConstrainedExpression::new(hole.ty))
                 } else {
                     todo!()
                 }
             }
             ExpressionT::LocalConstant(local) => {
-                Dr::ok(ConstrainedExpression::new(local.metavariable.ty))
+                Dr::ok(ConstrainedExpression::new(local.structure.bound.ty))
             }
         }
     }
@@ -133,7 +133,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         self.infer_type_with_constraints_core(lambda.structure.bound.ty)
             .bind(|mut argument_type_type| {
                 // Infer the return type of the lambda by first instantiating the parameter then inferring the resulting type.
-                let new_local = lambda.structure.generate_local(self.cache());
+                let new_local = self.cache().gen_local(lambda.structure);
                 let body = lambda.result.instantiate(
                     self.cache(),
                     Expression::new(
@@ -174,7 +174,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                     Expression::new(
                         self.cache(),
                         Provenance::Synthetic,
-                        ExpressionT::LocalConstant(pi.structure.generate_local(self.cache())),
+                        ExpressionT::LocalConstant(self.cache().gen_local(pi.structure)),
                     ),
                 );
                 self.infer_type_with_constraints_core(body)

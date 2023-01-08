@@ -1,6 +1,6 @@
 use fcommon::Span;
 use fkernel::{
-    expr::{Apply, Expression, ExpressionCache, ExpressionT, Metavariable, StuckExpression},
+    expr::{Apply, Expression, ExpressionCache, ExpressionT, Hole, StuckExpression},
     universe::Universe,
 };
 
@@ -116,7 +116,7 @@ impl<'cache> UnificationConstraint<'cache> {
                 let local = Expression::new(
                     elab.cache(),
                     expected.structure.bound.name.0.provenance,
-                    ExpressionT::LocalConstant(expected.structure.generate_local(elab.cache())),
+                    ExpressionT::LocalConstant(elab.cache().gen_local(expected.structure)),
                 );
                 constraints.extend(
                     UnificationConstraint {
@@ -135,7 +135,15 @@ impl<'cache> UnificationConstraint<'cache> {
                     justification: self.justification,
                 })]
             }
-            _ => {},
+            (ExpressionT::LocalConstant(expected), ExpressionT::LocalConstant(actual)) => {
+                if expected == actual {
+                    // This case can occur if the expected and actual expressions differ only in provenance.
+                    return Vec::new();
+                } else {
+                    todo!()
+                }
+            }
+            _ => {}
         }
 
         // It was not in any of the simple forms that we recognised.
@@ -144,20 +152,20 @@ impl<'cache> UnificationConstraint<'cache> {
             self.expected.stuck(elab.cache()),
             self.actual.stuck(elab.cache()),
         ) {
-            (Some(StuckExpression::Application(metavariable)), None) => {
+            (Some(StuckExpression::Application(hole)), None) => {
                 vec![CategorisedConstraint::StuckApplication(
                     StuckApplicationConstraint {
-                        metavariable,
+                        hole,
                         arguments: self.expected.apply_args(elab.cache()),
                         replacement: self.actual,
                         justification: self.justification,
                     },
                 )]
             }
-            (None, Some(StuckExpression::Application(metavariable))) => {
+            (None, Some(StuckExpression::Application(hole))) => {
                 vec![CategorisedConstraint::StuckApplication(
                     StuckApplicationConstraint {
-                        metavariable,
+                        hole,
                         arguments: self.actual.apply_args(elab.cache()),
                         replacement: self.expected,
                         justification: self.justification,
@@ -179,11 +187,13 @@ impl<'cache> UnificationConstraint<'cache> {
             }
             result => {
                 tracing::error!(
-                    "don't know how to categorise {} =?= {}\n{:?}\n{:?}",
+                    "don't know how to categorise {} =?= {}\n{:?} = {:?}\n{:?} = {:?}",
                     elab.pretty_print(self.expected),
                     elab.pretty_print(self.actual),
                     self.expected,
+                    self.expected.value(elab.cache()),
                     self.actual,
+                    self.actual.value(elab.cache()),
                 );
                 todo!("{:?}", result)
             }
@@ -191,7 +201,7 @@ impl<'cache> UnificationConstraint<'cache> {
     }
 }
 
-/// A stuck application constraint is a constraint of the form `?m l_1 ... l_n == t`.
+/// A stuck application constraint is a constraint of the form `?m[l_1, ..., l_n] l_{n+1} ... l_m == t`.
 /// It is assumed that `t` is not also a stuck application.
 ///
 /// * It is called a pattern constraint if the arguments `l_i` are pairwise distinct local constants,
@@ -200,7 +210,8 @@ impl<'cache> UnificationConstraint<'cache> {
 /// * It is called a flex-rigid constraint if at least one of the `l_i` is not a local constant.
 #[derive(Clone)]
 pub struct StuckApplicationConstraint<'cache> {
-    pub metavariable: Metavariable<Expression<'cache>>,
+    pub hole: Hole<Expression<'cache>>,
+    /// The extra arguments, in addition to the ones implicitly in the hole.
     pub arguments: Vec<Expression<'cache>>,
     pub replacement: Expression<'cache>,
     pub justification: Justification<'cache>,
@@ -221,8 +232,10 @@ impl<'cache> StuckApplicationConstraint<'cache> {
     /// `stuck_application` is an expression that is stuck by [`StuckExpression::Application`].
     pub fn categorise(&self, cache: &ExpressionCache<'cache>) -> StuckApplicationType {
         let arguments = self
-            .arguments
+            .hole
+            .args
             .iter()
+            .chain(&self.arguments)
             .filter_map(|expr| {
                 if let ExpressionT::LocalConstant(local) = expr.value(cache) {
                     Some((expr.provenance(cache), local))
@@ -232,13 +245,10 @@ impl<'cache> StuckApplicationConstraint<'cache> {
             })
             .collect::<Vec<_>>();
 
-        if arguments.len() == self.arguments.len() {
+        if arguments.len() == self.hole.args.len() + self.arguments.len() {
             // This is a pattern or quasi-pattern constraint.
             // First, check if the result references the head symbol `?m`.
-            if self
-                .replacement
-                .metavariable_occurs(cache, self.metavariable)
-            {
+            if self.replacement.hole_occurs(cache, self.hole.id) {
                 // This is a quasi-pattern.
                 StuckApplicationType::QuasiPattern
             } else {
@@ -265,9 +275,9 @@ impl<'cache> StuckApplicationConstraint<'cache> {
 
 #[derive(Clone)]
 pub struct FlexFlexConstraint<'cache> {
-    pub expected: Metavariable<Expression<'cache>>,
+    pub expected: Hole<Expression<'cache>>,
     pub expected_arguments: Vec<Expression<'cache>>,
-    pub actual: Metavariable<Expression<'cache>>,
+    pub actual: Hole<Expression<'cache>>,
     pub actual_arguments: Vec<Expression<'cache>>,
     pub justification: Justification<'cache>,
 }

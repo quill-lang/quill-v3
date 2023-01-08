@@ -23,7 +23,17 @@ pub fn delaborate<'cache>(
     match expr.value(cache) {
         ExpressionT::Local(local) => PExpression::Variable {
             name: QualifiedName(WithProvenance::new_synthetic(vec![Name(
-                WithProvenance::new_synthetic(locals[local.index.value() as usize]),
+                WithProvenance::new_synthetic(
+                    locals
+                        .get(local.index.value() as usize)
+                        .copied()
+                        .unwrap_or_else(|| {
+                            Str::new(
+                                cache.db(),
+                                format!("#{}", local.index.value() as usize - locals.len()),
+                            )
+                        }),
+                ),
             )])),
             universe_ascription: None,
         },
@@ -135,14 +145,16 @@ pub fn delaborate<'cache>(
         ExpressionT::RegionT => PExpression::RegionT(Span::default()),
         ExpressionT::StaticRegion => todo!(),
         ExpressionT::Lifespan(_) => todo!(),
-        ExpressionT::Metavariable(var) => PExpression::Metavariable {
+        ExpressionT::Hole(hole) => PExpression::Metavariable {
             span: Span::default(),
-            index: var.index,
+            id: hole.id,
+            args: hole
+                .args
+                .iter()
+                .map(|expr| delaborate(cache, *expr, locals, print_metavariable_indices))
+                .collect(),
         },
-        ExpressionT::Metaregion(var) => PExpression::Metavariable {
-            span: Span::default(),
-            index: var.index,
-        },
+        ExpressionT::RegionHole(_major_premise) => todo!(),
         ExpressionT::LocalConstant(local) => PExpression::Variable {
             name: QualifiedName(WithProvenance::new_synthetic(vec![
                 if print_metavariable_indices {
@@ -153,7 +165,7 @@ pub fn delaborate<'cache>(
                             format!(
                                 "{}/{}",
                                 local.structure.bound.name.text(cache.db()),
-                                local.metavariable.index
+                                local.id.0,
                             ),
                         ),
                     ))
@@ -198,7 +210,7 @@ fn pretty_print<'cache>(cache: &ExpressionCache<'cache>, expr: Expression<'cache
 }
 
 pub fn print_inference_error(db: &dyn fkernel::Db, err: InferenceError) -> Message {
-    ExpressionCache::with_cache(db, None, None, |cache| match err {
+    ExpressionCache::with_cache(db, None, None, None, |cache| match err {
         InferenceError::ExpressionNotClosed(_) => todo!(),
         InferenceError::IncorrectUniverseArity => todo!(),
         InferenceError::DefinitionNotFound(_) => todo!(),

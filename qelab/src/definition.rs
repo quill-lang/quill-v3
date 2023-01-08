@@ -14,7 +14,7 @@ use crate::{
 };
 
 pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> Dr<Definition> {
-    ExpressionCache::with_cache(db, None, None, |cache| {
+    ExpressionCache::with_cache(db, None, None, None, |cache| {
         if let Some(ty) = &def.ty {
             tracing::debug!(
                 "Type:\n    {}",

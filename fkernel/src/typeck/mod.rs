@@ -24,7 +24,7 @@ pub(crate) fn check_no_local_or_metavariable<'cache>(
     e: Expression<'cache>,
 ) -> Dr<()> {
     // TODO: Check no metauniverses.
-    if let Some(e) = e.first_local_or_metavariable(cache) {
+    if let Some(e) = e.first_local_or_hole(cache) {
         Dr::fail(e.provenance(cache).report(ReportKind::Error).with_label(
             e.provenance(cache).label(LabelType::Error).with_message(
                 "could not certify definition as it contained an invalid expression".into(),
@@ -49,7 +49,7 @@ pub fn certify_definition(
     def: &Definition,
     origin: DefinitionOrigin,
 ) -> Dr<CertifiedDefinition> {
-    ExpressionCache::with_cache(db, None, None, |cache| {
+    ExpressionCache::with_cache(db, None, None, None, |cache| {
         check_no_local_or_metavariable(cache, def.contents.ty.from_heap(cache)).bind(|()| {
             // Since we have no metavariables in the given expression,
             // we can initialise the metavariable generator with any value.

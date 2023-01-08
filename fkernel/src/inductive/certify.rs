@@ -55,7 +55,7 @@ fn eliminate_only_into_prop(
     let mut args_to_check = Vec::new();
     let mut parameter_index = 0;
     while let ExpressionT::Pi(pi) = ty.value(cache) {
-        let local = pi.structure.generate_local(cache);
+        let local = cache.gen_local(pi.structure);
         if parameter_index >= info.inductive.global_params {
             let parameter_ty = as_sort(cache, pi.structure.bound.ty.infer_type(cache)?)?;
             if !parameter_ty.0.is_zero() {
@@ -103,7 +103,7 @@ fn eliminate_only_into_prop(
 /// in most instances you should call [`crate::DbExt::certify_inductive`] or [`crate::DbExt::get_certified_inductive`].
 /// These functions are able to parse and certify both feather and quill definitions of inductives.
 pub fn certify_inductive(db: &dyn Db, path: Path, ind: &Inductive) -> Dr<CertifiedInductive> {
-    ExpressionCache::with_cache(db, None, None, |cache| {
+    ExpressionCache::with_cache(db, None, None, None, |cache| {
         super::check_type::check_inductive_type(cache, path, ind).bind(|info| {
             Dr::sequence_unfail(
                 info.inductive

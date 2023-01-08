@@ -184,7 +184,7 @@ fn binder_definitionally_equal<'cache>(
     let local = Expression::new(
         cache,
         Provenance::Synthetic,
-        ExpressionT::LocalConstant(left.structure.generate_local(cache)),
+        ExpressionT::LocalConstant(cache.gen_local(left.structure)),
     );
     let left_body = left.result.instantiate(cache, local);
     let right_body = right.result.instantiate(cache, local);

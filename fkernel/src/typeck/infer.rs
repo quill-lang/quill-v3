@@ -132,19 +132,27 @@ pub(crate) fn infer_type_core<'cache>(
             ExpressionT::Region,
         )),
         ExpressionT::Lifespan(_) => todo!(),
-        ExpressionT::Metavariable(var) => Ok(var.ty),
-        ExpressionT::Metaregion(var) => {
-            let mut ty = var.ty;
-            loop {
-                match ty.value(cache) {
-                    ExpressionT::Pi(pi) => ty = pi.result,
-                    ExpressionT::RegionPi(pi) => ty = pi.body,
-                    ExpressionT::Region => return Ok(var.ty),
-                    _ => todo!(),
-                }
+        ExpressionT::Hole(var) => infer_type_core(
+            cache,
+            var.args
+                .into_iter()
+                .fold(var.ty, |acc, e| acc.instantiate(cache, e)),
+        ),
+        ExpressionT::RegionHole(var) => {
+            let ty = infer_type_core(
+                cache,
+                var.args
+                    .into_iter()
+                    .fold(var.ty, |acc, e| acc.instantiate(cache, e)),
+            )?;
+            // Ensure that region holes are actually regions.
+            if ty.value(cache) == ExpressionT::Region {
+                Ok(ty)
+            } else {
+                todo!()
             }
         }
-        ExpressionT::LocalConstant(local) => Ok(local.metavariable.ty),
+        ExpressionT::LocalConstant(local) => Ok(local.structure.bound.ty),
     }
 }
 
@@ -267,7 +275,7 @@ fn infer_type_lambda<'cache>(
     as_sort(cache, argument_type_type)?;
 
     // Infer the return type of the lambda by first instantiating the parameter then inferring the resulting type.
-    let new_local = lambda.structure.generate_local(cache);
+    let new_local = cache.gen_local(lambda.structure);
     let body = lambda.result.instantiate(
         cache,
         Expression::new(
@@ -298,7 +306,7 @@ fn infer_type_pi<'cache>(
         Expression::new(
             cache,
             Provenance::Synthetic,
-            ExpressionT::LocalConstant(pi.structure.generate_local(cache)),
+            ExpressionT::LocalConstant(cache.gen_local(pi.structure)),
         ),
     );
     let return_type = as_sort(cache, infer_type_core(cache, body)?)?;
@@ -319,7 +327,7 @@ fn infer_type_region_lambda<'cache>(
     cache: &ExpressionCache<'cache>,
     lambda: RegionBinder<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
-    let new_local = lambda.generate_local(cache, lambda.body);
+    let new_local = cache.gen_region_local(lambda);
     let body = lambda.body.instantiate(
         cache,
         Expression::new(
@@ -341,7 +349,7 @@ fn infer_type_region_pi<'cache>(
     pi: RegionBinder<Expression<'cache>>,
 ) -> Ir<Expression<'cache>> {
     // TODO: Check that the region variable occurs simply in the term.
-    let new_local = pi.generate_local(cache, pi.body);
+    let new_local = cache.gen_region_local(pi);
     let body = pi.body.instantiate(
         cache,
         Expression::new(
@@ -711,7 +719,7 @@ fn process_match<'cache>(
         for _ in 0..premise.fields {
             match minor_premise_type.value(cache) {
                 ExpressionT::Pi(pi) => {
-                    let field = pi.structure.generate_local(cache);
+                    let field = cache.gen_local(pi.structure);
                     minor_premise_type = pi.result.instantiate(
                         cache,
                         Expression::new(
@@ -858,11 +866,10 @@ fn infer_type_match<'cache>(
 /// TODO: Fixed point expressions for borrowed inductive types.
 fn check_decreasing<'cache>(
     cache: &ExpressionCache<'cache>,
-    meta_gen: &mut MetavariableGenerator<Expression<'cache>>,
     expr: Expression<'cache>,
     local: LocalConstant<Expression<'cache>>,
     fixpoint: LocalConstant<Expression<'cache>>,
-    structurally_smaller: &HashSet<u32>,
+    structurally_smaller: &HashSet<HoleId>,
 ) -> Ir<()> {
     match expr.value(cache) {
         ExpressionT::Apply(apply) => {
@@ -876,8 +883,8 @@ fn check_decreasing<'cache>(
                 // The fixpoint function is being invoked.
                 // Its argument must be a local constant that is structurally smaller than `local`.
                 match apply.argument.value(cache) {
-                    ExpressionT::Metavariable(metavariable) => {
-                        if structurally_smaller.contains(&metavariable.index) {
+                    ExpressionT::Hole(hole) => {
+                        if structurally_smaller.contains(&hole.id) {
                             Ok(())
                         } else {
                             todo!()
@@ -895,11 +902,10 @@ fn check_decreasing<'cache>(
         ExpressionT::Match(match_expr) => {
             match match_expr.major_premise.value(cache) {
                 ExpressionT::LocalConstant(constant) => {
-                    if local.metavariable.index == constant.metavariable.index {
+                    if local.id == constant.id {
                         // We're performing pattern matching on the local constant we need to check.
                         check_decreasing(
                             cache,
-                            meta_gen,
                             match_expr.motive,
                             local,
                             fixpoint,
@@ -911,25 +917,18 @@ fn check_decreasing<'cache>(
                             let mut smaller = structurally_smaller.clone();
                             let mut premise_result = premise.result;
                             for _ in 0..premise.fields {
-                                let metavariable = meta_gen.gen(dummy_term);
+                                let dummy_hole = cache.gen_hole(Vec::new(), dummy_term);
+                                smaller.insert(dummy_hole.id);
                                 premise_result = premise_result.instantiate(
                                     cache,
                                     Expression::new(
                                         cache,
                                         Provenance::Synthetic,
-                                        ExpressionT::Metavariable(metavariable),
+                                        ExpressionT::Hole(dummy_hole),
                                     ),
                                 );
-                                smaller.insert(metavariable.index);
                             }
-                            check_decreasing(
-                                cache,
-                                meta_gen,
-                                premise_result,
-                                local,
-                                fixpoint,
-                                &smaller,
-                            )?;
+                            check_decreasing(cache, premise_result, local, fixpoint, &smaller)?;
                         }
                         Ok(())
                     } else {
@@ -940,7 +939,7 @@ fn check_decreasing<'cache>(
             }
         }
         ExpressionT::LocalConstant(constant) => {
-            if fixpoint.metavariable.index == constant.metavariable.index {
+            if fixpoint.id == constant.id {
                 // The fixpoint function cannot occur in a position other than function application.
                 // Since we already handled function application earlier, this is an error.
                 todo!()
@@ -950,7 +949,7 @@ fn check_decreasing<'cache>(
         }
         _ => {
             for expr in expr.subexpressions(cache) {
-                check_decreasing(cache, meta_gen, expr, local, fixpoint, structurally_smaller)?;
+                check_decreasing(cache, expr, local, fixpoint, structurally_smaller)?;
             }
             Ok(())
         }
@@ -973,11 +972,6 @@ fn process_fix<'cache>(
             {
                 // The argument is indeed of an inductive type, and the inductive type exists.
                 // Check that the body of the fixed point expression is of the correct type.
-                let mut meta_gen = MetavariableGenerator::new(
-                    Expression::new(cache, Provenance::Synthetic, ExpressionT::Fix(fix))
-                        .largest_unusable_metavariable(cache),
-                );
-
                 let argument_type_or_delta = if let Some(region) = borrowed {
                     Expression::new(
                         cache,
@@ -1009,10 +1003,7 @@ fn process_fix<'cache>(
                         ExpressionT::StaticRegion,
                     ),
                 };
-                let argument_local = LocalConstant {
-                    metavariable: meta_gen.gen(argument_type_or_delta),
-                    structure: argument_structure,
-                };
+                let argument_local = cache.gen_local(argument_structure);
                 let argument_local_term = Expression::new(
                     cache,
                     Provenance::Synthetic,
@@ -1026,27 +1017,24 @@ fn process_fix<'cache>(
                         result: fix.fixpoint.ty,
                     }),
                 );
-                let fixpoint_local = LocalConstant {
-                    metavariable: meta_gen.gen(fixpoint_body_pi),
-                    structure: BinderStructure {
-                        // The structure here isn't really relevant.
-                        bound: BoundVariable {
-                            name: Name(WithProvenance::new_synthetic(Str::new(
-                                cache.db(),
-                                "_fixpoint".to_owned(),
-                            ))),
-                            ty: fixpoint_body_pi,
-                            ownership: ParameterOwnership::POwned,
-                        },
-                        binder_annotation: BinderAnnotation::Explicit,
-                        function_ownership: FunctionOwnership::Once,
-                        region: Expression::new(
-                            cache,
-                            Provenance::Synthetic,
-                            ExpressionT::StaticRegion,
-                        ),
+                let fixpoint_local = cache.gen_local(BinderStructure {
+                    // The structure here isn't really relevant.
+                    bound: BoundVariable {
+                        name: Name(WithProvenance::new_synthetic(Str::new(
+                            cache.db(),
+                            "_fixpoint".to_owned(),
+                        ))),
+                        ty: fixpoint_body_pi,
+                        ownership: ParameterOwnership::POwned,
                     },
-                };
+                    binder_annotation: BinderAnnotation::Explicit,
+                    function_ownership: FunctionOwnership::Once,
+                    region: Expression::new(
+                        cache,
+                        Provenance::Synthetic,
+                        ExpressionT::StaticRegion,
+                    ),
+                });
 
                 let body_instantiated = fix
                     .body
@@ -1075,7 +1063,6 @@ fn process_fix<'cache>(
                 // Check that the fixed point construction is only invoked using structurally smaller parameters.
                 check_decreasing(
                     cache,
-                    &mut meta_gen,
                     body_instantiated,
                     argument_local,
                     fixpoint_local,

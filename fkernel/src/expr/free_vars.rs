@@ -6,84 +6,75 @@ use crate::{
 };
 
 impl<'cache> Expression<'cache> {
-    /// Returns the largest metavariable index that was referenced in the given term, or [`None`] if none were referenced.
-    /// We are free to use metavariables with strictly higher indices than what is returned here without name clashing.
+    /// Returns the largest hole ID that was referenced in the given term, or [`None`] if none were referenced.
+    /// We are free to use holes with strictly higher IDs than what is returned here without name clashing.
     #[must_use]
-    pub fn largest_unusable_metavariable(self, cache: &ExpressionCache<'cache>) -> Option<u32> {
-        if let Some(result) = cache.largest_unusable_metavariable.borrow().get(&self) {
+    pub fn largest_hole(self, cache: &ExpressionCache<'cache>) -> Option<HoleId> {
+        if let Some(result) = cache.largest_hole.borrow().get(&self) {
             return *result;
         }
 
         let result = match self.value(cache).clone() {
             ExpressionT::Local(_) => None,
-            ExpressionT::Borrow(t) => max(
-                t.region.largest_unusable_metavariable(cache),
-                t.value.largest_unusable_metavariable(cache),
-            ),
-            ExpressionT::Dereference(t) => t.value.largest_unusable_metavariable(cache),
-            ExpressionT::Delta(t) => max(
-                t.region.largest_unusable_metavariable(cache),
-                t.ty.largest_unusable_metavariable(cache),
-            ),
+            ExpressionT::Borrow(t) => {
+                max(t.region.largest_hole(cache), t.value.largest_hole(cache))
+            }
+            ExpressionT::Dereference(t) => t.value.largest_hole(cache),
+            ExpressionT::Delta(t) => max(t.region.largest_hole(cache), t.ty.largest_hole(cache)),
             ExpressionT::Inst(_) => None,
             ExpressionT::Let(t) => max(
                 max(
-                    t.bound.ty.largest_unusable_metavariable(cache),
-                    t.to_assign.largest_unusable_metavariable(cache),
+                    t.bound.ty.largest_hole(cache),
+                    t.to_assign.largest_hole(cache),
                 ),
-                t.body.largest_unusable_metavariable(cache),
+                t.body.largest_hole(cache),
             ),
             ExpressionT::Lambda(t) | ExpressionT::Pi(t) => max(
                 max(
-                    t.structure.bound.ty.largest_unusable_metavariable(cache),
-                    t.structure.region.largest_unusable_metavariable(cache),
+                    t.structure.bound.ty.largest_hole(cache),
+                    t.structure.region.largest_hole(cache),
                 ),
-                t.result.largest_unusable_metavariable(cache),
+                t.result.largest_hole(cache),
             ),
-            ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => {
-                t.body.largest_unusable_metavariable(cache)
-            }
+            ExpressionT::RegionLambda(t) | ExpressionT::RegionPi(t) => t.body.largest_hole(cache),
             ExpressionT::Apply(t) => max(
-                t.function.largest_unusable_metavariable(cache),
-                t.argument.largest_unusable_metavariable(cache),
+                t.function.largest_hole(cache),
+                t.argument.largest_hole(cache),
             ),
             ExpressionT::Intro(t) => t
                 .parameters
                 .iter()
-                .map(|param| param.largest_unusable_metavariable(cache))
+                .map(|param| param.largest_hole(cache))
                 .max()
                 .unwrap_or(None),
             ExpressionT::Match(t) => max(
                 max(
                     t.minor_premises
                         .into_iter()
-                        .map(|premise| premise.result.largest_unusable_metavariable(cache))
+                        .map(|premise| premise.result.largest_hole(cache))
                         .max()
                         .unwrap_or(None),
-                    t.major_premise.largest_unusable_metavariable(cache),
+                    t.major_premise.largest_hole(cache),
                 ),
-                t.motive.largest_unusable_metavariable(cache),
+                t.motive.largest_hole(cache),
             ),
             ExpressionT::Fix(t) => max(
                 max(
-                    t.fixpoint.ty.largest_unusable_metavariable(cache),
-                    t.body.largest_unusable_metavariable(cache),
+                    t.fixpoint.ty.largest_hole(cache),
+                    t.body.largest_hole(cache),
                 ),
-                t.argument.largest_unusable_metavariable(cache),
+                t.argument.largest_hole(cache),
             ),
             ExpressionT::Sort(_)
             | ExpressionT::Region
             | ExpressionT::RegionT
             | ExpressionT::StaticRegion
-            | ExpressionT::Metaregion(_) => None,
-            ExpressionT::Lifespan(t) => t.ty.largest_unusable_metavariable(cache),
-            ExpressionT::Metavariable(t) => Some(t.index),
-            ExpressionT::LocalConstant(t) => Some(t.metavariable.index),
+            | ExpressionT::LocalConstant(_) => None,
+            ExpressionT::Lifespan(t) => t.ty.largest_hole(cache),
+            ExpressionT::Hole(t) => Some(t.id),
+            ExpressionT::RegionHole(t) => Some(t.id),
         };
-        cache
-            .largest_unusable_metavariable
-            .borrow_mut()
-            .insert(self, result);
+        cache.largest_hole.borrow_mut().insert(self, result);
         result
     }
 
@@ -161,10 +152,12 @@ impl<'cache> Expression<'cache> {
             ExpressionT::Region
             | ExpressionT::RegionT
             | ExpressionT::StaticRegion
-            | ExpressionT::Metavariable(_)
-            | ExpressionT::Metaregion(_)
             | ExpressionT::LocalConstant(_) => DeBruijnIndex::zero(),
             ExpressionT::Lifespan(lifespan) => lifespan.ty.first_free_variable_index(cache),
+            ExpressionT::Hole(hole) | ExpressionT::RegionHole(hole) => {
+                hole.ty.first_free_variable_index(cache)
+                    - DeBruijnOffset::new(hole.args.len() as u32)
+            }
         };
         cache
             .first_free_variable_index

@@ -1,5 +1,5 @@
 use fkernel::{
-    expr::{Expression, ExpressionCache, ExpressionT, Metavariable, ReplaceResult},
+    expr::{Expression, ExpressionCache, ExpressionT, HoleId, ReplaceResult},
     result::Dr,
     universe::{Metauniverse, Universe, UniverseContents},
 };
@@ -17,10 +17,7 @@ use crate::{
 /// This data structure is fast to clone, as its underlying storage uses persistent data structures.
 #[derive(Default, Clone)]
 pub struct Solution<'cache> {
-    map: RedBlackTreeMap<
-        Metavariable<Expression<'cache>>,
-        (Expression<'cache>, Justification<'cache>),
-    >,
+    map: RedBlackTreeMap<HoleId, (Expression<'cache>, Justification<'cache>)>,
     universes: RedBlackTreeMap<Metauniverse, Universe>,
 }
 
@@ -50,11 +47,19 @@ impl<'cache> Solution<'cache> {
                     ExpressionT::Sort(sort),
                 ))
             }
-            ExpressionT::Metavariable(var) => match self.map.get(&var) {
+            ExpressionT::Hole(hole) => match self.map.get(&hole.id) {
                 Some((replacement, _)) => {
                     // Since substitution is not idempotent in the current implementation,
                     // we need to perform a substitution operation on the solution to make sure it doesn't contain metavariables.
-                    ReplaceResult::ReplaceWith(self.substitute(cache, *replacement))
+                    ReplaceResult::ReplaceWith(
+                        self.substitute(
+                            cache,
+                            hole.args
+                                .iter()
+                                .rev()
+                                .fold(*replacement, |acc, e| acc.instantiate(cache, *e)),
+                        ),
+                    )
                 }
                 None => ReplaceResult::Skip,
             },
@@ -66,21 +71,14 @@ impl<'cache> Solution<'cache> {
 /// The fields of this structure are fast to clone since their underlying storage uses persistent data structures.
 struct Solver<'a, 'cache> {
     elab: Elaborator<'a, 'cache>,
-    /// A partial solution, mapping metavariables to their relevant expressions.
+    /// A partial solution, mapping hole IDs to their relevant expressions.
     solution: Solution<'cache>,
 
-    /// Maps metavariables to the list of constraints on applications that are stuck on the given metavariable.
+    /// Maps hole IDs to the list of constraints on applications that are stuck on the given metavariable.
     /// This is used as a queue of constraints to be solved.
-    stuck_applications:
-        RedBlackTreeMap<Metavariable<Expression<'cache>>, Vec<StuckApplicationConstraint<'cache>>>,
-    /// Maps pairs of metavariables to the list of flex-flex constraints that are stuck on both variables.
-    flex_flex: RedBlackTreeMap<
-        (
-            Metavariable<Expression<'cache>>,
-            Metavariable<Expression<'cache>>,
-        ),
-        Vec<FlexFlexConstraint<'cache>>,
-    >,
+    stuck_applications: RedBlackTreeMap<HoleId, Vec<StuckApplicationConstraint<'cache>>>,
+    /// Maps pairs of hole IDs to the list of flex-flex constraints that are stuck on both variables.
+    flex_flex: RedBlackTreeMap<(HoleId, HoleId), Vec<FlexFlexConstraint<'cache>>>,
 }
 
 impl<'a, 'cache> Elaborator<'a, 'cache> {
@@ -131,33 +129,35 @@ impl<'a, 'cache> Solver<'a, 'cache> {
 
     fn add_stuck_application_constraint(&mut self, stuck_app: StuckApplicationConstraint<'cache>) {
         // Check if a solution for this stuck application is already known.
-        match self.solution.map.get(&stuck_app.metavariable) {
+        match self.solution.map.get(&stuck_app.hole.id) {
             Some((solution, justification)) => {
                 #[cfg(feature = "elaborator_diagnostics")]
                 tracing::trace!(
-                    "already found solution for ?{}: {}",
-                    stuck_app.metavariable.index,
+                    "already found solution for {}: {}",
+                    stuck_app.hole.id,
                     self.elab.pretty_print(*solution),
                 );
 
                 // We have solved a constraint for this metavariable already.
+                let hole_solution = stuck_app
+                    .hole
+                    .args
+                    .iter()
+                    .rev()
+                    .fold(*solution, |acc, e| acc.instantiate(self.elab.cache(), *e));
                 self.add_constraint(UnificationConstraint {
-                    expected: solution.create_nary_application(
+                    expected: hole_solution.create_nary_application(
                         self.elab.cache(),
                         stuck_app.arguments.iter().map(|expr| {
                             (
                                 expr.provenance(self.elab.cache()),
-                                expr.replace_metavariable(
-                                    self.elab.cache(),
-                                    stuck_app.metavariable,
-                                    *solution,
-                                ),
+                                expr.fill_hole(self.elab.cache(), stuck_app.hole.id, *solution),
                             )
                         }),
                     ),
-                    actual: stuck_app.replacement.replace_metavariable(
+                    actual: stuck_app.replacement.fill_hole(
                         self.elab.cache(),
-                        stuck_app.metavariable,
+                        stuck_app.hole.id,
                         *solution,
                     ),
                     justification: Justification::Join {
@@ -171,46 +171,95 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                 match stuck_app.categorise(self.elab.cache()) {
                     StuckApplicationType::Pattern => {
                         // We can solve this constraint immediately.
-                        let arguments = stuck_app
-                            .arguments
+                        let all_args = stuck_app
+                            .hole
+                            .args
                             .iter()
+                            .chain(&stuck_app.arguments)
                             .map(|expr| {
+                                // The arguments to the hole should be local constants, because it is a "pattern" stuck application.
                                 if let ExpressionT::LocalConstant(local) =
                                     expr.value(self.elab.cache())
                                 {
-                                    (expr.provenance(self.elab.cache()), local)
+                                    local
                                 } else {
-                                    unreachable!("constraint incorrectly categorised")
+                                    panic!()
                                 }
                             })
                             .collect::<Vec<_>>();
 
-                        let solution = stuck_app
-                            .replacement
-                            .abstract_nary_lambda(self.elab.cache(), arguments.into_iter());
+                        // We solve the constraint by abstracting the result as a function taking every argument provided.
+                        // This gives the closed-expression form of the solution.
+                        let solution_closed = stuck_app.replacement.abstract_nary_lambda(
+                            self.elab.cache(),
+                            all_args.iter().map(|local| {
+                                (stuck_app.replacement.provenance(self.elab.cache()), *local)
+                            }),
+                        );
+
+                        // Since some of the arguments are given in the hole, we need to remove those arguments from being counted.
+                        // We do this by simply moving inside the relevant binders.
+                        // This gives the free form of the solution.
+                        let solution_free =
+                            stuck_app
+                                .hole
+                                .args
+                                .iter()
+                                .fold(solution_closed, |solution, _| {
+                                    if let ExpressionT::Lambda(lambda) =
+                                        solution.value(self.elab.cache())
+                                    {
+                                        lambda.result
+                                    } else {
+                                        unreachable!()
+                                    }
+                                });
+
+                        // We create a form of the solution where the free variables are replaced with the locals from the hole.
+                        let solution_locals = stuck_app
+                            .hole
+                            .args
+                            .iter()
+                            .rev()
+                            .fold(solution_free, |acc, e| {
+                                acc.instantiate(self.elab.cache(), *e)
+                            });
+
                         self.solution.map.insert_mut(
-                            stuck_app.metavariable,
-                            (solution, stuck_app.justification),
+                            stuck_app.hole.id,
+                            (solution_free, stuck_app.justification),
                         );
 
                         #[cfg(feature = "elaborator_diagnostics")]
                         tracing::trace!(
-                            "solving {} = {}",
+                            "solved {} = {}",
                             self.elab.pretty_print(Expression::new(
                                 self.elab.cache(),
                                 fkernel::basic::Provenance::Synthetic,
-                                ExpressionT::Metavariable(stuck_app.metavariable)
+                                ExpressionT::Hole(stuck_app.hole.clone())
                             )),
-                            self.elab.pretty_print(solution)
+                            self.elab.pretty_print(solution_locals)
                         );
 
                         // Assert that the type of the solution matches the type of the metavariable.
-                        if let Some(solution_constrained) =
-                            self.elab.infer_type_with_constraints(solution).value()
+                        if let Some(solution_constrained) = self
+                            .elab
+                            .infer_type_with_constraints(solution_locals)
+                            .value()
                         {
+                            #[cfg(feature = "elaborator_diagnostics")]
+                            tracing::trace!(
+                                "constrained type was {}",
+                                self.elab.pretty_print(solution_constrained.expr)
+                            );
                             // TODO: Do we need to do anything with `solution_constrained.constraints`?
                             self.add_constraint(UnificationConstraint {
-                                expected: stuck_app.metavariable.ty,
+                                expected: stuck_app
+                                    .arguments
+                                    .iter()
+                                    .fold(stuck_app.hole.ty, |acc, e| {
+                                        acc.instantiate(self.elab.cache(), *e)
+                                    }),
                                 actual: solution_constrained.expr,
                                 justification: Justification::PatternSolution,
                             });
@@ -223,12 +272,12 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                         // Revisit stuck applications, which are now solved.
                         let to_revisit = self
                             .stuck_applications
-                            .get(&stuck_app.metavariable)
+                            .get(&stuck_app.hole.id)
                             .into_iter()
                             .flatten()
                             .cloned()
                             .collect::<Vec<_>>();
-                        self.stuck_applications.remove_mut(&stuck_app.metavariable);
+                        self.stuck_applications.remove_mut(&stuck_app.hole.id);
                         for stuck_app in to_revisit {
                             self.add_stuck_application_constraint(stuck_app);
                         }
@@ -237,7 +286,7 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                         let mut to_revisit = Vec::new();
                         let mut keys_to_remove = Vec::new();
                         for key in self.flex_flex.keys() {
-                            if key.0 == stuck_app.metavariable || key.1 == stuck_app.metavariable {
+                            if key.0 == stuck_app.hole.id || key.1 == stuck_app.hole.id {
                                 to_revisit
                                     .extend(self.flex_flex.get(key).into_iter().flatten().cloned());
                                 keys_to_remove.push(*key);
@@ -255,13 +304,13 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                     _ => {
                         // We can't solve this constraint immediately.
                         // Add it to the solver's list of stuck application constraints to solve later.
-                        match self.stuck_applications.get_mut(&stuck_app.metavariable) {
+                        match self.stuck_applications.get_mut(&stuck_app.hole.id) {
                             Some(stuck_applications) => {
                                 stuck_applications.push(stuck_app);
                             }
                             None => {
                                 self.stuck_applications
-                                    .insert_mut(stuck_app.metavariable, vec![stuck_app]);
+                                    .insert_mut(stuck_app.hole.id, vec![stuck_app]);
                             }
                         }
                     }
@@ -272,16 +321,16 @@ impl<'a, 'cache> Solver<'a, 'cache> {
 
     fn add_flex_flex_constraint(&mut self, flex_flex: FlexFlexConstraint<'cache>) {
         // Check if a solution for this stuck application is already known.
-        if self.solution.map.contains_key(&flex_flex.expected) {
+        if self.solution.map.contains_key(&flex_flex.expected.id) {
             // We have solved a constraint for this metavariable already.
             // Recategorise this constraint as a stuck application and solve it.
             self.add_stuck_application_constraint(StuckApplicationConstraint {
-                metavariable: flex_flex.expected,
+                hole: flex_flex.expected,
                 arguments: flex_flex.expected_arguments,
                 replacement: Expression::new(
                     self.elab.cache(),
                     flex_flex.actual.ty.provenance(self.elab.cache()),
-                    ExpressionT::Metavariable(flex_flex.actual),
+                    ExpressionT::Hole(flex_flex.actual),
                 )
                 .create_nary_application(
                     self.elab.cache(),
@@ -292,14 +341,14 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                 ),
                 justification: flex_flex.justification,
             });
-        } else if self.solution.map.contains_key(&flex_flex.actual) {
+        } else if self.solution.map.contains_key(&flex_flex.actual.id) {
             self.add_stuck_application_constraint(StuckApplicationConstraint {
-                metavariable: flex_flex.actual,
+                hole: flex_flex.actual,
                 arguments: flex_flex.actual_arguments,
                 replacement: Expression::new(
                     self.elab.cache(),
                     flex_flex.expected.ty.provenance(self.elab.cache()),
-                    ExpressionT::Metavariable(flex_flex.expected),
+                    ExpressionT::Hole(flex_flex.expected),
                 )
                 .create_nary_application(
                     self.elab.cache(),
@@ -315,14 +364,16 @@ impl<'a, 'cache> Solver<'a, 'cache> {
             // Add it to the solver's list of flex-flex constraints to solve later.
             match self
                 .flex_flex
-                .get_mut(&(flex_flex.expected, flex_flex.actual))
+                .get_mut(&(flex_flex.expected.id, flex_flex.actual.id))
             {
                 Some(constraints) => {
                     constraints.push(flex_flex);
                 }
                 None => {
-                    self.flex_flex
-                        .insert_mut((flex_flex.expected, flex_flex.actual), vec![flex_flex]);
+                    self.flex_flex.insert_mut(
+                        (flex_flex.expected.id, flex_flex.actual.id),
+                        vec![flex_flex],
+                    );
                 }
             }
         }
