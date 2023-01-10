@@ -9,7 +9,7 @@ use crate::{
 use super::{infer::infer_type_core, Ir};
 
 impl<'cache> Expression<'cache> {
-    /// Returns true if the two expressions are definitionally equal.
+    /// Returns true if the two expressions are definitionally equal, modulo unifying metaregions.
     /// This may return an error if the expressions were not type correct.
     ///
     /// TODO: This doesn't work with [`RegionBinder`] or [`Lifespan`] expressions yet.
@@ -62,9 +62,7 @@ impl<'cache> Expression<'cache> {
             }
             (ExpressionT::LocalConstant(left), ExpressionT::LocalConstant(right)) => {
                 // Test if the two expressions are equal local constants.
-                if left.structure.bound.name == right.structure.bound.name {
-                    return Ok(true);
-                }
+                return Ok(left.id == right.id);
             }
             (ExpressionT::Apply(left), ExpressionT::Apply(right)) => {
                 // Test if the two expressions are applications of the same function with the same arguments.
@@ -161,16 +159,13 @@ fn borrow_definitionally_equal<'cache>(
 }
 
 /// Lambda and pi expressions are definitionally equal if their parameter types are equal and their bodies are equal.
+/// This *does not* check that the region parameters match; this is done in a later step.
 fn binder_definitionally_equal<'cache>(
     cache: &ExpressionCache<'cache>,
     left: Binder<Expression<'cache>>,
     right: Binder<Expression<'cache>>,
 ) -> Ir<bool> {
     if left.structure.function_ownership != right.structure.function_ownership {
-        return Ok(false);
-    }
-
-    if !Expression::definitionally_equal(cache, left.structure.region, right.structure.region)? {
         return Ok(false);
     }
 

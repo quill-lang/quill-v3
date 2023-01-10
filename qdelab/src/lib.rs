@@ -6,12 +6,8 @@ use fcommon::{Span, Str};
 use fkernel::{
     basic::{DeBruijnIndex, Name, QualifiedName, WithProvenance},
     expr::{Expression, ExpressionCache, ExpressionT},
-    message,
-    result::Message,
-    typeck::InferenceError,
     universe::{Universe, UniverseContents},
 };
-use qformat::pexpression_to_document;
 use qparse::expr::{PExpression, PFunctionBinder, PLambdaBinder, PUniverse};
 
 pub fn delaborate<'cache>(
@@ -197,40 +193,4 @@ pub fn delaborate_universe(universe: &Universe) -> PUniverse {
             index: meta.0,
         },
     }
-}
-
-fn pretty_print<'cache>(cache: &ExpressionCache<'cache>, expr: Expression<'cache>) -> Message {
-    Message::String(
-        pexpression_to_document(
-            cache.db(),
-            &delaborate(cache, expr, &Default::default(), true),
-        )
-        .pretty_print(100),
-    )
-}
-
-pub fn print_inference_error(db: &dyn fkernel::Db, err: InferenceError) -> Message {
-    ExpressionCache::with_cache(db, None, None, None, |cache| match err {
-        InferenceError::ExpressionNotClosed(_) => todo!(),
-        InferenceError::IncorrectUniverseArity => todo!(),
-        InferenceError::DefinitionNotFound(_) => todo!(),
-        InferenceError::LetTypeMismatch => todo!(),
-        InferenceError::ApplyTypeMismatch {
-            function, argument, ..
-        } => {
-            message![
-                "could not apply function ",
-                pretty_print(cache, function.from_heap(cache)),
-                " to argument ",
-                pretty_print(cache, argument.from_heap(cache))
-            ]
-        }
-        InferenceError::FunctionOwnershipMismatch => todo!(),
-        InferenceError::ExpectedSort(_) => todo!(),
-        InferenceError::ExpectedPi => todo!(),
-        InferenceError::ExpectedDelta => todo!(),
-        InferenceError::UnexpectedMetauniverse => todo!(),
-        InferenceError::IncorrectIntroParameters => todo!(),
-        InferenceError::MinorPremiseCountMismatch => todo!(),
-    })
 }

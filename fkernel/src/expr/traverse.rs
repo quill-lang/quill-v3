@@ -2,9 +2,12 @@
 
 use std::{cell::RefCell, cmp::Ordering};
 
+use fcommon::Str;
+
 use crate::{
-    basic::{DeBruijnIndex, DeBruijnOffset, Name, QualifiedName},
+    basic::{DeBruijnIndex, DeBruijnOffset, Name, QualifiedName, WithProvenance},
     expr::*,
+    multiplicity::ParameterOwnership,
     typeck::DefinitionHeight,
     universe::{Universe, UniverseVariable},
 };
@@ -577,7 +580,7 @@ impl<'cache> Expression<'cache> {
                 ExpressionT::Local(Local { index }) => {
                     match index.cmp(&(DeBruijnIndex::zero() + offset)) {
                         Ordering::Less => {
-                            // The variable is bound and has index lower than the offset, so we don't change ie.
+                            // The variable is bound and has index lower than the offset, so we don't change it.
                             ReplaceResult::Skip
                         }
                         Ordering::Equal => {
@@ -591,7 +594,7 @@ impl<'cache> Expression<'cache> {
                         }
                         Ordering::Greater => {
                             // This de Bruijn index must be decremented, since we just
-                            // instantiated a variable below ie.
+                            // instantiated a variable below it.
                             ReplaceResult::ReplaceWith(Self::new(
                                 cache,
                                 e.provenance(cache),
@@ -770,17 +773,68 @@ impl<'cache> Expression<'cache> {
     }
 
     /// Replaces every instance of the given hole inside this expression with a replacement.
-    /// When instantiated with the arguments of the hole, `replacement` should be a closed expression.
     #[must_use]
     pub fn fill_hole(self, cache: &ExpressionCache<'cache>, id: HoleId, replacement: Self) -> Self {
         self.replace_in_expression(cache, &|e, _offset| match e.value(cache) {
             ExpressionT::Hole(hole) | ExpressionT::RegionHole(hole) => {
                 if hole.id == id {
-                    ReplaceResult::ReplaceWith(
-                        hole.args
-                            .into_iter()
-                            .fold(replacement, |acc, e| acc.instantiate(cache, e)),
-                    )
+                    // Each of the hole's arguments should be a de Bruijn index.
+                    // We first replace each with a new local constant, perform the substitution, and then replace the locals with the correct indices.
+                    let locals = hole
+                        .args
+                        .iter()
+                        .map(|arg| {
+                            (
+                                *arg,
+                                // Create a dummy local constant.
+                                // This won't be used for anything, and the expression won't even be type checked.
+                                cache.gen_local(BinderStructure {
+                                    bound: BoundVariable {
+                                        name: Name(WithProvenance::new_synthetic(Str::new(
+                                            cache.db(),
+                                            "".to_owned(),
+                                        ))),
+                                        ty: Expression::region(cache),
+                                        ownership: ParameterOwnership::PZero,
+                                    },
+                                    binder_annotation: BinderAnnotation::Explicit,
+                                    function_ownership: FunctionOwnership::Once,
+                                    region: Expression::region(cache),
+                                }),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+
+                    let replacement_with_locals =
+                        locals
+                            .iter()
+                            .rev()
+                            .fold(replacement, |acc, (_,  constant)| {
+                                acc.instantiate(
+                                    cache,
+                                    Expression::new(
+                                        cache,
+                                        e.provenance(cache),
+                                        ExpressionT::LocalConstant(*constant),
+                                    ),
+                                )
+                            });
+
+                    ReplaceResult::ReplaceWith(replacement_with_locals.replace_in_expression(
+                        cache,
+                        &|expr, offset| {
+                            if let ExpressionT::LocalConstant(constant) = expr.value(cache) {
+                                for (replacement, found_constant) in &locals {
+                                    if constant.id == found_constant.id {
+                                        return ReplaceResult::ReplaceWith(replacement.lift_free_vars(cache, DeBruijnOffset::zero(), offset));
+                                    }
+                                }
+                                ReplaceResult::Skip
+                            } else {
+                                ReplaceResult::Skip
+                            }
+                        },
+                    ))
                 } else {
                     ReplaceResult::Skip
                 }

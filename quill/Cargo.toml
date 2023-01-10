@@ -10,7 +10,7 @@ fcommon = { path = "../fcommon", features = ["ariadne"] }
 fkernel = { path = "../fkernel", features = ["console"] }
 qdb = { path = "../qdb" }
 qdelab = { path = "../qdelab" }
-qelab = { path = "../qelab", features = ["elaborator_diagnostics"] }
+qelab = { path = "../qelab" }
 qformat = { path = "../qformat" }
 qparse = { path = "../qparse" }
 ron = "0.8"

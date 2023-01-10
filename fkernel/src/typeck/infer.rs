@@ -132,22 +132,14 @@ pub(crate) fn infer_type_core<'cache>(
             ExpressionT::Region,
         )),
         ExpressionT::Lifespan(_) => todo!(),
-        ExpressionT::Hole(var) => infer_type_core(
-            cache,
-            var.args
-                .into_iter()
-                .fold(var.ty, |acc, e| acc.instantiate(cache, e)),
-        ),
+        ExpressionT::Hole(var) => Ok(var
+            .args
+            .into_iter()
+            .fold(var.ty, |acc, e| acc.instantiate(cache, e))),
         ExpressionT::RegionHole(var) => {
-            let ty = infer_type_core(
-                cache,
-                var.args
-                    .into_iter()
-                    .fold(var.ty, |acc, e| acc.instantiate(cache, e)),
-            )?;
             // Ensure that region holes are actually regions.
-            if ty.value(cache) == ExpressionT::Region {
-                Ok(ty)
+            if var.ty.value(cache) == ExpressionT::Region {
+                Ok(var.ty)
             } else {
                 todo!()
             }

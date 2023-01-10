@@ -22,6 +22,8 @@ pub struct Solution<'cache> {
 }
 
 impl<'cache> Solution<'cache> {
+    /// Applies the solution to the given expression.
+    /// This may fill holes.
     pub fn substitute(
         &self,
         cache: &ExpressionCache<'cache>,
@@ -52,13 +54,7 @@ impl<'cache> Solution<'cache> {
                     // Since substitution is not idempotent in the current implementation,
                     // we need to perform a substitution operation on the solution to make sure it doesn't contain metavariables.
                     ReplaceResult::ReplaceWith(
-                        self.substitute(
-                            cache,
-                            hole.args
-                                .iter()
-                                .rev()
-                                .fold(*replacement, |acc, e| acc.instantiate(cache, *e)),
-                        ),
+                        self.substitute(cache, expr.fill_hole(cache, hole.id, *replacement)),
                     )
                 }
                 None => ReplaceResult::Skip,
@@ -238,7 +234,7 @@ impl<'a, 'cache> Solver<'a, 'cache> {
                                 fkernel::basic::Provenance::Synthetic,
                                 ExpressionT::Hole(stuck_app.hole.clone())
                             )),
-                            self.elab.pretty_print(solution_locals)
+                            self.elab.pretty_print(solution_locals),
                         );
 
                         // Assert that the type of the solution matches the type of the metavariable.
