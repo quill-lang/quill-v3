@@ -65,11 +65,13 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
     ) -> Dr<ConstrainedExpression<'cache>> {
         match expr.value(self.cache()) {
             ExpressionT::Local(_) => todo!(),
-            ExpressionT::Borrow(_) => todo!(),
-            ExpressionT::Dereference(_) => todo!(),
-            ExpressionT::Delta(_) => todo!(),
+            ExpressionT::Borrow(borrow) => {
+                self.infer_type_borrow(expr.provenance(self.cache()), borrow)
+            }
+            ExpressionT::Dereference(deref) => self.infer_type_deref(deref),
+            ExpressionT::Delta(delta) => self.infer_type_delta(delta),
             ExpressionT::Inst(inst) => self.infer_type_inst(inst),
-            ExpressionT::Let(_) => todo!(),
+            ExpressionT::Let(let_expr) => self.infer_type_let(let_expr),
             ExpressionT::Lambda(lambda) => self.infer_type_lambda(lambda),
             ExpressionT::Pi(pi) => self.infer_type_pi(pi),
             ExpressionT::RegionLambda(_) => todo!(),
@@ -106,6 +108,65 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         }
     }
 
+    fn infer_type_borrow(
+        &self,
+        provenance: Provenance,
+        borrow: Borrow<Expression<'cache>>,
+    ) -> Dr<ConstrainedExpression<'cache>> {
+        self.infer_type_with_constraints_core(borrow.value)
+            .bind(|mut value| {
+                self.infer_type_with_constraints_core(borrow.region)
+                    .map(|region_ty| {
+                        value.constraints.extend(region_ty.constraints);
+                        value.constraints.push(UnificationConstraint {
+                            expected: Expression::region(self.cache()),
+                            actual: region_ty.expr,
+                            justification: Justification::Borrow,
+                        });
+                        ConstrainedExpression {
+                            expr: Expression::new(
+                                self.cache(),
+                                provenance,
+                                ExpressionT::Delta(Delta {
+                                    region: borrow.region,
+                                    ty: value.expr,
+                                }),
+                            ),
+                            constraints: value.constraints,
+                        }
+                    })
+            })
+    }
+
+    fn infer_type_deref(
+        &self,
+        deref: Dereference<Expression<'cache>>,
+    ) -> Dr<ConstrainedExpression<'cache>> {
+        self.infer_type_with_constraints_core(deref.value)
+            .bind(|value| {
+                if let ExpressionT::Delta(delta) = value.expr.value(self.cache()) {
+                    Dr::ok(ConstrainedExpression {
+                        expr: delta.ty,
+                        constraints: value.constraints,
+                    })
+                } else {
+                    todo!()
+                }
+            })
+    }
+
+    fn infer_type_delta(
+        &self,
+        delta: Delta<Expression<'cache>>,
+    ) -> Dr<ConstrainedExpression<'cache>> {
+        self.infer_type_with_constraints_core(delta.ty)
+            .bind(|delta_ty| {
+                as_sort(self.cache(), delta_ty.expr)
+                    .expect("parameter to delta type should be a type");
+                Dr::ok(delta_ty)
+            })
+    }
+
     fn infer_type_inst(&self, inst: Inst) -> Dr<ConstrainedExpression<'cache>> {
         let path = inst.name.to_path(self.db());
         match get_definition(self.db(), path).value() {
@@ -124,6 +185,33 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             }
             None => todo!(),
         }
+    }
+
+    fn infer_type_let(
+        &self,
+        let_expr: Let<Expression<'cache>>,
+    ) -> Dr<ConstrainedExpression<'cache>> {
+        self.infer_type_with_constraints_core(let_expr.bound.ty)
+            .bind(|let_type_type| {
+                as_sort(self.cache(), let_type_type.expr).expect("deal with this later");
+                // Infer the type of the value to substitute.
+                self.infer_type_with_constraints_core(let_expr.to_assign)
+                    .bind(|to_assign_ty| {
+                        // The value that we assign must have type definitionally equal to the type to assign.
+                        self.infer_type_with_constraints_core(
+                            let_expr.body.instantiate(self.cache(), let_expr.to_assign),
+                        )
+                        .map(|body_ty| ConstrainedExpression {
+                            expr: body_ty.expr,
+                            constraints: let_type_type
+                                .constraints
+                                .into_iter()
+                                .chain(to_assign_ty.constraints)
+                                .chain(body_ty.constraints)
+                                .collect(),
+                        })
+                    })
+            })
     }
 
     fn infer_type_lambda(

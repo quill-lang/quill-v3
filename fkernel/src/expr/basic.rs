@@ -703,6 +703,11 @@ impl<'cache> Expression<'cache> {
     pub fn region(cache: &ExpressionCache<'cache>) -> Self {
         Self::new(cache, Provenance::Synthetic, ExpressionT::Region)
     }
+
+    /// Returns the static region.
+    pub fn static_region(cache: &ExpressionCache<'cache>) -> Self {
+        Self::new(cache, Provenance::Synthetic, ExpressionT::StaticRegion)
+    }
 }
 
 /// An expression is *stuck* if computation cannot continue without filling a hole.

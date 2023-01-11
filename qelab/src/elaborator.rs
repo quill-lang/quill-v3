@@ -45,6 +45,7 @@ impl<'cache> Context<'cache> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct TypedExpression<'cache> {
     pub expr: Expression<'cache>,
     pub ty: Expression<'cache>,

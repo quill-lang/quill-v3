@@ -24,9 +24,6 @@ let_test: {A: Sort::{u}} -> A -> A =
         c = b
     c
 
-region: RegionT = Region
-static_region: Region = static
-
 borrow_deref: {A: Type::{u}} -> A -> A = fn {A} a => *&a
 
 True: Prop = inductive

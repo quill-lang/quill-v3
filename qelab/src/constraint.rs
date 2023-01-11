@@ -32,6 +32,7 @@ pub enum Justification<'cache> {
     PiParameter(Box<Self>),
     PiRegion(Box<Self>),
     PiBody(Box<Self>),
+    Borrow,
 }
 
 impl<'cache> Justification<'cache> {
@@ -52,6 +53,7 @@ impl<'cache> Justification<'cache> {
             Justification::PiParameter(_) => "pi parameter".to_owned(),
             Justification::PiRegion(_) => "pi region".to_owned(),
             Justification::PiBody(_) => "pi body".to_owned(),
+            Justification::Borrow => "borrow".to_owned(),
         }
     }
 }

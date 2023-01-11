@@ -37,8 +37,14 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
                 body
             }
         }
-        PExpression::Borrow { .. } => todo!(),
-        PExpression::Dereference { .. } => todo!(),
+        PExpression::Borrow { value, .. } => Document::Concat(vec![
+            Document::Text("&".to_owned()),
+            to_doc(db, value, false),
+        ]),
+        PExpression::Dereference { value, .. } => Document::Concat(vec![
+            Document::Text("*".to_owned()),
+            to_doc(db, value, false),
+        ]),
         PExpression::Apply { function, argument } => {
             let doc = Document::Concat(vec![
                 to_doc(db, function, true),
@@ -58,7 +64,36 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
         PExpression::Intro { .. } => todo!(),
         PExpression::Match { .. } => todo!(),
         PExpression::Fix { .. } => todo!(),
-        PExpression::Let { .. } => todo!(),
+        PExpression::Let { binders, body, .. } => Document::Concat(
+            std::iter::once(Document::Text("let".to_owned()))
+                .chain(
+                    binders
+                        .iter()
+                        .map(|binder| {
+                            if let Some(ty) = &binder.ty {
+                                vec![
+                                    Document::Line,
+                                    Document::Text(binder.name.0.text(db).to_owned()),
+                                    Document::Text(": ".to_owned()),
+                                    to_doc(db, ty, true),
+                                    Document::Text(" = ".to_owned()),
+                                    to_doc(db, &binder.to_assign, true),
+                                ]
+                            } else {
+                                vec![
+                                    Document::Line,
+                                    Document::Text(binder.name.0.text(db).to_owned()),
+                                    Document::Text(" = ".to_owned()),
+                                    to_doc(db, &binder.to_assign, true),
+                                ]
+                            }
+                        })
+                        .map(|doc| Document::Indent(Box::new(Document::Concat(doc)))),
+                )
+                .chain(std::iter::once(Document::Line))
+                .chain(std::iter::once(to_doc(db, body, true)))
+                .collect(),
+        ),
         PExpression::Lambda {
             binders, result, ..
         } => {
@@ -156,7 +191,18 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
             puniverse_to_document(db, universe),
             Document::Text("}".to_owned()),
         ]),
-        PExpression::Type { .. } => todo!(),
+        PExpression::Type { universe, .. } => {
+            if let Some(universe) = universe {
+                Document::Concat(vec![
+                    Document::Text("Type::{".to_owned()),
+                    puniverse_to_document(db, &universe.1),
+                    Document::Text("}".to_owned()),
+                ])
+            } else {
+                Document::Text("Type".to_owned())
+            }
+        }
+
         PExpression::Prop(_) => todo!(),
         PExpression::StaticRegion(_) => todo!(),
         PExpression::Region(_) => Document::Text("Region".to_owned()),

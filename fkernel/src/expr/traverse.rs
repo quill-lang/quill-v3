@@ -772,6 +772,40 @@ impl<'cache> Expression<'cache> {
         }
     }
 
+    /// Create a let expression where the bound variable is the given local constant.
+    /// Invoke this with a closed expression.
+    #[must_use]
+    pub fn abstract_let(
+        self,
+        cache: &ExpressionCache<'cache>,
+        local: LocalConstant<Self>,
+        bound: BoundVariable<Expression<'cache>>,
+        to_assign: Expression<'cache>,
+    ) -> Let<Self> {
+        let body = self.replace_in_expression(cache, &|e, offset| match e.value(cache) {
+            ExpressionT::LocalConstant(inner_local) => {
+                if inner_local == local {
+                    ReplaceResult::ReplaceWith(Self::new(
+                        cache,
+                        e.provenance(cache),
+                        ExpressionT::Local(Local {
+                            index: DeBruijnIndex::zero() + offset,
+                        }),
+                    ))
+                } else {
+                    ReplaceResult::Skip
+                }
+            }
+            _ => ReplaceResult::Skip,
+        });
+
+        Let {
+            bound,
+            to_assign,
+            body,
+        }
+    }
+
     /// Replaces every instance of the given hole inside this expression with a replacement.
     #[must_use]
     pub fn fill_hole(self, cache: &ExpressionCache<'cache>, id: HoleId, replacement: Self) -> Self {
@@ -806,19 +840,16 @@ impl<'cache> Expression<'cache> {
                         .collect::<Vec<_>>();
 
                     let replacement_with_locals =
-                        locals
-                            .iter()
-                            .rev()
-                            .fold(replacement, |acc, (_,  constant)| {
-                                acc.instantiate(
+                        locals.iter().rev().fold(replacement, |acc, (_, constant)| {
+                            acc.instantiate(
+                                cache,
+                                Expression::new(
                                     cache,
-                                    Expression::new(
-                                        cache,
-                                        e.provenance(cache),
-                                        ExpressionT::LocalConstant(*constant),
-                                    ),
-                                )
-                            });
+                                    e.provenance(cache),
+                                    ExpressionT::LocalConstant(*constant),
+                                ),
+                            )
+                        });
 
                     ReplaceResult::ReplaceWith(replacement_with_locals.replace_in_expression(
                         cache,
@@ -826,7 +857,13 @@ impl<'cache> Expression<'cache> {
                             if let ExpressionT::LocalConstant(constant) = expr.value(cache) {
                                 for (replacement, found_constant) in &locals {
                                     if constant.id == found_constant.id {
-                                        return ReplaceResult::ReplaceWith(replacement.lift_free_vars(cache, DeBruijnOffset::zero(), offset));
+                                        return ReplaceResult::ReplaceWith(
+                                            replacement.lift_free_vars(
+                                                cache,
+                                                DeBruijnOffset::zero(),
+                                                offset,
+                                            ),
+                                        );
                                     }
                                 }
                                 ReplaceResult::Skip

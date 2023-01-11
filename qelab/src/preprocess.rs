@@ -5,7 +5,7 @@ use fkernel::{
     get_certified_definition,
     multiplicity::ParameterOwnership,
     result::Dr,
-    universe::{Universe, UniverseContents, UniverseVariable},
+    universe::{Universe, UniverseContents, UniverseSucc, UniverseVariable},
 };
 use qparse::expr::*;
 
@@ -30,32 +30,41 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         expected_type: Option<Expression<'cache>>,
         ctx: &Context<'cache>,
     ) -> Dr<Expression<'cache>> {
-        // if let Some(expected_type) = expected_type {
-        //     tracing::trace!(
-        //         "inferring {} with expected type {}",
-        //         qformat::pexpression_to_document(self.db(), e).pretty_print(100),
-        //         self.pretty_print(expected_type),
-        //     );
-        // } else {
-        //     tracing::trace!(
-        //         "inferring {}",
-        //         qformat::pexpression_to_document(self.db(), e).pretty_print(100),
-        //     );
-        // }
+        #[cfg(feature = "elaborator_diagnostics")]
+        if let Some(expected_type) = expected_type {
+            tracing::trace!(
+                "inferring {} with expected type {}",
+                qformat::pexpression_to_document(self.db(), e).pretty_print(100),
+                self.pretty_print(expected_type),
+            );
+        } else {
+            tracing::trace!(
+                "inferring {}",
+                qformat::pexpression_to_document(self.db(), e).pretty_print(100),
+            );
+        }
         match e {
             PExpression::Variable {
                 name,
                 universe_ascription,
             } => self.preprocess_variable(expected_type, ctx, name, universe_ascription),
-            PExpression::Borrow { .. } => todo!(),
-            PExpression::Dereference { .. } => todo!(),
+            PExpression::Borrow { borrow, value } => {
+                self.preprocess_borrow(expected_type, ctx, *borrow, value)
+            }
+            PExpression::Dereference { deref, value } => {
+                self.preprocess_deref(expected_type, ctx, *deref, value)
+            }
             PExpression::Apply { function, argument } => {
                 self.preprocess_apply(expected_type, ctx, function, argument)
             }
             PExpression::Intro { .. } => todo!(),
             PExpression::Match { .. } => todo!(),
             PExpression::Fix { .. } => todo!(),
-            PExpression::Let { .. } => todo!(),
+            PExpression::Let {
+                let_token,
+                binders,
+                body,
+            } => self.preprocess_let(expected_type, ctx, *let_token, binders, body),
             PExpression::Lambda {
                 fn_token,
                 binders,
@@ -69,7 +78,9 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             PExpression::Sort { span, universe } => {
                 self.preprocess_sort(expected_type, *span, universe)
             }
-            PExpression::Type { .. } => todo!(),
+            PExpression::Type { span, universe } => {
+                self.preprocess_type(expected_type, *span, universe)
+            }
             PExpression::Prop(_) => todo!(),
             PExpression::StaticRegion(_) => todo!(),
             PExpression::Region(_) => todo!(),
@@ -157,6 +168,80 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         }
     }
 
+    fn preprocess_borrow(
+        &mut self,
+        expected_type: Option<Expression<'cache>>,
+        ctx: &Context<'cache>,
+        _borrow: Span,
+        value: &PExpression,
+    ) -> Dr<Expression<'cache>> {
+        // Check that `expected_type` was a delta type.
+        let delta_type = if let Some(expected_type) = expected_type {
+            if let ExpressionT::Delta(delta) = expected_type.value(self.cache()) {
+                Some(delta)
+            } else {
+                todo!()
+            }
+        } else {
+            None
+        };
+
+        self.preprocess(value, delta_type.map(|delta| delta.ty), ctx)
+            .bind(|value| {
+                self.infer_type(value, ctx, false).map(|value| {
+                    if let Some(delta) = delta_type {
+                        Expression::new(
+                            self.cache(),
+                            value.ty.provenance(self.cache()),
+                            ExpressionT::Borrow(Borrow {
+                                region: delta.region,
+                                value: value.expr,
+                            }),
+                        )
+                    } else {
+                        todo!()
+                    }
+                })
+            })
+    }
+
+    fn preprocess_deref(
+        &mut self,
+        expected_type: Option<Expression<'cache>>,
+        ctx: &Context<'cache>,
+        deref: Span,
+        value: &PExpression,
+    ) -> Dr<Expression<'cache>> {
+        let inner_expected_type = expected_type.map(|expected_type| {
+            Expression::new(
+                self.cache(),
+                expected_type.provenance(self.cache()),
+                ExpressionT::Delta(Delta {
+                    region: self.hole(
+                        ctx,
+                        expected_type.provenance(self.cache()),
+                        Some(Expression::region(self.cache())),
+                    ),
+                    ty: expected_type,
+                }),
+            )
+        });
+
+        self.preprocess(value, inner_expected_type, ctx)
+            .bind(|result| {
+                self.infer_type(result, ctx, false).map(|result| {
+                    Expression::new(
+                        self.cache(),
+                        self.provenance(Span {
+                            start: deref.start,
+                            end: result.expr.span(self.cache()).end,
+                        }),
+                        ExpressionT::Dereference(Dereference { value: result.expr }),
+                    )
+                })
+            })
+    }
+
     fn preprocess_apply(
         &mut self,
         expected_type: Option<Expression<'cache>>,
@@ -213,6 +298,67 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 }
             })
         })
+    }
+
+    fn preprocess_let(
+        &mut self,
+        let_expected_type: Option<Expression<'cache>>,
+        ctx: &Context<'cache>,
+        let_token: Span,
+        binders: &[PLetBinder],
+        body: &PExpression,
+    ) -> Dr<Expression<'cache>> {
+        if let Some(binder) = binders.first() {
+            let expected_type = if let Some(expected_type) = &binder.ty {
+                self.preprocess(expected_type, None, ctx)
+                    .bind(|ty| self.infer_type(ty, ctx, false))
+                    .map(Some)
+            } else {
+                Dr::ok(None)
+            };
+            expected_type
+                .bind(|expected_type| {
+                    self.preprocess(
+                        &binder.to_assign,
+                        expected_type.map(|typed| typed.expr),
+                        ctx,
+                    )
+                })
+                .bind(|result| self.infer_type(result, ctx, false))
+                .bind(|result| {
+                    let local = self.cache().gen_local(BinderStructure {
+                        bound: BoundVariable {
+                            name: binder.name,
+                            ty: result.ty,
+                            ownership: ParameterOwnership::POwned,
+                        },
+                        binder_annotation: BinderAnnotation::Explicit,
+                        function_ownership: FunctionOwnership::Once,
+                        region: Expression::static_region(self.cache()),
+                    });
+                    let ctx = ctx.clone().with(local);
+
+                    self.preprocess_let(let_expected_type, &ctx, let_token, &binders[1..], body)
+                        .map(|body| {
+                            Expression::new(
+                                self.cache(),
+                                self.provenance(let_token),
+                                ExpressionT::Let(body.abstract_let(
+                                    self.cache(),
+                                    local,
+                                    BoundVariable {
+                                        name: binder.name,
+                                        ty: result.ty,
+                                        ownership: ParameterOwnership::POwned,
+                                    },
+                                    result.expr,
+                                )),
+                            )
+                        })
+                })
+        } else {
+            self.preprocess(body, let_expected_type, ctx)
+        }
     }
 
     fn preprocess_lambda(
@@ -421,6 +567,34 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             self.cache(),
             self.provenance(span),
             ExpressionT::Sort(Sort(self.preprocess_universe(universe))),
+        ))
+    }
+
+    fn preprocess_type(
+        &mut self,
+        expected_type: Option<Expression<'cache>>,
+        span: Span,
+        universe: &Option<(Span, PUniverse, Span)>,
+    ) -> Dr<Expression<'cache>> {
+        assert!(expected_type.is_none(), "deal with this later");
+        Dr::ok(Expression::new(
+            self.cache(),
+            self.provenance(span),
+            ExpressionT::Sort(Sort(if let Some((_, universe, _)) = universe {
+                let universe = self.preprocess_universe(universe);
+                Universe::new(
+                    universe.provenance,
+                    UniverseContents::UniverseSucc(UniverseSucc(Box::new(universe))),
+                )
+            } else {
+                Universe::new(
+                    self.provenance(span),
+                    UniverseContents::UniverseSucc(UniverseSucc(Box::new(Universe::new(
+                        self.provenance(span),
+                        UniverseContents::UniverseZero,
+                    )))),
+                )
+            })),
         ))
     }
 

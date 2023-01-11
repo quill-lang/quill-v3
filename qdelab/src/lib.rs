@@ -8,7 +8,7 @@ use fkernel::{
     expr::{Expression, ExpressionCache, ExpressionT},
     universe::{Universe, UniverseContents},
 };
-use qparse::expr::{PExpression, PFunctionBinder, PLambdaBinder, PUniverse};
+use qparse::expr::{PExpression, PFunctionBinder, PLambdaBinder, PLetBinder, PUniverse};
 
 pub fn delaborate<'cache>(
     cache: &ExpressionCache<'cache>,
@@ -33,8 +33,24 @@ pub fn delaborate<'cache>(
             )])),
             universe_ascription: None,
         },
-        ExpressionT::Borrow(_) => todo!(),
-        ExpressionT::Dereference(_) => todo!(),
+        ExpressionT::Borrow(borrow) => PExpression::Borrow {
+            borrow: Span::default(),
+            value: Box::new(delaborate(
+                cache,
+                borrow.value,
+                locals,
+                print_metavariable_indices,
+            )),
+        },
+        ExpressionT::Dereference(deref) => PExpression::Dereference {
+            deref: Span::default(),
+            value: Box::new(delaborate(
+                cache,
+                deref.value,
+                locals,
+                print_metavariable_indices,
+            )),
+        },
         ExpressionT::Delta(_) => todo!(),
         ExpressionT::Inst(inst) => PExpression::Variable {
             name: inst.name,
@@ -48,7 +64,35 @@ pub fn delaborate<'cache>(
                 ))
             },
         },
-        ExpressionT::Let(_) => todo!(),
+        ExpressionT::Let(_) => {
+            let mut binders = Vec::new();
+            let mut body = expr;
+            let mut locals = locals.clone();
+            while let ExpressionT::Let(let_expr) = body.value(cache) {
+                binders.push(PLetBinder {
+                    name: let_expr.bound.name,
+                    ty: Some(delaborate(
+                        cache,
+                        let_expr.bound.ty,
+                        &locals,
+                        print_metavariable_indices,
+                    )),
+                    to_assign: delaborate(
+                        cache,
+                        let_expr.to_assign,
+                        &locals,
+                        print_metavariable_indices,
+                    ),
+                });
+                locals.push_front(*let_expr.bound.name.0);
+                body = let_expr.body;
+            }
+            PExpression::Let {
+                let_token: Span::default(),
+                binders,
+                body: Box::new(delaborate(cache, body, &locals, print_metavariable_indices)),
+            }
+        }
         ExpressionT::Lambda(_) => {
             let mut structures = Vec::new();
             let mut result = expr;
