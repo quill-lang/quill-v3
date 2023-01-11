@@ -235,6 +235,19 @@ impl NaryBinder<HeapExpression> {
     }
 }
 
+impl<'cache> NaryBinder<Expression<'cache>> {
+    pub fn to_heap(&self, cache: &ExpressionCache<'cache>) -> NaryBinder<HeapExpression> {
+        NaryBinder {
+            structures: self
+                .structures
+                .iter()
+                .map(|structure| structure.to_heap(cache))
+                .collect(),
+            result: self.result.to_heap(cache),
+        }
+    }
+}
+
 /// A region-polymorphic value, or the type of such values.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RegionBinder<E> {

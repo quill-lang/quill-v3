@@ -143,4 +143,18 @@ impl<'cache> Expression<'cache> {
             },
         )
     }
+
+    /// Converts a [`ExpressionT::Pi`] into an [`NaryBinder`] that represents the same binders.
+    #[must_use]
+    pub fn pi_to_nary_binder(mut self, cache: &ExpressionCache<'cache>) -> NaryBinder<Self> {
+        let mut structures = Vec::new();
+        while let ExpressionT::Pi(pi) = self.value(cache) {
+            structures.push(pi.structure);
+            self = pi.result;
+        }
+        NaryBinder {
+            structures,
+            result: self,
+        }
+    }
 }

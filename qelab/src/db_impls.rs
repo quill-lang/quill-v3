@@ -5,12 +5,15 @@ use fkernel::{
     inductive::{CertifiedInductive, Inductive},
     message,
     module::{module_from_feather_source, Item},
-    result::{Dr, Message},
+    result::Dr,
     typeck::{CertifiedDefinition, DefinitionOrigin},
 };
 use qparse::module_from_quill_source;
 
-use crate::{definition::elaborate_definition, Db};
+use crate::{
+    definition::{elaborate_definition, elaborate_inductive},
+    Db,
+};
 
 /// Retrieves the definition with the given name.
 /// This definition will not have been type checked.
@@ -45,7 +48,21 @@ pub fn get_definition_impl(db: &dyn Db, path: Path) -> Dr<Definition> {
             .as_ref()
             .bind(|module| match module.iter().find(|def| *def.name == name) {
                 Some(def) => {
-                    elaborate_definition(db, Source::new(db, source, SourceType::Quill), def)
+                    if def.as_inductive().is_none() {
+                        elaborate_definition(db, Source::new(db, source, SourceType::Quill), def)
+                    } else {
+                        Dr::fail(
+                            Report::new_in_file(
+                                ReportKind::Error,
+                                Source::new(db, source, SourceType::Quill),
+                            )
+                            .with_message(message![
+                                "definition ",
+                                name,
+                                " could not be found"
+                            ]),
+                        )
+                    }
                 }
                 None => Dr::fail(
                     Report::new_in_file(
@@ -66,22 +83,21 @@ pub fn get_definition_impl(db: &dyn Db, path: Path) -> Dr<Definition> {
 /// This inductive will not have been type checked.
 pub fn get_inductive_impl(db: &dyn Db, path: Path) -> Dr<Inductive> {
     let (source, name) = path.split_last(db);
-    module_from_feather_source(db, Source::new(db, source, SourceType::Feather))
-        .as_ref()
-        .map_messages(Message::new)
-        .map(|module| {
-            module.items.iter().find_map(|item| match item {
-                Item::Inductive(ind) => {
-                    if *ind.name == name {
-                        Some(ind.clone())
-                    } else {
-                        None
-                    }
+    if let Some(module) =
+        module_from_feather_source(db, Source::new(db, source, SourceType::Feather)).value()
+    {
+        let ind = module.items.iter().find_map(|item| match item {
+            Item::Inductive(ind) => {
+                if *ind.name == name {
+                    Some(ind.clone())
+                } else {
+                    None
                 }
-                _ => None,
-            })
-        })
-        .bind(|ind| match ind {
+            }
+            _ => None,
+        });
+
+        match ind {
             Some(ind) => Dr::ok(ind),
             None => Dr::fail(
                 Report::new_in_file(
@@ -90,7 +106,41 @@ pub fn get_inductive_impl(db: &dyn Db, path: Path) -> Dr<Inductive> {
                 )
                 .with_message(message!["inductive ", name, " could not be found"]),
             ),
-        })
+        }
+    } else {
+        module_from_quill_source(db, Source::new(db, source, SourceType::Quill))
+            .as_ref()
+            .bind(|module| match module.iter().find(|def| *def.name == name) {
+                Some(def) => {
+                    if def.as_inductive().is_some() {
+                        elaborate_inductive(db, Source::new(db, source, SourceType::Quill), def)
+                    } else {
+                        Dr::fail(
+                            Report::new_in_file(
+                                ReportKind::Error,
+                                Source::new(db, source, SourceType::Quill),
+                            )
+                            .with_message(message![
+                                "inductive ",
+                                name,
+                                " could not be found"
+                            ]),
+                        )
+                    }
+                }
+                None => Dr::fail(
+                    Report::new_in_file(
+                        ReportKind::Error,
+                        Source::new(db, source, SourceType::Quill),
+                    )
+                    .with_message(message![
+                        "inductive ",
+                        name,
+                        " could not be found"
+                    ]),
+                ),
+            })
+    }
 }
 
 /// Type checks the definition with the given name.

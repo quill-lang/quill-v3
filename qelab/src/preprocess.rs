@@ -81,7 +81,17 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             PExpression::Type { span, universe } => {
                 self.preprocess_type(expected_type, *span, universe)
             }
-            PExpression::Prop(_) => todo!(),
+            PExpression::Prop(_) => {
+                assert_eq!(expected_type, None, "deal with this later");
+                Dr::ok(Expression::new(
+                    self.cache(),
+                    self.provenance(e.span()),
+                    ExpressionT::Sort(Sort(Universe::new(
+                        self.provenance(e.span()),
+                        UniverseContents::UniverseZero,
+                    ))),
+                ))
+            }
             PExpression::StaticRegion(_) => todo!(),
             PExpression::Region(_) => todo!(),
             PExpression::RegionT(_) => todo!(),

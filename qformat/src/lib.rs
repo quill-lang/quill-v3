@@ -3,7 +3,10 @@
 
 use fkernel::{expr::BinderAnnotation, Db};
 use pretty_print::Document;
-use qparse::expr::{PExpression, PUniverse};
+use qparse::{
+    expr::{PExpression, PUniverse},
+    inductive::PInductive,
+};
 
 pub mod pretty_print;
 
@@ -203,11 +206,11 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
             }
         }
 
-        PExpression::Prop(_) => todo!(),
+        PExpression::Prop(_) => Document::Text("Prop".to_owned()),
         PExpression::StaticRegion(_) => todo!(),
         PExpression::Region(_) => Document::Text("Region".to_owned()),
         PExpression::RegionT(_) => Document::Text("RegionT".to_owned()),
-        PExpression::Inductive(_) => todo!(),
+        PExpression::Inductive(inductive) => pinductive_to_document(db, inductive),
         PExpression::Metavariable { id, args, .. } => {
             if args.is_empty() {
                 Document::Text(id.to_string())
@@ -240,4 +243,22 @@ pub fn puniverse_to_document(db: &dyn Db, puniverse: &PUniverse) -> Document {
             .then(Document::Text(")".to_owned())),
         PUniverse::Metauniverse { index, .. } => Document::Text(format!("?u{index}")),
     }
+}
+
+pub fn pinductive_to_document(db: &dyn Db, pinductive: &PInductive) -> Document {
+    Document::Concat(
+        std::iter::once(Document::Text("inductive".to_owned()))
+            .chain(pinductive.variants.iter().map(|variant| {
+                let body = variant.fields.iter().map(|_| todo!());
+                Document::Concat(vec![Document::Indent(Box::new(Document::Concat(
+                    std::iter::once(Document::Line)
+                        .chain(std::iter::once(Document::Text(
+                            variant.name.text(db).to_owned(),
+                        )))
+                        .chain(body)
+                        .collect(),
+                )))])
+            }))
+            .collect(),
+    )
 }

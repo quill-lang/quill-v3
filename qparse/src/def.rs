@@ -6,7 +6,8 @@ use fkernel::{
 };
 
 use crate::{
-    expr::PExpression,
+    expr::{PExpression, PLambdaBinder},
+    inductive::PInductive,
     lex::{ReservedSymbol, TokenTree},
     parser::Parser,
 };
@@ -21,6 +22,27 @@ pub struct PDefinition {
     pub ty: Option<PExpression>,
     /// The body of the definition.
     pub body: PExpression,
+}
+
+impl PDefinition {
+    /// If this definition defines an inductive type, return the sequence of global parameters and the inductive being defined.
+    pub fn as_inductive(&self) -> Option<(&[PLambdaBinder], &PInductive)> {
+        // Check if we're actually elaborating a definition, or we're elaborating an inductive.
+        if let PExpression::Lambda {
+            binders, result, ..
+        } = &self.body
+        {
+            if let PExpression::Inductive(inductive) = &**result {
+                Some((binders, inductive))
+            } else {
+                None
+            }
+        } else if let PExpression::Inductive(inductive) = &self.body {
+            Some((&[], inductive))
+        } else {
+            None
+        }
+    }
 }
 
 impl<'db, 'a, I> Parser<'db, 'a, I>

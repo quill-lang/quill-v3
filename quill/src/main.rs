@@ -4,7 +4,7 @@ use fcommon::{Path, Source, SourceType, Str};
 use fkernel::{
     certify_definition,
     expr::ExpressionCache,
-    result::{ConsoleFormatter, Delaborator},
+    result::{ConsoleFormatter, Delaborator}, certify_inductive,
 };
 use qdb::QuillDatabase;
 use tracing_subscriber::{fmt::format::FmtSpan, FmtSubscriber};
@@ -65,12 +65,22 @@ fn main() {
 
     if let Some(result) = result {
         for def in result {
-            let result = certify_definition(&db, path.with(&db, *def.name));
-            for report in result.reports() {
-                report.render(&db, &formatter, &mut stderr);
-            }
-            if result.failed() {
-                break;
+            if def.as_inductive().is_some() {
+                let result = certify_inductive(&db, path.with(&db, *def.name));
+                for report in result.reports() {
+                    report.render(&db, &formatter, &mut stderr);
+                }
+                if result.failed() {
+                    break;
+                }
+            } else {
+                let result = certify_definition(&db, path.with(&db, *def.name));
+                for report in result.reports() {
+                    report.render(&db, &formatter, &mut stderr);
+                }
+                if result.failed() {
+                    break;
+                }
             }
         }
     }
