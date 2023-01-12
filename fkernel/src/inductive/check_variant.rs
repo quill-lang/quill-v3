@@ -141,9 +141,9 @@ fn check_field(
             // - its level is at most the level of the inductive data type being declared, or
             // - the inductive data type has sort 0.
             if !info.sort.0.is_zero()
-                && !Universe::universe_at_most(cache.db(), sort.0, info.sort.0.clone())
+                && !Universe::universe_at_most(cache.db(), sort.0.clone(), info.sort.0.clone())
             {
-                todo!()
+                todo!("{:?} vs {:?}", sort.0, info.sort.0);
             } else {
                 // Check that the inductive data type occurs strictly positively.
                 check_positivity(cache, info, variant, field_index).bind(|()| {

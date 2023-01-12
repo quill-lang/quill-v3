@@ -21,8 +21,9 @@ use crate::{
 };
 
 pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> Dr<Definition> {
+    tracing::info!("Elaborating {}", def.name.text(db));
     ExpressionCache::with_cache(db, None, None, None, |cache| {
-        let mut elab = Elaborator::new(cache, source);
+        let mut elab = Elaborator::new(cache, source, def.name);
         if let Some(ty) = &def.ty {
             tracing::debug!(
                 "Type:\n    {}",
@@ -36,8 +37,15 @@ pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> D
                     .pretty_print(15)
                     .replace('\n', "\n    ")
             );
-            let result = elab.elaborate(ty, None, &Context::default()).bind(|ty| {
+            elab.elaborate(ty, None, &Context::default()).bind(|ty| {
                 elab.constrain_type_correct(ty).bind(|_| {
+                    // We quantify over all universe variables found in the type of the definition.
+                    let universe_params = ty
+                        .universe_variables(cache)
+                        .iter()
+                        .map(|var| var.0)
+                        .collect::<Vec<_>>();
+                    elab.set_current_definition_type(ty, &universe_params);
                     elab.elaborate(&def.body, Some(ty), &Context::default())
                         .bind(|body| {
                             elab.constrain_type_correct(body).bind(|_| {
@@ -80,38 +88,19 @@ pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> D
                                         .pretty_print(15)
                                         .replace('\n', "\n    ")
                                     );
-                                    (ty, body)
+                                    Definition {
+                                        provenance: def.name.0.provenance,
+                                        contents: DefinitionContents {
+                                            name: def.name,
+                                            universe_params,
+                                            ty: ty.to_heap(cache),
+                                            expr: Some(body.to_heap(cache)),
+                                        },
+                                    }
                                 })
                             })
                         })
                 })
-            });
-
-            result.map(|(ty, body)| {
-                // We quantify over all universe variables found either in the type or body of the definition.
-                let mut universe_params = ty
-                    .universe_variables(cache)
-                    .iter()
-                    .map(|var| var.0)
-                    .collect::<Vec<_>>();
-                for value in body.universe_variables(cache) {
-                    if universe_params
-                        .iter()
-                        .all(|univ| univ.0.contents != value.0 .0.contents)
-                    {
-                        universe_params.push(value.0);
-                    }
-                }
-
-                Definition {
-                    provenance: def.name.0.provenance,
-                    contents: DefinitionContents {
-                        name: def.name,
-                        universe_params,
-                        ty: ty.to_heap(cache),
-                        expr: Some(body.to_heap(cache)),
-                    },
-                }
             })
         } else {
             todo!()
@@ -120,8 +109,9 @@ pub fn elaborate_definition(db: &dyn Db, source: Source, def: &PDefinition) -> D
 }
 
 pub fn elaborate_inductive(db: &dyn Db, source: Source, def: &PDefinition) -> Dr<Inductive> {
+    tracing::info!("Elaborating {}", def.name.text(db));
     ExpressionCache::with_cache(db, None, None, None, |cache| {
-        let mut elab = Elaborator::new(cache, source);
+        let mut elab = Elaborator::new(cache, source, def.name);
         let (binders, inductive) = if let Some(result) = def.as_inductive() {
             result
         } else {
@@ -137,17 +127,37 @@ pub fn elaborate_inductive(db: &dyn Db, source: Source, def: &PDefinition) -> Dr
             );
             elab.elaborate(ty, None, &Context::default()).bind(|ty| {
                 elab.constrain_type_correct(ty).bind(|_| {
+                    // Quantify over all universe variables found in the inductive's type.
+                    // TODO: Quantify over universes in the fields.
+                    let cache = elab.cache();
+                    let universe_params = ty
+                        .universe_variables(cache)
+                        .iter()
+                        .map(|var| var.0)
+                        .collect::<Vec<_>>();
+                    elab.set_current_definition_type(ty, &universe_params);
                     let inductive_params = ty.pi_args(cache);
                     assert!(binders.len() <= inductive_params.len());
-                    let context = binders.iter().zip(&inductive_params).fold(
-                        Context::default(),
-                        |acc, (binder, constant)| {
-                            let mut structure = constant.structure;
-                            structure.bound.name = binder.name;
-                            assert!(binder.ty.is_none());
-                            acc.with(cache.gen_local(structure))
-                        },
-                    );
+                    let mut context = Context::default();
+                    let mut global_params = Vec::<LocalConstant<Expression>>::new();
+                    for (binder, constant) in binders.iter().zip(&inductive_params) {
+                        let mut structure = constant.structure;
+                        structure.bound.name = binder.name;
+                        for local in global_params.iter().rev() {
+                            structure.bound.ty = structure.bound.ty.instantiate(
+                                cache,
+                                Expression::new(
+                                    cache,
+                                    local.structure.bound.name.0.provenance,
+                                    ExpressionT::LocalConstant(*local),
+                                ),
+                            );
+                        }
+                        assert!(binder.ty.is_none());
+                        let local = cache.gen_local(structure);
+                        global_params.push(local);
+                        context = context.with(local);
+                    }
 
                     inductive
                         .variants
@@ -156,16 +166,8 @@ pub fn elaborate_inductive(db: &dyn Db, source: Source, def: &PDefinition) -> Dr
                         .collect::<Dr<Vec<_>>>()
                         .bind(|elaborated_variants| {
                             let provenance = elab.provenance(inductive.span());
-                            // Quantify over all universe variables found in the inductive's type.
-                            // TODO: Quantify over universes in the fields.
                             let cache = elab.cache();
-                            let universe_params = ty
-                                .universe_variables(cache)
-                                .iter()
-                                .map(|var| var.0)
-                                .collect::<Vec<_>>();
 
-                            // TODO: Apply the global parameters.
                             let inductive_ty = Expression::new(
                                 cache,
                                 provenance,
@@ -192,6 +194,19 @@ pub fn elaborate_inductive(db: &dyn Db, source: Source, def: &PDefinition) -> Dr
                                         })
                                         .collect(),
                                 }),
+                            )
+                            .create_nary_application(
+                                cache,
+                                global_params.iter().map(|local| {
+                                    (
+                                        local.structure.bound.name.0.provenance,
+                                        Expression::new(
+                                            cache,
+                                            local.structure.bound.name.0.provenance,
+                                            ExpressionT::LocalConstant(*local),
+                                        ),
+                                    )
+                                }),
                             );
 
                             elab.solve().map(|solution| {
@@ -201,13 +216,24 @@ pub fn elaborate_inductive(db: &dyn Db, source: Source, def: &PDefinition) -> Dr
                                         // TODO: Check that we have no index parameters.
                                         inductive_ty
                                     });
-                                    let intro_rule_pi = variant_ty.abstract_nary_pi(
+                                    let intro_rule_pi = solution.substitute(
                                         cache,
-                                        fields.iter().rev().copied().map(|mut field| {
-                                            field.structure.bound.ty = solution
-                                                .substitute(cache, field.structure.bound.ty);
-                                            (field.structure.bound.name.0.provenance, field)
-                                        }),
+                                        variant_ty
+                                            .abstract_nary_pi(
+                                                cache,
+                                                fields.iter().copied().map(|field| {
+                                                    (field.structure.bound.name.0.provenance, field)
+                                                }),
+                                            )
+                                            .abstract_nary_pi(
+                                                cache,
+                                                global_params.iter().map(|local| {
+                                                    (
+                                                        local.structure.bound.name.0.provenance,
+                                                        *local,
+                                                    )
+                                                }),
+                                            ),
                                     );
                                     tracing::debug!(
                                         "Intro rule {}:\n    {}",
@@ -228,6 +254,17 @@ pub fn elaborate_inductive(db: &dyn Db, source: Source, def: &PDefinition) -> Dr
                                         intro_rule_pi.pi_to_nary_binder(cache).to_heap(cache);
                                     variants.push(Variant { name, intro_rule });
                                 }
+
+                                let ty = solution.substitute(cache, ty);
+                                tracing::debug!(
+                                    "Solved type:\n    {}",
+                                    pexpression_to_document(
+                                        cache.db(),
+                                        &delaborate(cache, ty, &Default::default(), false)
+                                    )
+                                    .pretty_print(15)
+                                    .replace('\n', "\n    ")
+                                );
 
                                 Inductive::new(
                                     provenance,
@@ -263,21 +300,22 @@ fn elaborate_variant<'cache>(
 )> {
     let mut fields = Vec::new();
     for field in &variant.fields {
-        let constant = elab
-            .elaborate(&field.ty, None, &context)
-            .bind(|ty| elab.constrain_type_correct(ty))
-            .map(|ty| {
-                elab.cache().gen_local(BinderStructure {
-                    bound: BoundVariable {
-                        name: field.name,
-                        ty,
-                        ownership: ParameterOwnership::POwned,
-                    },
-                    binder_annotation: BinderAnnotation::Explicit,
-                    function_ownership: FunctionOwnership::Once,
-                    region: Expression::static_region(elab.cache()),
+        let constant = elab.elaborate(&field.ty, None, &context).bind(|ty| {
+            elab.infer_type(ty, &context, false).bind(|ty| {
+                elab.constrain_type_correct(ty.expr).map(|_| {
+                    elab.cache().gen_local(BinderStructure {
+                        bound: BoundVariable {
+                            name: field.name,
+                            ty: ty.expr,
+                            ownership: ParameterOwnership::POwned,
+                        },
+                        binder_annotation: BinderAnnotation::Explicit,
+                        function_ownership: FunctionOwnership::Once,
+                        region: Expression::static_region(elab.cache()),
+                    })
                 })
-            });
+            })
+        });
         if let Some(constant) = constant.value() {
             context = context.with(*constant);
         }
@@ -285,9 +323,12 @@ fn elaborate_variant<'cache>(
     }
     Dr::sequence(fields).bind(|fields| {
         if let Some(ty) = &variant.ty {
-            elab.elaborate(ty, None, &context)
-                .bind(|ty| elab.constrain_type_correct(ty))
-                .map(|ty| (variant.name, fields, Some(ty)))
+            elab.elaborate(ty, None, &context).bind(|ty| {
+                elab.infer_type(ty, &context, false).bind(|ty| {
+                    elab.constrain_type_correct(ty.expr)
+                        .map(|_| (variant.name, fields, Some(ty.expr)))
+                })
+            })
         } else {
             Dr::ok((variant.name, fields, None))
         }

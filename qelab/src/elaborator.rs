@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 
 use fcommon::{Source, SourceSpan, Span, Str};
 use fkernel::{
-    basic::{Provenance, WithProvenance},
+    basic::{Name, Provenance, QualifiedName, WithProvenance},
     expr::*,
     result::Dr,
-    universe::{Universe, UniverseContents},
+    universe::{Universe, UniverseContents, UniverseVariable},
 };
 use qdelab::delaborate;
 use qformat::pexpression_to_document;
@@ -22,6 +22,16 @@ use crate::constraint::{Justification, UnificationConstraint};
 pub struct Elaborator<'a, 'cache> {
     cache: &'a ExpressionCache<'cache>,
     source: Source,
+    current_definition_name: Name,
+    /// If we're currently elaborating a definition, `get_definition` or `get_inductive` won't be able to
+    /// actually get the definition in question since it'll cause a cycle.
+    ///
+    /// To fix this, we keep track of the current definition, and its elaborated type and universe parameters.
+    /// Of course, elaborating the type of the definition can only be done with an existing elaborator,
+    /// so this field is [`None`] while we do that.
+    /// Consequently, the *type* of a definition can't depend on the definition itself, but that is a
+    /// completely reasonable restriction - that's also verified in the kernel.
+    pub(crate) current_definition_type: Option<(Expression<'cache>, Vec<Name>)>,
     /// TODO: This probably shouldn't be a [`Vec`].
     /// The API is designed so that changing this type should be easy.
     pub(crate) unification_constraints: Vec<UnificationConstraint<'cache>>,
@@ -53,11 +63,12 @@ pub struct TypedExpression<'cache> {
 
 impl<'a, 'cache> Elaborator<'a, 'cache> {
     /// Creates a new elaborator.
-    /// `largest_unusable` is used to instantiate the metavariable generator.
-    pub fn new(cache: &'a ExpressionCache<'cache>, source: Source) -> Self {
+    pub fn new(cache: &'a ExpressionCache<'cache>, source: Source, definition: Name) -> Self {
         Self {
             cache,
             source,
+            current_definition_name: definition,
+            current_definition_type: None,
             unification_constraints: Vec::new(),
         }
     }
@@ -90,6 +101,10 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             source: self.source,
             span,
         })
+    }
+
+    pub fn current_definition_name(&self) -> Name {
+        self.current_definition_name
     }
 
     /// Creates a new hole: a metavariable with a given type, in a given context.
@@ -153,6 +168,14 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         self.infer_type_with_constraints(expr).map(|ty| {
             #[cfg(feature = "elaborator_diagnostics")]
             for constraint in &ty.constraints {
+                assert!(
+                    constraint.expected.closed(self.cache())
+                        && constraint.actual.closed(self.cache()),
+                    "{} =?= {} because {}",
+                    self.pretty_print(constraint.expected),
+                    self.pretty_print(constraint.actual),
+                    constraint.justification.display(self),
+                );
                 tracing::trace!(
                     "inference: unifying {} =?= {} because {}",
                     self.pretty_print(constraint.expected),
@@ -263,5 +286,43 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             actual,
             justification,
         });
+    }
+
+    /// Declares the current type and universe parameters for this definition.
+    pub fn set_current_definition_type(
+        &mut self,
+        current_definition_type: Expression<'cache>,
+        universe_params: &[Name],
+    ) {
+        assert!(self.current_definition_type.is_none());
+        self.current_definition_type = Some((current_definition_type, universe_params.to_owned()));
+    }
+
+    pub fn inst_definition(&self, provenance: Provenance) -> Inst {
+        Inst {
+            name: QualifiedName(WithProvenance::new(
+                provenance,
+                self.source
+                    .path(self.db())
+                    .segments(self.db())
+                    .iter()
+                    .map(|s| Name(WithProvenance::new(provenance, *s)))
+                    .chain(std::iter::once(self.current_definition_name))
+                    .collect(),
+            )),
+            universes: self
+                .current_definition_type
+                .as_ref()
+                .unwrap()
+                .1
+                .iter()
+                .map(|name| {
+                    Universe::new(
+                        name.0.provenance,
+                        UniverseContents::UniverseVariable(UniverseVariable(*name)),
+                    )
+                })
+                .collect(),
+        }
     }
 }

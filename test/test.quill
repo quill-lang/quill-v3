@@ -24,6 +24,8 @@ let_test: {A: Sort::{u}} -> A -> A =
         c = b
     c
 
+use_id: {A: Sort::{u}} -> A -> A = fn {A} a => id (id a)
+
 borrow_deref: {A: Type::{u}} -> A -> A = fn {A} a => *&a
 
 True: Prop = inductive
@@ -43,25 +45,28 @@ HEq: {A: Sort::{u}} -> A -> {B: Sort::{u}} -> B -> Prop =
     fn {A} a => inductive
         refl -> HEq a a
 
-Prod: {A: Type::{u}} -> {B: Type::{u}} -> Type::{u} = inductive
-    intro {
-        fst: A
-        snd: B
-    }
+Prod: {A: Type::{u}} -> {B: Type::{u}} -> Type::{u} =
+    fn {A} {B} => inductive
+        intro {
+            fst: A
+            snd: B
+        }
 
-Sum: {A: Type::{u}} -> {B: Type::{u}} -> Type::{u} = inductive
-    inl {
-        value: A
-    }
-    inr {
-        value: B
-    }
+Sum: {A: Type::{u}} -> {B: Type::{u}} -> Type::{u} =
+    fn {A} {B} => inductive
+        inl {
+            value: A
+        }
+        inr {
+            value: B
+        }
 
-Subtype: {A: Type::{u}} -> (p: A -> Prop) -> Type::{u} = inductive
-    intro {
-        value: A
-        property: p value
-    }
+Subtype: {A: Type::{u}} -> (p: A -> Prop) -> Type::{u} =
+    fn {A} p => inductive
+        intro {
+            value: A
+            property: p value
+        }
 
 Not: Prop -> Prop = fn p => p -> false
 

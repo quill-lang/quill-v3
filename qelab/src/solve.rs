@@ -380,7 +380,14 @@ impl<'a, 'cache> Solver<'a, 'cache> {
         self.solve_universe_constraint(univ.expected, univ.actual);
     }
 
-    fn solve_universe_constraint(&mut self, expected: Universe, actual: Universe) {
+    fn solve_universe_constraint(&mut self, mut expected: Universe, mut actual: Universe) {
+        expected = expected.normalise_universe(self.elab.db());
+        actual = actual.normalise_universe(self.elab.db());
+
+        if expected.eq_ignoring_provenance(&actual) {
+            return;
+        }
+
         // We can often solve universe constraints immediately.
         if let UniverseContents::Metauniverse(meta) = expected.contents {
             match self.solution.universes.get(&meta) {
@@ -404,7 +411,7 @@ impl<'a, 'cache> Solver<'a, 'cache> {
             }
         }
 
-        todo!()
+        todo!("{:?} =?= {:?}", expected, actual)
     }
 
     fn solve(&mut self) {

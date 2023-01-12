@@ -23,6 +23,7 @@ use crate::{
 /// A parsed universe.
 #[derive(Debug, PartialEq, Eq)]
 pub enum PUniverse {
+    Zero(Span),
     /// A universe variable.
     Variable(Name),
     Succ {
@@ -43,6 +44,7 @@ pub enum PUniverse {
 impl Spanned for PUniverse {
     fn span(&self) -> Span {
         match self {
+            PUniverse::Zero(span) => *span,
             PUniverse::Variable(name) => name.0.provenance.span(),
             PUniverse::Succ { value, succ_token } => Span {
                 start: value.span().start,
@@ -143,6 +145,11 @@ pub enum PExpression {
         deref: Span,
         value: Box<PExpression>,
     },
+    Delta {
+        delta: Span,
+        region: Box<PExpression>,
+        ty: Box<PExpression>,
+    },
     Apply {
         function: Box<PExpression>,
         argument: Box<PExpression>,
@@ -203,7 +210,7 @@ pub enum PExpression {
     Region(Span),
     RegionT(Span),
     Inductive(PInductive),
-    Metavariable {
+    Hole {
         span: Span,
         id: HoleId,
         args: Vec<PExpression>,
@@ -222,6 +229,7 @@ impl Spanned for PExpression {
                 start: deref.start,
                 end: value.span().end,
             },
+            PExpression::Delta { .. } => todo!(),
             PExpression::Apply { function, argument } => Span {
                 start: function.span().start,
                 end: argument.span().end,
@@ -261,7 +269,7 @@ impl Spanned for PExpression {
             | PExpression::Region(span)
             | PExpression::RegionT(span) => *span,
             PExpression::Inductive(inductive) => inductive.span(),
-            PExpression::Metavariable { span, .. } => *span,
+            PExpression::Hole { span, .. } => *span,
         }
     }
 }

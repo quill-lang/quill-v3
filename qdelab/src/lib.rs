@@ -51,7 +51,21 @@ pub fn delaborate<'cache>(
                 print_metavariable_indices,
             )),
         },
-        ExpressionT::Delta(_) => todo!(),
+        ExpressionT::Delta(delta) => PExpression::Delta {
+            delta: Span::default(),
+            region: Box::new(delaborate(
+                cache,
+                delta.region,
+                locals,
+                print_metavariable_indices,
+            )),
+            ty: Box::new(delaborate(
+                cache,
+                delta.ty,
+                locals,
+                print_metavariable_indices,
+            )),
+        },
         ExpressionT::Inst(inst) => PExpression::Variable {
             name: inst.name,
             universe_ascription: if inst.universes.is_empty() {
@@ -185,7 +199,7 @@ pub fn delaborate<'cache>(
         ExpressionT::RegionT => PExpression::RegionT(Span::default()),
         ExpressionT::StaticRegion => todo!(),
         ExpressionT::Lifespan(_) => todo!(),
-        ExpressionT::Hole(hole) => PExpression::Metavariable {
+        ExpressionT::Hole(hole) => PExpression::Hole {
             span: Span::default(),
             id: hole.id,
             args: hole
@@ -194,7 +208,15 @@ pub fn delaborate<'cache>(
                 .map(|expr| delaborate(cache, *expr, locals, print_metavariable_indices))
                 .collect(),
         },
-        ExpressionT::RegionHole(_major_premise) => todo!(),
+        ExpressionT::RegionHole(hole) => PExpression::Hole {
+            span: Span::default(),
+            id: hole.id,
+            args: hole
+                .args
+                .iter()
+                .map(|expr| delaborate(cache, *expr, locals, print_metavariable_indices))
+                .collect(),
+        },
         ExpressionT::LocalConstant(local) => PExpression::Variable {
             name: QualifiedName(WithProvenance::new_synthetic(vec![
                 if print_metavariable_indices {
@@ -220,7 +242,7 @@ pub fn delaborate<'cache>(
 
 pub fn delaborate_universe(universe: &Universe) -> PUniverse {
     match &universe.contents {
-        UniverseContents::UniverseZero => todo!(),
+        UniverseContents::UniverseZero => PUniverse::Zero(Span::default()),
         UniverseContents::UniverseVariable(name) => PUniverse::Variable(name.0),
         UniverseContents::UniverseSucc(succ) => PUniverse::Succ {
             value: Box::new(delaborate_universe(&succ.0)),

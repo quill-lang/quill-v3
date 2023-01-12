@@ -169,6 +169,19 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
     fn infer_type_inst(&self, inst: Inst) -> Dr<ConstrainedExpression<'cache>> {
         let path = inst.name.to_path(self.db());
+        // Check if the path is the definition currently being defined.
+        let (source, def) = path.split_last(self.db());
+        if self.source().path(self.db()) == source
+            && self.current_definition_name().0.contents == def
+        {
+            return Dr::ok(ConstrainedExpression::new(
+                self.current_definition_type
+                    .as_ref()
+                    .expect("should have defined definition type")
+                    .0,
+            ));
+        }
+
         match get_definition(self.db(), path).value() {
             Some(def) => {
                 // `Inst` expressions should already have the correct number of universe parameters.

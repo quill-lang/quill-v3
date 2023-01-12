@@ -48,6 +48,12 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
             Document::Text("*".to_owned()),
             to_doc(db, value, false),
         ]),
+        PExpression::Delta { region, ty, .. } => Document::Concat(vec![
+            Document::Text("Δ[".to_owned()),
+            to_doc(db, region, false),
+            Document::Text("] ".to_owned()),
+            to_doc(db, ty, false),
+        ]),
         PExpression::Apply { function, argument } => {
             let doc = Document::Concat(vec![
                 to_doc(db, function, true),
@@ -211,7 +217,7 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
         PExpression::Region(_) => Document::Text("Region".to_owned()),
         PExpression::RegionT(_) => Document::Text("RegionT".to_owned()),
         PExpression::Inductive(inductive) => pinductive_to_document(db, inductive),
-        PExpression::Metavariable { id, args, .. } => {
+        PExpression::Hole { id, args, .. } => {
             if args.is_empty() {
                 Document::Text(id.to_string())
             } else {
@@ -232,6 +238,7 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
 
 pub fn puniverse_to_document(db: &dyn Db, puniverse: &PUniverse) -> Document {
     match puniverse {
+        PUniverse::Zero(_) => Document::Text("0".to_owned()),
         PUniverse::Variable(var) => Document::Text(var.text(db).to_owned()),
         PUniverse::Succ { value, .. } => {
             puniverse_to_document(db, value).then(Document::Text(" + 1".to_owned()))

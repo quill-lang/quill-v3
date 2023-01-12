@@ -2,7 +2,7 @@ use fcommon::{Span, Spanned, Str};
 use fkernel::{
     basic::{Name, QualifiedName, WithProvenance},
     expr::*,
-    get_certified_definition,
+    get_definition, get_inductive,
     multiplicity::ParameterOwnership,
     result::Dr,
     universe::{Universe, UniverseContents, UniverseSucc, UniverseVariable},
@@ -54,6 +54,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             PExpression::Dereference { deref, value } => {
                 self.preprocess_deref(expected_type, ctx, *deref, value)
             }
+            PExpression::Delta { .. } => todo!(),
             PExpression::Apply { function, argument } => {
                 self.preprocess_apply(expected_type, ctx, function, argument)
             }
@@ -96,7 +97,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             PExpression::Region(_) => todo!(),
             PExpression::RegionT(_) => todo!(),
             PExpression::Inductive(_) => todo!(),
-            PExpression::Metavariable { .. } => todo!(),
+            PExpression::Hole { .. } => todo!(),
         }
     }
 
@@ -135,6 +136,17 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                         result.expr
                     });
             }
+
+            // Check if the name matches the name of the current definition.
+            // This is special-cased to avoid dealing with cycles.
+            if self.current_definition_name().0.contents == name[0].0.contents {
+                assert!(universe_ascription.is_none(), "deal with this later");
+                return Dr::ok(Expression::new(
+                    self.cache(),
+                    name.0.provenance,
+                    ExpressionT::Inst(self.inst_definition(name.0.provenance)),
+                ));
+            }
         }
 
         // Search for a definition with this name.
@@ -144,11 +156,11 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             .source()
             .path(self.db())
             .append(self.db(), name.iter().map(|name| **name));
-        let def = get_certified_definition(self.db(), def_path);
 
-        match def {
-            Some(def) => {
-                // We will instantiate this definition.
+        let ind = get_inductive(self.db(), def_path).as_ref();
+        match ind.value() {
+            Some(ind) => {
+                // We will instantiate this inductive.
                 assert!(universe_ascription.is_none(), "deal with this later");
                 let expr = Expression::new(
                     self.cache(),
@@ -164,8 +176,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                                 .chain(name.iter().copied())
                                 .collect(),
                         )),
-                        universes: def
-                            .def()
+                        universes: ind
                             .universe_params
                             .iter()
                             .map(|_| self.universe_hole(name.0.provenance))
@@ -174,7 +185,38 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
                 );
                 self.infer_type(expr, ctx, false).map(|expr| expr.expr)
             }
-            None => todo!(),
+            None => {
+                let def = get_definition(self.db(), def_path).as_ref();
+                match def.value() {
+                    Some(def) => {
+                        // We will instantiate this definition.
+                        assert!(universe_ascription.is_none(), "deal with this later");
+                        let expr = Expression::new(
+                            self.cache(),
+                            name.0.provenance,
+                            ExpressionT::Inst(Inst {
+                                name: QualifiedName(WithProvenance::new(
+                                    name.0.provenance,
+                                    self.source()
+                                        .path(self.db())
+                                        .segments(self.db())
+                                        .iter()
+                                        .map(|s| Name(WithProvenance::new(name.0.provenance, *s)))
+                                        .chain(name.iter().copied())
+                                        .collect(),
+                                )),
+                                universes: def
+                                    .universe_params
+                                    .iter()
+                                    .map(|_| self.universe_hole(name.0.provenance))
+                                    .collect(),
+                            }),
+                        );
+                        self.infer_type(expr, ctx, false).map(|expr| expr.expr)
+                    }
+                    None => todo!(),
+                }
+            }
         }
     }
 
@@ -610,6 +652,7 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
 
     fn preprocess_universe(&mut self, universe: &PUniverse) -> Universe {
         match universe {
+            PUniverse::Zero(_) => todo!(),
             PUniverse::Variable(variable) => Universe::new(
                 self.provenance(variable.0.provenance.span()),
                 UniverseContents::UniverseVariable(UniverseVariable(*variable)),
