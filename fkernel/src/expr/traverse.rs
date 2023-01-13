@@ -341,6 +341,10 @@ impl<'cache> Expression<'cache> {
                                         ),
                                         ..e.structure.bound
                                     },
+                                    region: e
+                                        .structure
+                                        .region
+                                        .replace_in_expression_offset(cache, replace_fn, offset),
                                     ..e.structure
                                 },
                             }),

@@ -393,28 +393,14 @@ pub struct LocalConstantId(pub u32);
 
 /// De Bruijn indices (bound variables) are replaced with local constants while we're inside the function body.
 /// Should not be used in functions manually.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct LocalConstant<E> {
     /// An id created to ensure that local constants with the same name are not considered equal.
-    /// All local constants with the same `id` must have the same `structure`.
+    /// All local constants with the same `id` must have the same `structure`, modulo filling holes or instantiating bound variables.
     pub id: LocalConstantId,
     /// The structure of the binder that introduced this local constant.
     /// This field provides the type of this variable.
     pub structure: BinderStructure<E>,
-}
-
-impl<E> PartialEq for LocalConstant<E> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl<E> Eq for LocalConstant<E> {}
-
-impl<E> Hash for LocalConstant<E> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-    }
 }
 
 /// Generates unique hole and local constant IDs.

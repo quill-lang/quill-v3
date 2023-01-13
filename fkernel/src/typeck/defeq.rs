@@ -19,6 +19,10 @@ impl<'cache> Expression<'cache> {
         mut left: Self,
         mut right: Self,
     ) -> Ir<bool> {
+        // Check that `left` and `right` are closed expressions.
+        assert!(left.closed(cache));
+        assert!(right.closed(cache));
+
         // Start by reducing to weak head normal form.
         left = left.to_weak_head_normal_form(cache);
         right = right.to_weak_head_normal_form(cache);

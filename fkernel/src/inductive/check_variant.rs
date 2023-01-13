@@ -2,11 +2,12 @@ use crate::{
     basic::{DeBruijnIndex, DeBruijnOffset, Provenance},
     expr::{Expression, ExpressionCache, ExpressionT},
     inductive::Variant,
+    message,
     result::Dr,
     typeck::{as_sort, check_no_local_or_metavariable},
     universe::Universe,
 };
-use fcommon::{LabelType, ReportKind};
+use fcommon::{Label, LabelType, Report, ReportKind, Spanned};
 
 use super::check_type::InductiveTypeInformation;
 
@@ -36,33 +37,43 @@ pub(in crate::inductive) fn check_variant(
                     todo!()
                 } else {
                     // Check that the first parameters are the global parameters.
-                    let check_global_params = Dr::sequence_unfail(
-                        variant
-                            .intro_rule
-                            .structures
-                            .iter()
-                            .take(info.inductive.global_params as usize)
-                            .zip(&info.inductive.ty.structures)
-                            .map(|(from_intro_rule, from_ty)| {
+                    let from_intro_rule = variant
+                        .intro_rule
+                        .structures
+                        .iter()
+                        .take(info.inductive.global_params as usize)
+                        .map(|from_intro_rule| from_intro_rule.bound.ty.from_heap(cache))
+                        .collect::<Vec<_>>();
+                    let from_ty = info
+                        .inductive
+                        .ty
+                        .structures
+                        .iter()
+                        .map(|from_ty| from_ty.bound.ty.from_heap(cache))
+                        .collect::<Vec<_>>();
+                    let check_global_params =
+                        Dr::sequence_unfail(from_intro_rule.iter().zip(&from_ty).enumerate().map(
+                            |(i, (left, right))| {
+                                // TODO: Check that the regions match later.
                                 let result = Expression::definitionally_equal(
                                     cache,
-                                    from_intro_rule.region.from_heap(cache),
-                                    from_ty.region.from_heap(cache),
-                                )
-                                .and_then(|regions| {
-                                    Expression::definitionally_equal(
-                                        cache,
-                                        from_intro_rule.bound.ty.from_heap(cache),
-                                        from_ty.bound.ty.from_heap(cache),
-                                    )
-                                    .map(|types| regions && types)
-                                });
+                                    from_intro_rule
+                                        .iter()
+                                        .take(i)
+                                        .rev()
+                                        .fold(*left, |acc, e| acc.instantiate(cache, *e)),
+                                    from_ty
+                                        .iter()
+                                        .take(i)
+                                        .rev()
+                                        .fold(*right, |acc, e| acc.instantiate(cache, *e)),
+                                );
                                 match result {
                                     Ok(_) => Dr::ok(()),
                                     Err(_) => todo!(),
                                 }
-                            }),
-                    );
+                            },
+                        ));
 
                     // Check that the other parameters are valid fields.
                     let mut found_recursive_parameter = false;
@@ -141,9 +152,33 @@ fn check_field(
             // - its level is at most the level of the inductive data type being declared, or
             // - the inductive data type has sort 0.
             if !info.sort.0.is_zero()
-                && !Universe::universe_at_most(cache.db(), sort.0.clone(), info.sort.0.clone())
+                && !Universe::universe_at_most(cache.db(), sort.0, info.sort.0.clone())
             {
-                todo!("{:?} vs {:?}", sort.0, info.sort.0);
+                Dr::fail(
+                    Report::new(
+                        ReportKind::Error,
+                        info.source,
+                        variant.intro_rule.structures[field_index]
+                            .bound
+                            .name
+                            .0
+                            .provenance
+                            .span()
+                            .start,
+                    )
+                    .with_message(message![
+                        "the universe containing the type of this field was too large for the inductive being defined"
+                    ])
+                    .with_label(Label::new(
+                        info.source,
+                        expr.span(cache),
+                        LabelType::Error,
+                    ).with_message(message![
+                        "this field had type ",
+                        expr.to_heap(cache),
+                        " which lives in a universe which is too large"
+                    ])),
+                )
             } else {
                 // Check that the inductive data type occurs strictly positively.
                 check_positivity(cache, info, variant, field_index).bind(|()| {

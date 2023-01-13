@@ -6,12 +6,13 @@ use crate::{
     typeck::check_no_local_or_metavariable,
     universe::{Universe, UniverseContents, UniverseVariable},
 };
-use fcommon::{LabelType, Path, ReportKind};
+use fcommon::{LabelType, Path, ReportKind, Source};
 
 use crate::typeck::as_sort;
 
 /// Some information used when creating things to do with inductives, such as match expressions.
 pub(in crate::inductive) struct InductiveTypeInformation {
+    pub source: Source,
     pub inductive: Inductive,
     /// The type yielded after all parameters have been applied to the inductive type.
     pub sort: Sort,
@@ -21,6 +22,7 @@ pub(in crate::inductive) struct InductiveTypeInformation {
 
 pub(super) fn check_inductive_type(
     cache: &ExpressionCache<'_>,
+    source: Source,
     path: Path,
     ind: &Inductive,
 ) -> Dr<InductiveTypeInformation> {
@@ -44,6 +46,7 @@ pub(super) fn check_inductive_type(
                             Ok(sort) => {
                                 let sort = Sort(sort.0.normalise_universe(cache.db()));
                                 Dr::ok(InductiveTypeInformation {
+                                    source,
                                     inductive: ind.clone(),
                                     sort,
                                     inst: Inst {

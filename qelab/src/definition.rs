@@ -257,7 +257,8 @@ pub fn elaborate_inductive(db: &dyn Db, source: Source, def: &PDefinition) -> Dr
 
                                 let ty = solution.substitute(cache, ty);
                                 tracing::debug!(
-                                    "Solved type:\n    {}",
+                                    "Solved type with {} global parameters:\n    {}",
+                                    global_params.len(),
                                     pexpression_to_document(
                                         cache.db(),
                                         &delaborate(cache, ty, &Default::default(), false)
@@ -272,7 +273,7 @@ pub fn elaborate_inductive(db: &dyn Db, source: Source, def: &PDefinition) -> Dr
                                         name: def.name,
                                         universe_params,
                                         ty: ty.pi_to_nary_binder(cache).to_heap(cache),
-                                        global_params: 0,
+                                        global_params: global_params.len() as u32,
                                         variants,
                                     },
                                 )

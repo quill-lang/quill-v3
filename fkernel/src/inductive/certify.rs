@@ -1,9 +1,10 @@
-use fcommon::Path;
+use fcommon::{Path, Source, SourceType};
 
 use crate::{
     basic::Provenance,
     expr::{Expression, ExpressionCache, ExpressionT},
     inductive::Inductive,
+    module::module_from_feather_source,
     result::Dr,
     typeck::{as_sort, Ir},
     Db,
@@ -104,7 +105,17 @@ fn eliminate_only_into_prop(
 /// These functions are able to parse and certify both feather and quill definitions of inductives.
 pub fn certify_inductive(db: &dyn Db, path: Path, ind: &Inductive) -> Dr<CertifiedInductive> {
     ExpressionCache::with_cache(db, None, None, None, |cache| {
-        super::check_type::check_inductive_type(cache, path, ind).bind(|info| {
+        let source_path = path.split_last(db).0;
+        let source =
+            if module_from_feather_source(db, Source::new(db, source_path, SourceType::Feather))
+                .succeeded()
+            {
+                Source::new(db, source_path, SourceType::Feather)
+            } else {
+                Source::new(db, source_path, SourceType::Quill)
+            };
+
+        super::check_type::check_inductive_type(cache, source, path, ind).bind(|info| {
             Dr::sequence_unfail(
                 info.inductive
                     .variants
