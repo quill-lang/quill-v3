@@ -164,6 +164,12 @@ pub fn delaborate<'cache>(
                     )),
                 },
                 arrow_token: Span::default(),
+                region: Some(Box::new(delaborate(
+                    cache,
+                    pi.structure.region,
+                    &new_locals,
+                    print_metavariable_indices,
+                ))),
                 result: Box::new(delaborate(
                     cache,
                     pi.result,

@@ -5,7 +5,10 @@ use fkernel::{
     get_definition, get_inductive,
     multiplicity::ParameterOwnership,
     result::Dr,
-    universe::{Universe, UniverseContents, UniverseSucc, UniverseVariable},
+    typeck::as_sort,
+    universe::{
+        Universe, UniverseContents, UniverseImpredicativeMax, UniverseSucc, UniverseVariable,
+    },
 };
 use qparse::expr::*;
 
@@ -74,8 +77,16 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
             PExpression::FunctionType {
                 binder,
                 arrow_token,
+                region,
                 result,
-            } => self.preprocess_function_type(expected_type, ctx, binder, *arrow_token, result),
+            } => self.preprocess_function_type(
+                expected_type,
+                ctx,
+                binder,
+                *arrow_token,
+                region,
+                result,
+            ),
             PExpression::Sort { span, universe } => {
                 self.preprocess_sort(expected_type, *span, universe)
             }
@@ -549,62 +560,77 @@ impl<'a, 'cache> Elaborator<'a, 'cache> {
         ctx: &Context<'cache>,
         binder: &PFunctionBinder,
         arrow_token: Span,
+        region: &Option<Box<PExpression>>,
         result: &PExpression,
     ) -> Dr<Expression<'cache>> {
-        assert!(expected_type.is_none(), "deal with this later");
+        assert!(region.is_none(), "todo");
         self.preprocess(&binder.ty, None, ctx).bind(|binder_ty| {
-            // Add the new bound variable to the context.
-            let bound_ownership = if let Some((ownership, _)) = binder.ownership {
-                ownership
-            } else {
-                // TODO: Make a more intelligent choice based on `binder_ty`.
-                ParameterOwnership::POwned
-            };
+            self.infer_type(binder_ty, ctx, false).bind(|binder_ty| {
+                // Add the new bound variable to the context.
+                let bound_ownership = if let Some((ownership, _)) = binder.ownership {
+                    ownership
+                } else {
+                    // TODO: Make a more intelligent choice based on `binder_ty`.
+                    ParameterOwnership::POwned
+                };
 
-            // TODO: Get this from `qparse`.
-            let function_ownership = FunctionOwnership::Once;
+                // TODO: Get this from `qparse`.
+                let function_ownership = FunctionOwnership::Once;
 
-            // Create the binder structure.
-            let structure = BinderStructure {
-                bound: BoundVariable {
-                    name: binder.name.unwrap_or_else(|| {
-                        Name(WithProvenance::new(
-                            self.provenance(binder.ty.span()),
-                            Str::new(self.db(), "_".to_owned()),
-                        ))
-                    }),
-                    ty: binder_ty,
-                    ownership: bound_ownership,
-                },
-                binder_annotation: binder.annotation,
-                function_ownership,
-                region: self.hole(
-                    ctx,
-                    self.provenance(arrow_token),
-                    Some(Expression::region(self.cache())),
-                ),
-            };
+                // Create the binder structure.
+                let structure = BinderStructure {
+                    bound: BoundVariable {
+                        name: binder.name.unwrap_or_else(|| {
+                            Name(WithProvenance::new(
+                                self.provenance(binder.ty.span()),
+                                Str::new(self.db(), "_".to_owned()),
+                            ))
+                        }),
+                        ty: binder_ty.expr,
+                        ownership: bound_ownership,
+                    },
+                    binder_annotation: binder.annotation,
+                    function_ownership,
+                    region: self.hole(
+                        ctx,
+                        self.provenance(arrow_token),
+                        Some(Expression::region(self.cache())),
+                    ),
+                };
 
-            if binder.name.is_some() {
                 let local = self.cache().gen_local(structure);
-                self.preprocess(result, None, &ctx.clone().with(local))
+                let ctx = ctx.clone().with(local);
+                self.preprocess(result, None, &ctx)
+                    .bind(|result| self.infer_type(result, &ctx, false))
                     .map(|result| {
+                        if let Some(expected_type) = expected_type {
+                            let left = as_sort(self.cache(), binder_ty.ty).expect("todo");
+                            let right = as_sort(self.cache(), result.ty).expect("todo");
+                            self.add_unification_constraint(
+                                expected_type,
+                                Expression::new(
+                                    self.cache(),
+                                    self.provenance(arrow_token),
+                                    ExpressionT::Sort(Sort(WithProvenance::new(
+                                        self.provenance(arrow_token),
+                                        UniverseContents::UniverseImpredicativeMax(
+                                            UniverseImpredicativeMax {
+                                                left: Box::new(left.0),
+                                                right: Box::new(right.0),
+                                            },
+                                        ),
+                                    ))),
+                                ),
+                                Justification::PiType,
+                            );
+                        }
                         Expression::new(
                             self.cache(),
                             self.provenance(arrow_token),
-                            ExpressionT::Pi(result.abstract_binder(self.cache(), local)),
+                            ExpressionT::Pi(result.expr.abstract_binder(self.cache(), local)),
                         )
                     })
-            } else {
-                // We didn't bind a new variable, so we don't need to change the context.
-                self.preprocess(result, None, ctx).map(|result| {
-                    Expression::new(
-                        self.cache(),
-                        self.provenance(arrow_token),
-                        ExpressionT::Pi(Binder { structure, result }),
-                    )
-                })
-            }
+            })
         })
     }
 

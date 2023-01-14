@@ -154,7 +154,12 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
                 .then(to_doc(db, result, true))
                 .then(Document::Text(")".to_owned()))
         }
-        PExpression::FunctionType { binder, result, .. } => {
+        PExpression::FunctionType {
+            binder,
+            region,
+            result,
+            ..
+        } => {
             let draw_brackets = binder.name.is_some()
                 || binder.annotation != BinderAnnotation::Explicit
                 || matches!(&*binder.ty, PExpression::FunctionType { .. });
@@ -191,8 +196,17 @@ fn to_doc(db: &dyn Db, pexpr: &PExpression, allow_apply: bool) -> Document {
                 binder_doc
             };
 
+            let region = if let Some(region) = region {
+                Document::Text("‹".to_owned())
+                    .then(to_doc(db, region, allow_apply))
+                    .then(Document::Text("› ".to_owned()))
+            } else {
+                Document::Empty
+            };
+
             bracketed_binder
                 .then(Document::Text(" -> ".to_owned()))
+                .then(region)
                 .then(to_doc(db, result, true))
         }
         PExpression::Sort { universe, .. } => Document::Concat(vec![

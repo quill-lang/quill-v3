@@ -192,6 +192,7 @@ pub enum PExpression {
     FunctionType {
         binder: PFunctionBinder,
         arrow_token: Span,
+        region: Option<Box<PExpression>>,
         result: Box<PExpression>,
     },
     Sort {
@@ -1575,6 +1576,7 @@ where
                                     PExpression::FunctionType {
                                         binder,
                                         arrow_token,
+                                        region: None,
                                         result: Box::new(result),
                                     }
                                 })
@@ -1620,6 +1622,7 @@ where
                             ty: Box::new(expr),
                         },
                         arrow_token,
+                        region: None,
                         result: Box::new(result),
                     })
             } else {

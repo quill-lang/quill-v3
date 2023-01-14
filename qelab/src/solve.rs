@@ -3,6 +3,8 @@ use fkernel::{
     result::Dr,
     universe::{Metauniverse, Universe, UniverseContents},
 };
+use qdelab::delaborate;
+use qformat::pexpression_to_document;
 use rpds::RedBlackTreeMap;
 
 use crate::{
@@ -29,6 +31,12 @@ impl<'cache> Solution<'cache> {
         cache: &ExpressionCache<'cache>,
         expr: Expression<'cache>,
     ) -> Expression<'cache> {
+        // let doc = pexpression_to_document(
+        //     cache.db(),
+        //     &delaborate(cache, expr, &Default::default(), true),
+        // )
+        // .pretty_print(100);
+        // tracing::trace!("substituting {}", expr.to_heap(cache).display(cache.db()));
         expr.replace_in_expression(cache, &|expr, _offset| match expr.value(cache) {
             ExpressionT::Inst(mut inst) => {
                 for univ in &mut inst.universes {
@@ -416,9 +424,22 @@ impl<'a, 'cache> Solver<'a, 'cache> {
 
     fn solve(&mut self) {
         #[cfg(feature = "elaborator_diagnostics")]
-        tracing::debug!(
-            "solving constraints for {} metavariables",
-            self.stuck_applications.keys().count() + self.flex_flex.keys().count()
-        );
+        {
+            tracing::debug!(
+                "solving constraints for {} metavariables",
+                self.stuck_applications.keys().count() + self.flex_flex.keys().count()
+            );
+            for (hole, (replacement, justification)) in &self.solution.map {
+                tracing::trace!(
+                    "solution mapped {} => {} because {}",
+                    hole,
+                    // replacement
+                    //     .to_heap(self.elab.cache())
+                    //     .display(self.elab.db()),
+                    self.elab.pretty_print(*replacement),
+                    justification.display(&self.elab),
+                );
+            }
+        }
     }
 }
